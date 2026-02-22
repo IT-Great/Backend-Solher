@@ -255,7 +255,7 @@ class TransactionController extends Controller
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
         // Refund bisa diajukan saat status ini
-        if (!in_array($transaction->status, ['completed', 'shipping_failed'])) {
+        if (!in_array($transaction->status, ['completed', 'shipping_failed', 'returned'])) {
             return response()->json(['message' => 'Cannot request refund for this order state.'], 400);
         }
 
