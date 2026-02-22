@@ -666,73 +666,13 @@ class TransactionController extends Controller
     //     return response()->json(['message' => 'Webhook processed']);
     // }
 
-    // public function biteshipCallback(Request $request)
-    // {
-    //     // Validasi signature (Opsional tapi disarankan)
-    //     $biteshipSignature = $request->header('biteship-signature');
-
-    //     $biteshipOrderId = $request->input('order_id');
-    //     $status = strtolower($request->input('status')); // picking_up, dropped, delivered, cancelled, rejected
-    //     $waybill = $request->input('courier_tracking_id');
-
-    //     \Log::info('Biteship Webhook Received: ', $request->all());
-
-    //     $transaction = Transaction::where('biteship_order_id', $biteshipOrderId)->first();
-
-    //     if (!$transaction) {
-    //         return response()->json(['message' => 'Transaction not found'], 200);
-    //     }
-
-    //     // 1. Update Resi jika baru turun
-    //     if ($waybill && in_array($transaction->tracking_number, ['Pending', null])) {
-    //         $transaction->update(['tracking_number' => $waybill]);
-    //     }
-
-    //     // 2. Jika paket berhasil dikirim ke pembeli, otomatis selesaikan transaksi
-    //     if ($status === 'delivered' && $transaction->status === 'processing') {
-    //         $transaction->update(['status' => 'completed']);
-    //     }
-
-    //     // 3. [BARU] Jika logistik membatalkan pengiriman SEPIHAK (sebelum sampai ke pembeli)
-    //     // Hal ini biasanya terjadi jika kurir tidak menemukan alamat origin, paket terlalu besar, dll.
-    //     if (in_array($status, ['cancelled', 'rejected']) && $transaction->status === 'processing') {
-    //         // Ubah status ke manual refund required, karena pembeli sudah bayar, tapi barang gagal jalan.
-    //         // Admin harus mengecek mengapa logistik gagal, lalu me-refund manual atau memesan kurir ulang.
-    //         $transaction->update([
-    //             'status' => 'refund_manual_required',
-    //             'tracking_number' => 'Logistics Cancelled/Rejected'
-    //         ]);
-    //         \Log::warning("Biteship Logistics Cancelled for Order ID: {$transaction->order_id}. Moved to Manual Refund.");
-    //     }
-
-    //     if ($status === 'disposed' && $transaction->status === 'processing') {
-    //         // Ubah status ke shipping failed, karena pembeli sudah bayar, tapi barang rusak di tengah jalan.
-    //         // Admin harus mengembalikan uang pembeli.
-    //         $transaction->update([
-    //             'status' => 'shipping_failed',
-    //             'tracking_number' => 'Shipping Failed'
-    //         ]);
-    //         \Log::warning("Biteship Shipping Failed for Order ID: {$transaction->order_id}.");
-    //     }
-
-    //     if ($status === 'returned' && $transaction->status === 'processing') {
-    //         // Ubah status ke returned, karena user tidak jadi membeli dan barang telah dikembalikan.
-    //         // Admin harus mengembalikan uang pembeli.
-    //         $transaction->update([
-    //             'status' => 'returned',
-    //             'tracking_number' => 'Shipping Returned'
-    //         ]);
-    //         \Log::warning("Biteship Shipping Returned for Order ID: {$transaction->order_id}.");
-    //     }
-
-    //     return response()->json(['message' => 'Webhook processed successfully']);
-    // }
-
     public function biteshipCallback(Request $request)
     {
+        // Validasi signature (Opsional tapi disarankan)
         $biteshipSignature = $request->header('biteship-signature');
+
         $biteshipOrderId = $request->input('order_id');
-        $status = strtolower($request->input('status'));
+        $status = strtolower($request->input('status')); // picking_up, dropped, delivered, cancelled, rejected
         $waybill = $request->input('courier_tracking_id');
 
         \Log::info('Biteship Webhook Received: ', $request->all());
@@ -748,13 +688,16 @@ class TransactionController extends Controller
             $transaction->update(['tracking_number' => $waybill]);
         }
 
-        // 2. Paket berhasil dikirim
+        // 2. Jika paket berhasil dikirim ke pembeli, otomatis selesaikan transaksi
         if ($status === 'delivered' && $transaction->status === 'processing') {
             $transaction->update(['status' => 'completed']);
         }
 
-        // 3. Logistik membatalkan pengiriman SEPIHAK
+        // 3. [BARU] Jika logistik membatalkan pengiriman SEPIHAK (sebelum sampai ke pembeli)
+        // Hal ini biasanya terjadi jika kurir tidak menemukan alamat origin, paket terlalu besar, dll.
         if (in_array($status, ['cancelled', 'rejected']) && $transaction->status === 'processing') {
+            // Ubah status ke manual refund required, karena pembeli sudah bayar, tapi barang gagal jalan.
+            // Admin harus mengecek mengapa logistik gagal, lalu me-refund manual atau memesan kurir ulang.
             $transaction->update([
                 'status' => 'refund_manual_required',
                 'tracking_number' => 'Logistics Cancelled/Rejected'
@@ -762,18 +705,24 @@ class TransactionController extends Controller
             \Log::warning("Biteship Logistics Cancelled for Order ID: {$transaction->order_id}. Moved to Manual Refund.");
         }
 
-        // [PERBAIKAN 2] Penanganan 'disposed' dan 'returned'
-        if (in_array($status, ['disposed', 'returned']) && $transaction->status === 'processing') {
-            // Kita asumsikan barang hancur (disposed) atau dikembalikan kurir (returned),
-            // pembeli berhak mendapat uangnya kembali.
-            // Arahkan ke manual refund agar Admin bisa mengecek kejadiannya dengan pihak ekspedisi sebelum mengembalikan dana.
-            $trackingNote = $status === 'disposed' ? 'Shipping Failed (Disposed)' : 'Shipping Returned';
-
+        if ($status === 'disposed' && $transaction->status === 'processing') {
+            // Ubah status ke shipping failed, karena pembeli sudah bayar, tapi barang rusak di tengah jalan.
+            // Admin harus mengembalikan uang pembeli.
             $transaction->update([
-                'status' => 'refund_manual_required',
-                'tracking_number' => $trackingNote
+                'status' => 'shipping_failed',
+                'tracking_number' => 'Shipping Failed'
             ]);
-            \Log::warning("Biteship Logistics {$status} for Order ID: {$transaction->order_id}. Moved to Manual Refund.");
+            \Log::warning("Biteship Shipping Failed for Order ID: {$transaction->order_id}.");
+        }
+
+        if ($status === 'returned' && $transaction->status === 'processing') {
+            // Ubah status ke returned, karena user tidak jadi membeli dan barang telah dikembalikan.
+            // Admin harus mengembalikan uang pembeli.
+            $transaction->update([
+                'status' => 'returned',
+                'tracking_number' => 'Shipping Returned'
+            ]);
+            \Log::warning("Biteship Shipping Returned for Order ID: {$transaction->order_id}.");
         }
 
         return response()->json(['message' => 'Webhook processed successfully']);
