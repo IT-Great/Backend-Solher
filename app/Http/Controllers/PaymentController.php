@@ -152,6 +152,39 @@ class PaymentController extends Controller
             ]);
 
             // --- EKSEKUSI PEMESANAN KURIR ---
+            // if ($transaction->shipping_method === 'biteship') {
+            //     try {
+            //         $biteship = new BiteshipService();
+            //         $order = $biteship->createOrder($transaction);
+
+            //         if (isset($order['success']) && $order['success'] === false) {
+            //             \Log::error('Gagal Create Order Biteship: ' . json_encode($order));
+            //         }
+
+            //         if (isset($order['id'])) {
+            //             $transaction->update([
+            //                 'biteship_order_id' => $order['id'],
+            //                 'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending'
+            //             ]);
+            //         } else {
+            //             $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
+            //             $transaction->update([
+            //                 'tracking_number' => 'API ERR: ' . substr($errorMsg, 0, 200)
+            //             ]);
+            //             \Log::error('Biteship Create Order Failed: ' . json_encode($order));
+            //         }
+            //     } catch (\Exception $e) {
+            //         $transaction->update([
+            //             'tracking_number' => 'SYS ERR: ' . substr($e->getMessage(), 0, 200)
+            //         ]);
+            //         \Log::error('Biteship Exception: ' . $e->getMessage());
+            //     }
+            // } else {
+            //     // Untuk transaksi 'free' shipping, beri label Internal-Pickup
+            //     $transaction->update(['tracking_number' => 'In-Store Pickup']);
+            // }
+
+            // --- EKSEKUSI PEMESANAN KURIR ---
             if ($transaction->shipping_method === 'biteship') {
                 try {
                     $biteship = new BiteshipService();
@@ -164,24 +197,30 @@ class PaymentController extends Controller
                     if (isset($order['id'])) {
                         $transaction->update([
                             'biteship_order_id' => $order['id'],
-                            'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending'
+                            'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
+                            'shipping_status' => strtolower($order['status'] ?? 'pending') // [PERBAIKAN] Simpan status awal
                         ]);
                     } else {
                         $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
                         $transaction->update([
-                            'tracking_number' => 'API ERR: ' . substr($errorMsg, 0, 200)
+                            'tracking_number' => 'API ERR: ' . substr($errorMsg, 0, 200),
+                            'shipping_status' => 'error' // [PERBAIKAN]
                         ]);
                         \Log::error('Biteship Create Order Failed: ' . json_encode($order));
                     }
                 } catch (\Exception $e) {
                     $transaction->update([
-                        'tracking_number' => 'SYS ERR: ' . substr($e->getMessage(), 0, 200)
+                        'tracking_number' => 'SYS ERR: ' . substr($e->getMessage(), 0, 200),
+                        'shipping_status' => 'error' // [PERBAIKAN]
                     ]);
                     \Log::error('Biteship Exception: ' . $e->getMessage());
                 }
             } else {
                 // Untuk transaksi 'free' shipping, beri label Internal-Pickup
-                $transaction->update(['tracking_number' => 'In-Store Pickup']);
+                $transaction->update([
+                    'tracking_number' => 'In-Store Pickup',
+                    'shipping_status' => 'ready_for_pickup' // [PERBAIKAN]
+                ]);
             }
         } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
             if ($transaction->status !== 'cancelled') {
