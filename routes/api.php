@@ -25,6 +25,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/update-password', action: [AuthController::class, 'updatePassword']);
     Route::get('/admin/users', [AuthController::class, 'getAllUsers']);
     Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
+    Route::post('/user/toggle-membership', [AuthController::class, 'toggleMembership']);
 });
 
 // Rute Publik (Bisa diakses tanpa login)

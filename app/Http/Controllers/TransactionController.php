@@ -40,11 +40,18 @@ class TransactionController extends Controller
             $totalAmount = $cartItems->sum('gross_amount');
             $orderId = 'SOL-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
 
+            // Hitung poin: Misal 1 Poin per Rp 10.000 dari total belanja produk
+            $earnedPoints = 0;
+            if ($user->is_membership) {
+                $earnedPoints = floor($totalAmount / 10000);
+            }
+
             $transaction = Transaction::create([
                 'user_id' => $user->id,
                 'order_id' => $orderId,
                 'total_amount' => $totalAmount,
-                'status' => 'awaiting_payment'
+                'status' => 'awaiting_payment',
+                'point' => $earnedPoints
             ]);
 
             foreach ($cartItems as $item) {
@@ -863,6 +870,11 @@ class TransactionController extends Controller
         // 2. Jika paket berhasil dikirim ke pembeli, otomatis selesaikan transaksi
         if ($status === 'delivered' && $transaction->status === 'processing') {
             $updates['status'] = 'completed';
+
+            // Tambah poin user jika dia member dan transaksi punya poin
+            if ($transaction->point > 0 && $transaction->user->is_membership) {
+                $transaction->user->increment('point', $transaction->point);
+            }
         }
 
         // 3. Jika logistik membatalkan pengiriman SEPIHAK

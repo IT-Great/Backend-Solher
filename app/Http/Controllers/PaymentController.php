@@ -151,6 +151,11 @@ class PaymentController extends Controller
                 'payment_method' => $fullPaymentMethod
             ]);
 
+            // Jika Free Shipping (langsung completed), tambahkan poin ke user
+            if ($targetTransactionStatus === 'completed' && $transaction->point > 0 && $transaction->user->is_membership) {
+                $transaction->user->increment('point', $transaction->point);
+            }
+
             // --- EKSEKUSI PEMESANAN KURIR ---
             // if ($transaction->shipping_method === 'biteship') {
             //     try {

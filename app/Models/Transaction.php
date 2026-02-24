@@ -26,6 +26,7 @@ class Transaction extends Model
         'tracking_number',
         'shipping_status',
         'biteship_order_id',
+        'point'
     ];
 
     /**

@@ -297,4 +297,18 @@ class AuthController extends Controller
             'message' => 'Password updated successfully'
         ]);
     }
+
+    public function toggleMembership(Request $request)
+    {
+        $user = $request->user();
+        $request->validate([
+            'is_membership' => 'required|boolean'
+        ]);
+
+        $user->update([
+            'is_membership' => $request->is_membership
+        ]);
+
+        return response()->json(['user' => $user, 'message' => 'Membership status updated!']);
+    }
 }
