@@ -15,6 +15,7 @@ class ProductController extends Controller
     //     return response()->json(Product::with('category')->latest()->get(), 200);
     // }
 
+
     public function index()
     {
         $products = Product::with('category')
@@ -38,6 +39,63 @@ class ProductController extends Controller
         return response()->json(Product::with('category')->findOrFail($id), 200);
     }
 
+    // public function store(Request $request)
+    // {
+    //     $validator = Validator::make($request->all(), [
+    //         'code' => 'required|unique:products',
+    //         'name' => 'required',
+    //         'category_id' => 'required|exists:categories,id',
+    //         'price' => 'required|numeric',
+    //         'discount_price' => 'nullable|numeric|lt:price',
+    //         'stock' => 'required|integer',
+    //         'image' => 'required|image|max:2048', // 2MB
+    //         // [BARU] Validasi multi-image dan video
+    //         'variant_images' => 'nullable|array|max:5',
+    //         'variant_images.*' => 'image|max:2048', // Tiap gambar maks 2MB
+    //         'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120', // Maks 5MB
+    //     ]);
+
+    //     if ($validator->fails()) return response()->json($validator->errors(), 422);
+
+    //     // $data = $request->all();
+    //     // if ($request->hasFile('image')) {
+    //     //     // Berubah: Simpan ke disk 's3' dengan akses 'public'
+    //     //     $path = $request->file('image')->store('products', 's3');
+    //     //     Storage::disk('s3')->setVisibility($path, 'public');
+    //     //     $data['image'] = Storage::disk('s3')->url($path); // Simpan URL penuh ke database
+    //     // }
+
+    //     $data = $request->except(['variant_images', 'variant_video', 'image']);
+
+    //     // 1. Upload Gambar Utama
+    //     if ($request->hasFile('image')) {
+    //         $path = $request->file('image')->store('products', 's3');
+    //         Storage::disk('s3')->setVisibility($path, 'public');
+    //         $data['image'] = Storage::disk('s3')->url($path);
+    //     }
+
+    //     // 2. Upload Gambar Varian (Array)
+    //     $variantImagesUrls = [];
+    //     if ($request->hasFile('variant_images')) {
+    //         foreach ($request->file('variant_images') as $file) {
+    //             $path = $file->store('products/variants', 's3');
+    //             Storage::disk('s3')->setVisibility($path, 'public');
+    //             $variantImagesUrls[] = Storage::disk('s3')->url($path);
+    //         }
+    //     }
+    //     $data['variant_images'] = count($variantImagesUrls) > 0 ? $variantImagesUrls : null;
+
+    //     // 3. Upload Video
+    //     if ($request->hasFile('variant_video')) {
+    //         $path = $request->file('variant_video')->store('products/videos', 's3');
+    //         Storage::disk('s3')->setVisibility($path, 'public');
+    //         $data['variant_video'] = Storage::disk('s3')->url($path);
+    //     }
+
+    //     $product = Product::create($data);
+    //     return response()->json($product, 201);
+    // }
+
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -45,53 +103,19 @@ class ProductController extends Controller
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric',
-            'discount_price' => 'nullable|numeric|lt:price',
             'stock' => 'required|integer',
-            'image' => 'required|image|max:2048', // 2MB
-            // [BARU] Validasi multi-image dan video
-            'variant_images' => 'nullable|array|max:5',
-            'variant_images.*' => 'image|max:2048', // Tiap gambar maks 2MB
-            'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120', // Maks 5MB
+
+            // sekarang URL
+            'image' => 'required|string',
+            'variant_images' => 'nullable|array',
+            'variant_video' => 'nullable|string',
         ]);
 
-        if ($validator->fails()) return response()->json($validator->errors(), 422);
+        if ($validator->fails())
+            return response()->json($validator->errors(), 422);
 
-        // $data = $request->all();
-        // if ($request->hasFile('image')) {
-        //     // Berubah: Simpan ke disk 's3' dengan akses 'public'
-        //     $path = $request->file('image')->store('products', 's3');
-        //     Storage::disk('s3')->setVisibility($path, 'public');
-        //     $data['image'] = Storage::disk('s3')->url($path); // Simpan URL penuh ke database
-        // }
+        $product = Product::create($request->all());
 
-        $data = $request->except(['variant_images', 'variant_video', 'image']);
-
-        // 1. Upload Gambar Utama
-        if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('products', 's3');
-            Storage::disk('s3')->setVisibility($path, 'public');
-            $data['image'] = Storage::disk('s3')->url($path);
-        }
-
-        // 2. Upload Gambar Varian (Array)
-        $variantImagesUrls = [];
-        if ($request->hasFile('variant_images')) {
-            foreach ($request->file('variant_images') as $file) {
-                $path = $file->store('products/variants', 's3');
-                Storage::disk('s3')->setVisibility($path, 'public');
-                $variantImagesUrls[] = Storage::disk('s3')->url($path);
-            }
-        }
-        $data['variant_images'] = count($variantImagesUrls) > 0 ? $variantImagesUrls : null;
-
-        // 3. Upload Video
-        if ($request->hasFile('variant_video')) {
-            $path = $request->file('variant_video')->store('products/videos', 's3');
-            Storage::disk('s3')->setVisibility($path, 'public');
-            $data['variant_video'] = Storage::disk('s3')->url($path);
-        }
-
-        $product = Product::create($data);
         return response()->json($product, 201);
     }
 

@@ -9,6 +9,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\S3UploadController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\AddressController; // Pastikan ini di-import
@@ -121,3 +122,5 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::get('/transactions/{id}/tracking', [TransactionController::class, 'adminTrackOrder']);
     Route::get('/transactions/{id}/print-label', [TransactionController::class, 'printLabel']);
 });
+
+Route::post('/s3/presign', [S3UploadController::class, 'presign']);
