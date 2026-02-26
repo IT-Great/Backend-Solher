@@ -119,68 +119,134 @@ class ProductController extends Controller
         return response()->json($product, 201);
     }
 
+    // public function update(Request $request, $id)
+    // {
+    //     $product = Product::findOrFail($id);
+    //     // $data = $request->all();
+
+    //     // if ($request->hasFile('image')) {
+    //     //     // Berubah: Hapus file lama di S3 jika ada
+    //     //     if ($product->image) {
+    //     //         // Kita ambil path relatif dari URL penuh yang tersimpan
+    //     //         $oldPath = str_replace(Storage::disk('s3')->url(''), '', $product->image);
+    //     //         Storage::disk('s3')->delete($oldPath);
+    //     //     }
+
+    //     //     $path = $request->file('image')->store('products', 's3');
+    //     //     Storage::disk('s3')->setVisibility($path, 'public');
+    //     //     $data['image'] = Storage::disk('s3')->url($path);
+    //     // }
+
+    //     $data = $request->except(['variant_images', 'variant_video', 'image', '_method']);
+
+    //     // 1. Update Gambar Utama
+    //     if ($request->hasFile('image')) {
+    //         if ($product->image) {
+    //             $oldPath = str_replace(Storage::disk('s3')->url(''), '', $product->image);
+    //             Storage::disk('s3')->delete($oldPath);
+    //         }
+    //         $path = $request->file('image')->store('products', 's3');
+    //         Storage::disk('s3')->setVisibility($path, 'public');
+    //         $data['image'] = Storage::disk('s3')->url($path);
+    //     }
+
+    //     // 2. Update Gambar Varian (Untuk update, kita asumsikan jika ada upload baru, hapus yang lama)
+    //     // Jika Anda ingin UX di mana admin bisa menghapus satu persatu, itu butuh endpoint terpisah.
+    //     // Untuk saat ini, kita timpa total jika ada file baru diunggah.
+    //     if ($request->hasFile('variant_images')) {
+    //         if ($product->variant_images) {
+    //             foreach ($product->variant_images as $oldImgUrl) {
+    //                 $oldPath = str_replace(Storage::disk('s3')->url(''), '', $oldImgUrl);
+    //                 Storage::disk('s3')->delete($oldPath);
+    //             }
+    //         }
+    //         $variantImagesUrls = [];
+    //         foreach ($request->file('variant_images') as $file) {
+    //             $path = $file->store('products/variants', 's3');
+    //             Storage::disk('s3')->setVisibility($path, 'public');
+    //             $variantImagesUrls[] = Storage::disk('s3')->url($path);
+    //         }
+    //         $data['variant_images'] = $variantImagesUrls;
+    //     }
+
+    //     // 3. Update Video
+    //     if ($request->hasFile('variant_video')) {
+    //         if ($product->variant_video) {
+    //             $oldPath = str_replace(Storage::disk('s3')->url(''), '', $product->variant_video);
+    //             Storage::disk('s3')->delete($oldPath);
+    //         }
+    //         $path = $request->file('variant_video')->store('products/videos', 's3');
+    //         Storage::disk('s3')->setVisibility($path, 'public');
+    //         $data['variant_video'] = Storage::disk('s3')->url($path);
+    //     }
+
+    //     $product->update($data);
+    //     return response()->json($product, 200);
+    // }
+
     public function update(Request $request, $id)
     {
         $product = Product::findOrFail($id);
-        // $data = $request->all();
 
-        // if ($request->hasFile('image')) {
-        //     // Berubah: Hapus file lama di S3 jika ada
-        //     if ($product->image) {
-        //         // Kita ambil path relatif dari URL penuh yang tersimpan
-        //         $oldPath = str_replace(Storage::disk('s3')->url(''), '', $product->image);
-        //         Storage::disk('s3')->delete($oldPath);
-        //     }
+        $validator = Validator::make($request->all(), [
+            'code' => "required|unique:products,code,$id",
+            'name' => 'required',
+            'category_id' => 'required|exists:categories,id',
+            'price' => 'required|numeric',
+            'stock' => 'required|integer',
 
-        //     $path = $request->file('image')->store('products', 's3');
-        //     Storage::disk('s3')->setVisibility($path, 'public');
-        //     $data['image'] = Storage::disk('s3')->url($path);
-        // }
+            'image' => 'nullable|string',
+            'variant_images' => 'nullable|array',
+            'variant_video' => 'nullable|string',
+        ]);
 
-        $data = $request->except(['variant_images', 'variant_video', 'image', '_method']);
+        if ($validator->fails())
+            return response()->json($validator->errors(), 422);
 
-        // 1. Update Gambar Utama
-        if ($request->hasFile('image')) {
-            if ($product->image) {
-                $oldPath = str_replace(Storage::disk('s3')->url(''), '', $product->image);
-                Storage::disk('s3')->delete($oldPath);
-            }
-            $path = $request->file('image')->store('products', 's3');
-            Storage::disk('s3')->setVisibility($path, 'public');
-            $data['image'] = Storage::disk('s3')->url($path);
+        /*
+    |--------------------------------------------------------------------------
+    | DELETE OLD FILE IF URL CHANGED
+    |--------------------------------------------------------------------------
+    */
+
+        if ($request->image && $product->image !== $request->image) {
+            $oldPath = str_replace(
+                Storage::disk('s3')->url(''),
+                '',
+                $product->image
+            );
+            Storage::disk('s3')->delete($oldPath);
         }
 
-        // 2. Update Gambar Varian (Untuk update, kita asumsikan jika ada upload baru, hapus yang lama)
-        // Jika Anda ingin UX di mana admin bisa menghapus satu persatu, itu butuh endpoint terpisah.
-        // Untuk saat ini, kita timpa total jika ada file baru diunggah.
-        if ($request->hasFile('variant_images')) {
-            if ($product->variant_images) {
-                foreach ($product->variant_images as $oldImgUrl) {
-                    $oldPath = str_replace(Storage::disk('s3')->url(''), '', $oldImgUrl);
+        if ($request->variant_images) {
+            foreach ($product->variant_images ?? [] as $oldImg) {
+                if (!in_array($oldImg, $request->variant_images)) {
+                    $oldPath = str_replace(
+                        Storage::disk('s3')->url(''),
+                        '',
+                        $oldImg
+                    );
                     Storage::disk('s3')->delete($oldPath);
                 }
             }
-            $variantImagesUrls = [];
-            foreach ($request->file('variant_images') as $file) {
-                $path = $file->store('products/variants', 's3');
-                Storage::disk('s3')->setVisibility($path, 'public');
-                $variantImagesUrls[] = Storage::disk('s3')->url($path);
-            }
-            $data['variant_images'] = $variantImagesUrls;
         }
 
-        // 3. Update Video
-        if ($request->hasFile('variant_video')) {
-            if ($product->variant_video) {
-                $oldPath = str_replace(Storage::disk('s3')->url(''), '', $product->variant_video);
-                Storage::disk('s3')->delete($oldPath);
-            }
-            $path = $request->file('variant_video')->store('products/videos', 's3');
-            Storage::disk('s3')->setVisibility($path, 'public');
-            $data['variant_video'] = Storage::disk('s3')->url($path);
+        if (
+            $request->variant_video &&
+            $product->variant_video !== $request->variant_video
+        ) {
+
+            $oldPath = str_replace(
+                Storage::disk('s3')->url(''),
+                '',
+                $product->variant_video
+            );
+
+            Storage::disk('s3')->delete($oldPath);
         }
 
-        $product->update($data);
+        $product->update($request->all());
+
         return response()->json($product, 200);
     }
 
