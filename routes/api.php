@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/categories', [CategoryController::class, 'store']);
     Route::put('/categories/{id}', [CategoryController::class, 'update']);
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+    Route::get('/categories/{id}', [CategoryController::class, 'show']);
 
     // Hanya simpan rute manajemen admin di sini
     Route::post('/products', [ProductController::class, 'store']);
