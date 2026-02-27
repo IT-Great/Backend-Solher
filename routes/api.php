@@ -9,6 +9,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\S3UploadController;
 use App\Http\Controllers\DashboardController;
@@ -133,6 +134,20 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
     Route::post('coas/{id}/post', [CoaController::class, 'postCoa']);
 
     Route::apiResource('payments', TransferReceivePaymentController::class);
+
+    // Modul Accounting: Invoices & Suppliers
+    Route::apiResource('suppliers', InvoiceController::class)->except(['create', 'edit', 'show']);
+    // Untuk routing kustom supplier
+    Route::get('suppliers', [InvoiceController::class, 'indexSupplier']);
+    Route::post('suppliers', [InvoiceController::class, 'storeSupplier']);
+    Route::put('suppliers/{id}', [InvoiceController::class, 'updateSupplier']);
+    Route::delete('suppliers/{id}', [InvoiceController::class, 'deleteSupplier']);
+
+    Route::get('invoices', [InvoiceController::class, 'indexInvoice']);
+    Route::post('invoices', [InvoiceController::class, 'storeInvoice']);
+    Route::post('invoices/{id}', [InvoiceController::class, 'updateInvoice']); // Pakai POST dengan _method=PUT untuk FormData gambar
+    Route::post('invoices/{id}/pay', [InvoiceController::class, 'processPayment']);
+    Route::delete('invoices/{id}', [InvoiceController::class, 'deleteInvoice']);
 });
 
 
