@@ -847,6 +847,109 @@ class TransactionController extends Controller
         }
     }
 
+    // --- [BARU] FUNGSI AKSI ADMIN UNTUK SHIPPING ---
+    public function adminShippingAction(Request $request, $id)
+    {
+        $transaction = Transaction::findOrFail($id);
+        $action = $request->input('action'); // isinya: confirm, allocate, atau cancel
+
+        // 1. Aksi: Konfirmasi
+        if ($action === 'confirm') {
+            $transaction->update(['shipping_status' => 'confirmed']);
+            return response()->json(['message' => 'Pesanan berhasil dikonfirmasi.']);
+        }
+
+        // 2. Aksi: Alokasi (Panggil Kurir Biteship)
+        if ($action === 'allocate') {
+            try {
+                \Illuminate\Support\Facades\Http::withHeaders([
+                    'Authorization' => config('services.biteship.api_key')
+                ])->post("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id, [
+                    'status' => 'allocated'
+                ]);
+
+                $transaction->update(['shipping_status' => 'allocated']);
+                return response()->json(['message' => 'Kurir berhasil dialokasikan.']);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Biteship Allocate Error: ' . $e->getMessage());
+                return response()->json(['message' => 'Gagal mengalokasikan kurir di Biteship.'], 500);
+            }
+        }
+
+        // 3. Aksi: Batalkan Pesanan oleh Admin
+        if ($action === 'cancel') {
+            // Cek ke Biteship apakah paket sudah dibawa kurir (jika metode biteship)
+            if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+                try {
+                    $res = \Illuminate\Support\Facades\Http::withHeaders([
+                        'Authorization' => config('services.biteship.api_key')
+                    ])->get("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id);
+
+                    if ($res->successful()) {
+                        $biteshipStatus = strtolower($res->json()['status'] ?? '');
+                        if (in_array($biteshipStatus, ['picked', 'dropping_off', 'delivered', 'return_in_transit', 'returned'])) {
+                            return response()->json(['message' => 'Paket sudah diproses kurir, tidak bisa dibatalkan.'], 400);
+                        }
+
+                        // Batalkan order di logistik
+                        \Illuminate\Support\Facades\Http::withHeaders([
+                            'Authorization' => config('services.biteship.api_key')
+                        ])->delete("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id);
+                    }
+                } catch (\Exception $e) {
+                }
+            }
+
+            // Lakukan Refund Xendit jika pesanan sudah dibayar ('processing')
+            if ($transaction->status === 'processing') {
+                try {
+                    $transaction->load('payment');
+                    if ($transaction->payment && $transaction->payment->external_id) {
+                        $invoiceApi = new InvoiceApi();
+                        $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+                        if (!empty($invoices) && count($invoices) > 0) {
+                            $refundApi = new RefundApi();
+                            $refundRequest = new CreateRefund([
+                                'invoice_id' => $invoices[0]['id'],
+                                'reason' => 'REQUESTED_BY_CUSTOMER',
+                                'amount' => (int) $transaction->total_amount,
+                                'metadata' => ['order_id' => $transaction->order_id]
+                            ]);
+                            $refundApi->createRefund(null, null, $refundRequest);
+                            $transaction->payment->update(['status' => 'REFUNDED']);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Jika refund gagal, ubah ke manual refund
+                    $transaction->update(['status' => 'refund_manual_required', 'shipping_status' => 'cancelled']);
+                    foreach ($transaction->details as $detail) {
+                        $detail->product->increment('stock', $detail->quantity);
+                    }
+                    return response()->json(['message' => 'Order dibatalkan, namun Auto-Refund gagal. Lakukan Refund Manual.']);
+                }
+            } else {
+                if ($transaction->payment && $transaction->status !== 'refund_manual_required') {
+                    $transaction->payment->update(['status' => 'EXPIRED']);
+                }
+            }
+
+            // Update status transaksi & shipping sekaligus menjadi cancelled
+            $transaction->update([
+                'status' => 'cancelled',
+                'shipping_status' => 'cancelled'
+            ]);
+
+            // Kembalikan stok produk
+            foreach ($transaction->details as $detail) {
+                $detail->product->increment('stock', $detail->quantity);
+            }
+
+            return response()->json(['message' => 'Pesanan berhasil dibatalkan.']);
+        }
+
+        return response()->json(['message' => 'Aksi tidak valid'], 400);
+    }
+
     // public function biteshipCallback(Request $request)
     // {
     //     // Biteship mengirimkan token otentikasi di Header untuk keamanan
