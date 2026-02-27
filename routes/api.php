@@ -145,7 +145,7 @@ Route::middleware(['auth:sanctum', 'admin'])->prefix('admin')->group(function ()
 
     Route::get('invoices', [InvoiceController::class, 'indexInvoice']);
     Route::post('invoices', [InvoiceController::class, 'storeInvoice']);
-    Route::post('invoices/{id}', [InvoiceController::class, 'updateInvoice']); // Pakai POST dengan _method=PUT untuk FormData gambar
+    Route::put('invoices/{id}', [InvoiceController::class, 'updateInvoice']); 
     Route::post('invoices/{id}/pay', [InvoiceController::class, 'processPayment']);
     Route::delete('invoices/{id}', [InvoiceController::class, 'deleteInvoice']);
 });
