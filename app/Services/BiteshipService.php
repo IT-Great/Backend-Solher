@@ -363,8 +363,8 @@ class BiteshipService
         $payload = [
             // --- INFO PENGIRIM ---
             'origin_contact_name' => 'Solher Store',
-            'origin_contact_phone' => '08123456789',
-            'origin_address' => 'Gudang Solher, Jl. Utama No. 1',
+            'origin_contact_phone' => '08883888585',
+            'origin_address' => 'Jalan Kecilung N0. 8A, Kota Surabaya, Jawa Timur 60275, Indonesia', // Alamat lengkap gudang/toko Anda
             'origin_postal_code' => config('services.biteship.origin_postal_code'),
 
             // Koordinat Asal (Double Cover: Object & Flat)
