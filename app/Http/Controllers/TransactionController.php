@@ -269,6 +269,10 @@ class TransactionController extends Controller
         }
 
         $transaction->update(['status' => 'completed']);
+
+        // [PERBAIKAN] Cek syarat membership setelah admin komplit manual
+        $this->checkAndAssignMembership($transaction->user);
+
         return response()->json(['message' => 'Order completed!']);
     }
 
@@ -945,10 +949,21 @@ class TransactionController extends Controller
         if ($status === 'delivered' && $transaction->status === 'processing') {
             $updates['status'] = 'completed';
 
+            // Simpan status transaksi agar query SUM di helper bisa menangkap transaksi ini
+            $transaction->update($updates);
+
+            // [PERBAIKAN] Cek dan jadikan member jika memenuhi syarat
+            $this->checkAndAssignMembership($transaction->user);
+
+            // Refresh data user
+            $transaction->user->refresh();
+
             // Tambah poin user jika dia member dan transaksi punya poin
             if ($transaction->point > 0 && $transaction->user->is_membership) {
                 $transaction->user->increment('point', $transaction->point);
             }
+
+            return response()->json(['message' => 'Webhook processed and membership checked']);
         }
 
         // 3. Jika logistik membatalkan pengiriman SEPIHAK
@@ -974,5 +989,22 @@ class TransactionController extends Controller
         $transaction->update($updates);
 
         return response()->json(['message' => 'Webhook processed successfully']);
+    }
+
+    // --- [BARU] HELPER FUNGSI UNTUK CEK MEMBERSHIP ---
+    private function checkAndAssignMembership($user)
+    {
+        // Jika user sudah member, tidak perlu cek lagi
+        if ($user->is_membership) return;
+
+        // Hitung total belanja dari semua transaksi yang BERHASIL (completed)
+        $totalSpent = Transaction::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->sum('total_amount'); // Hanya hitung harga barang, ongkir tidak termasuk
+
+        // Jika total belanja >= 100.000, jadikan member
+        if ($totalSpent >= 100000) {
+            $user->update(['is_membership' => true]);
+        }
     }
 }

@@ -185,8 +185,21 @@ class PaymentController extends Controller
             ]);
 
             // Jika Free Shipping (langsung completed), tambahkan poin ke user
-            if ($targetTransactionStatus === 'completed' && $transaction->point > 0 && $transaction->user->is_membership) {
-                $transaction->user->increment('point', $transaction->point);
+            // if ($targetTransactionStatus === 'completed' && $transaction->point > 0 && $transaction->user->is_membership) {
+            //     $transaction->user->increment('point', $transaction->point);
+            // }
+
+            // Jika Free Shipping (langsung completed), tambahkan poin ke user
+            if ($targetTransactionStatus === 'completed') {
+                // [PERBAIKAN] Cek apakah dia layak jadi member
+                $this->checkAndAssignMembership($transaction->user);
+
+                // Refresh data user setelah pengecekan
+                $transaction->user->refresh();
+
+                if ($transaction->point > 0 && $transaction->user->is_membership) {
+                    $transaction->user->increment('point', $transaction->point);
+                }
             }
 
             // --- EKSEKUSI PEMESANAN KURIR ---
