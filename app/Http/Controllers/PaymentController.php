@@ -317,4 +317,21 @@ class PaymentController extends Controller
             ], 500);
         }
     }
+
+    // --- [BARU] HELPER FUNGSI UNTUK CEK MEMBERSHIP ---
+    private function checkAndAssignMembership($user)
+    {
+        // Jika user sudah member, tidak perlu cek lagi
+        if ($user->is_membership) return;
+
+        // Hitung total belanja dari semua transaksi yang BERHASIL (completed)
+        $totalSpent = Transaction::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->sum('total_amount'); // Hanya hitung harga barang, ongkir tidak termasuk
+
+        // Jika total belanja >= 100.000, jadikan member
+        if ($totalSpent >= 100000) {
+            $user->update(['is_membership' => true]);
+        }
+    }
 }
