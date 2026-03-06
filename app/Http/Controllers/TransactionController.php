@@ -27,8 +27,92 @@ class TransactionController extends Controller
     }
 
     // --- USER ACTIONS ---
+    // public function checkout(Request $request)
+    // {
+    //     $user = $request->user();
+    //     $cartItems = Cart::with('product')->where('user_id', $user->id)->get();
+
+    //     if ($cartItems->isEmpty()) {
+    //         return response()->json(['message' => 'Cart is empty'], 400);
+    //     }
+
+    //     return DB::transaction(function () use ($user, $cartItems, $request) {
+    //         $totalAmount = $cartItems->sum('gross_amount');
+    //         $orderId = 'SOL-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
+
+    //         // Hitung poin: Misal 1 Poin per Rp 100.000 dari total belanja produk
+    //         $earnedPoints = 0;
+    //         if ($user->is_membership) {
+    //             $earnedPoints = floor($totalAmount / 100000);
+    //         }
+
+    //         // $transaction = Transaction::create([
+    //         //     'user_id' => $user->id,
+    //         //     'order_id' => $orderId,
+    //         //     'total_amount' => $totalAmount,
+    //         //     'status' => 'awaiting_payment',
+    //         //     'point' => $earnedPoints
+    //         // ]);
+
+    //         // [PERBAIKAN 1]: Masukkan address_id dan data shipping agar terekam di database!
+    //         $transaction = Transaction::create([
+    //             'user_id' => $user->id,
+    //             'address_id' => $request->address_id, // Pastikan dikirim dari Frontend
+    //             'shipping_method' => $request->shipping_method ?? 'free',
+    //             'shipping_cost' => $request->shipping_cost ?? 0,
+    //             'courier_company' => $request->courier_company,
+    //             'courier_type' => $request->courier_type,
+    //             'delivery_type' => $request->delivery_type ?? 'later',
+    //             'order_id' => $orderId,
+    //             'total_amount' => $totalAmount,
+    //             'status' => 'awaiting_payment',
+    //             'point' => $earnedPoints
+    //         ]);
+
+    //         foreach ($cartItems as $item) {
+    //             $product = Product::lockForUpdate()->find($item->product_id);
+
+    //             if ($product->stock < $item->quantity) {
+    //                 throw new \Exception("Stock {$product->name} insufficient");
+    //             }
+
+    //             TransactionDetail::create([
+    //                 'transaction_id' => $transaction->id,
+    //                 'product_id' => $item->product_id,
+    //                 'quantity' => $item->quantity,
+    //                 'price' => $item->product->discount_price ?? $item->product->price
+    //             ]);
+
+    //             $product->decrement('stock', $item->quantity);
+    //         }
+
+    //         Cart::where('user_id', $user->id)->delete();
+
+    //         return response()->json([
+    //             'transaction_id' => $transaction->id,
+    //             'order_id' => $orderId
+    //         ], 201);
+    //     });
+    // }
+
+    // --- USER ACTIONS ---
     public function checkout(Request $request)
     {
+        $request->validate([
+            'address_id' => 'required',
+            'shipping_method' => 'required|in:free,biteship',
+            'use_points' => 'nullable|integer|min:0',
+            // ... validasi shipping_cost dll bisa ditaruh di sini
+            'shipping_cost',
+            'courier_company',
+            'courier_type',
+            'delivery_type',
+            'order_id',
+            'total_amount',
+            'status',
+            'point'
+        ]);
+
         $user = $request->user();
         $cartItems = Cart::with('product')->where('user_id', $user->id)->get();
 
@@ -40,57 +124,120 @@ class TransactionController extends Controller
             $totalAmount = $cartItems->sum('gross_amount');
             $orderId = 'SOL-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
 
-            // Hitung poin: Misal 1 Poin per Rp 100.000 dari total belanja produk
             $earnedPoints = 0;
             if ($user->is_membership) {
                 $earnedPoints = floor($totalAmount / 100000);
             }
 
-            // $transaction = Transaction::create([
-            //     'user_id' => $user->id,
-            //     'order_id' => $orderId,
-            //     'total_amount' => $totalAmount,
-            //     'status' => 'awaiting_payment',
-            //     'point' => $earnedPoints
-            // ]);
+            // 1. HITUNG DISKON POIN
+            $pointsUsed = 0;
+            $pointDiscountAmount = 0;
+            if ($request->use_points > 0 && $user->is_membership) {
+                $pointsUsed = min($request->use_points, $user->point);
+                $pointDiscountAmount = min($pointsUsed * 1000, $totalAmount);
+                if ($pointsUsed > 0) $user->decrement('point', $pointsUsed);
+            }
 
-            // [PERBAIKAN 1]: Masukkan address_id dan data shipping agar terekam di database!
+            // 2. HITUNG ONGKIR
+            $totalQuantity = $cartItems->sum('quantity') ?: 1;
+            $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+            $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+            // 3. BUAT TRANSAKSI (Langsung status PENDING)
             $transaction = Transaction::create([
                 'user_id' => $user->id,
-                'address_id' => $request->address_id, // Pastikan dikirim dari Frontend
-                'shipping_method' => $request->shipping_method ?? 'free',
-                'shipping_cost' => $request->shipping_cost ?? 0,
-                'courier_company' => $request->courier_company,
-                'courier_type' => $request->courier_type,
-                'delivery_type' => $request->delivery_type ?? 'later',
+                'address_id' => $request->address_id,
+                'shipping_method' => $request->shipping_method,
+                'shipping_cost' => $totalShippingCost,
+                'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
+                'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
+                'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+                'delivery_date' => $request->delivery_date,
+                'delivery_time' => $request->delivery_time,
                 'order_id' => $orderId,
                 'total_amount' => $totalAmount,
-                'status' => 'awaiting_payment',
+                'status' => 'pending', // LANGSUNG PENDING (Siap Bayar)
                 'point' => $earnedPoints
             ]);
 
+            // 4. BUAT DETAIL TRANSAKSI
+            $xenditItems = [];
             foreach ($cartItems as $item) {
                 $product = Product::lockForUpdate()->find($item->product_id);
-
                 if ($product->stock < $item->quantity) {
                     throw new \Exception("Stock {$product->name} insufficient");
                 }
+
+                $price = $item->product->discount_price ?? $item->product->price;
 
                 TransactionDetail::create([
                     'transaction_id' => $transaction->id,
                     'product_id' => $item->product_id,
                     'quantity' => $item->quantity,
-                    'price' => $item->product->discount_price ?? $item->product->price
+                    'price' => $price
                 ]);
 
                 $product->decrement('stock', $item->quantity);
+
+                // Siapkan item untuk Xendit
+                $xenditItems[] = [
+                    'name' => $product->name,
+                    'quantity' => $item->quantity,
+                    'price' => (int) $price,
+                    'category' => 'PHYSICAL_PRODUCT'
+                ];
             }
 
+            // 5. HAPUS KERANJANG (HANYA KETIKA CHECKOUT BERHASIL)
             Cart::where('user_id', $user->id)->delete();
 
-            return response()->json([
+            // 6. GENERATE XENDIT INVOICE DI SINI!
+            $externalId = 'PAY-' . $orderId;
+
+            if ($pointDiscountAmount > 0) {
+                $xenditItems[] = [
+                    'name' => 'Loyalty Point Discount (' . $pointsUsed . ' Pts)',
+                    'quantity' => 1,
+                    'price' => -(int) $pointDiscountAmount,
+                    'category' => 'DISCOUNT'
+                ];
+            }
+
+            if ($totalShippingCost > 0) {
+                $xenditItems[] = [
+                    'name' => 'Shipping Cost (' . $request->courier_company . ')',
+                    'quantity' => (int) $totalQuantity,
+                    'price' => (int) $baseShippingRate,
+                    'category' => 'SHIPPING_FEE'
+                ];
+            }
+
+            $finalAmount = (int) $totalAmount + $totalShippingCost - $pointDiscountAmount;
+
+            $invoiceRequest = new CreateInvoiceRequest([
+                'external_id' => $externalId,
+                'payer_email' => $user->email,
+                'amount' => $finalAmount,
+                'description' => 'Payment for Order ' . $orderId,
+                'items' => $xenditItems,
+                'success_redirect_url' => config('app.frontend_url') . '/payment-success?external_id=' . $externalId . '&order_id=' . $orderId,
+                'failure_redirect_url' => config('app.frontend_url') . '/payment-failed',
+            ]);
+
+            $api = new InvoiceApi();
+            $invoice = $api->createInvoice($invoiceRequest);
+
+            Payment::create([
                 'transaction_id' => $transaction->id,
-                'order_id' => $orderId
+                'external_id' => $externalId,
+                'checkout_url' => $invoice['invoice_url'],
+                'amount' => $totalAmount,
+                'status' => 'pending'
+            ]);
+
+            // Kembalikan URL Xendit ke Frontend
+            return response()->json([
+                'checkout_url' => $invoice['invoice_url']
             ], 201);
         });
     }
