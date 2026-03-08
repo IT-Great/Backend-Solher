@@ -260,6 +260,28 @@ class AuthController extends Controller
         return response()->json($user, 200);
     }
 
+    // public function updateAdminProfileInfo(Request $request)
+    // {
+    //     $admin = $request->user();
+
+    //     $validator = Validator::make($request->all(), [
+    //         'first_name' => 'required|string|max:255',
+    //         'last_name'  => 'required|string|max:255',
+    //         'email'      => 'required|string|email|max:255|unique:users,email,' . $admin->id,
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json($validator->errors(), 422);
+    //     }
+
+    //     $admin->update($request->only('first_name', 'last_name', 'email'));
+
+    //     return response()->json([
+    //         'message' => 'Admin profile updated successfully',
+    //         'admin'   => $admin
+    //     ]);
+    // }
+
     public function updateAdminProfileInfo(Request $request)
     {
         $admin = $request->user();
@@ -268,13 +290,15 @@ class AuthController extends Controller
             'first_name' => 'required|string|max:255',
             'last_name'  => 'required|string|max:255',
             'email'      => 'required|string|email|max:255|unique:users,email,' . $admin->id,
+            'phone'      => 'nullable|string|max:20', // [BARU] Tambahkan validasi phone
         ]);
 
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        $admin->update($request->only('first_name', 'last_name', 'email'));
+        // [BARU] Sertakan phone saat update
+        $admin->update($request->only('first_name', 'last_name', 'email', 'phone'));
 
         return response()->json([
             'message' => 'Admin profile updated successfully',
