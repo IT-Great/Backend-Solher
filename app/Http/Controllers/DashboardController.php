@@ -6,7 +6,6 @@ use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Product;
 use App\Models\Transaction;
-use Illuminate\Http\Request;
 use App\Services\C45Service;
 use App\Models\TransactionDetail;
 use Illuminate\Support\Facades\DB;
@@ -14,25 +13,74 @@ use App\Http\Controllers\Controller;
 
 class DashboardController extends Controller
 {
+    // public function getStats()
+    // {
+    //     // 1. Total Sales (Hanya transaksi yang sukses/completed)
+    //     $totalSales = Transaction::where('status', 'completed')->sum('total_amount');
+
+    //     // 2. Total Products (Hanya yang aktif)
+    //     $totalProducts = Product::where('status', 'active')->count();
+
+    //     // 3. Total Transactions
+    //     $totalTransactions = Transaction::count();
+
+    //     // 4. Total Users (Tipe user biasa)
+    //     $totalUsers = User::where('usertype', 'user')->count();
+
+    //     return response()->json([
+    //         'total_sales' => (float) $totalSales,
+    //         'total_products' => $totalProducts,
+    //         'total_transactions' => $totalTransactions,
+    //         'total_users' => $totalUsers,
+    //     ]);
+    // }
+
     public function getStats()
     {
-        // 1. Total Sales (Hanya transaksi yang sukses/completed)
-        $totalSales = Transaction::where('status', 'completed')->sum('total_amount');
+        // --- 1. Total Sales & Growth ---
+        $currentMonthSales = Transaction::where('status', 'completed')
+            ->whereMonth('created_at', Carbon::now()->month)
+            ->whereYear('created_at', Carbon::now()->year)
+            ->sum('total_amount');
 
-        // 2. Total Products (Hanya yang aktif)
+        $lastMonthSales = Transaction::where('status', 'completed')
+            ->whereMonth('created_at', Carbon::now()->subMonth()->month)
+            ->whereYear('created_at', Carbon::now()->subMonth()->year)
+            ->sum('total_amount');
+
+        $salesGrowth = $lastMonthSales > 0 ? (($currentMonthSales - $lastMonthSales) / $lastMonthSales) * 100 : 0;
+        $totalSalesAllTime = Transaction::where('status', 'completed')->sum('total_amount');
+
+        // --- 2. Total Products & Growth ---
         $totalProducts = Product::where('status', 'active')->count();
+        $newProductsThisMonth = Product::where('status', 'active')
+            ->whereMonth('created_at', Carbon::now()->month)
+            ->count();
 
-        // 3. Total Transactions
-        $totalTransactions = Transaction::count();
+        // --- 3. Total Transactions & Growth ---
+        $currentMonthTransactions = Transaction::whereMonth('created_at', Carbon::now()->month)->count();
+        $lastMonthTransactions = Transaction::whereMonth('created_at', Carbon::now()->subMonth()->month)->count();
+        $transactionGrowth = $lastMonthTransactions > 0 ? (($currentMonthTransactions - $lastMonthTransactions) / $lastMonthTransactions) * 100 : 0;
+        $totalTransactionsAllTime = Transaction::count();
 
-        // 4. Total Users (Tipe user biasa)
+        // --- 4. Total Users & Growth ---
         $totalUsers = User::where('usertype', 'user')->count();
+        $newUsersThisMonth = User::where('usertype', 'user')
+            ->whereMonth('created_at', Carbon::now()->month)
+            ->count();
 
         return response()->json([
-            'total_sales' => (float) $totalSales,
+            'total_sales' => (float) $totalSalesAllTime,
+            'sales_growth' => round($salesGrowth, 1),
+
             'total_products' => $totalProducts,
-            'total_transactions' => $totalTransactions,
+            'new_products_growth' => $newProductsThisMonth, // Angka mutlak bulan ini
+
+            'total_transactions' => $totalTransactionsAllTime,
+            'transaction_growth' => round($transactionGrowth, 1),
+
             'total_users' => $totalUsers,
+            'new_users_growth' => $newUsersThisMonth, // Angka mutlak bulan ini
         ]);
     }
 
@@ -241,7 +289,7 @@ class DashboardController extends Controller
                     'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
                     'label' => 'High Potential (C4.5)',
                     'color' => 'text-green-600',
-                    'score' => random_int(75, 98)
+                    'score' => random_int(0, 100)
                 ];
             }
         }
@@ -253,5 +301,30 @@ class DashboardController extends Controller
 
         // Ambil 100 teratas
         return response()->json(array_slice($results, 0, 100));
+    }
+
+    // =========================================================================
+    // [BARU] FUNGSI UNTUK RECENT ACTIVITIES (LIVE FEED)
+    // =========================================================================
+    public function getRecentActivities()
+    {
+        // Mengambil 5 transaksi terbaru dari semua status
+        $recentTransactions = Transaction::with('user:id,first_name,last_name,email')
+            ->select('id', 'order_id', 'user_id', 'total_amount', 'status', 'created_at')
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(function ($transaction) {
+                return [
+                    'id' => $transaction->id,
+                    'order_id' => $transaction->order_id,
+                    'customer' => $transaction->user ? $transaction->user->first_name . ' ' . $transaction->user->last_name : 'Guest',
+                    'amount' => $transaction->total_amount,
+                    'status' => $transaction->status,
+                    'time_ago' => $transaction->created_at->diffForHumans()
+                ];
+            });
+
+        return response()->json($recentTransactions);
     }
 }
