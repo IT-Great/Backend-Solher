@@ -468,4 +468,93 @@ class AuthController extends Controller
 
         return response()->json(['message' => 'Password has been successfully reset.']);
     }
+
+    // ====================================================================
+    // FUNGSI FORGOT PASSWORD KHUSUS ADMIN
+    // ====================================================================
+
+    public function adminSendResetCode(Request $request)
+    {
+        $request->validate(['email' => 'required|email']);
+
+        // [PENTING] Pastikan email ini milik ADMIN, bukan user biasa
+        $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
+
+        if (!$admin) {
+            return response()->json(['message' => 'Admin email address not found or unauthorized.'], 404);
+        }
+
+        DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+        $code = sprintf("%06d", mt_rand(1, 999999));
+
+        DB::table('password_reset_codes')->insert([
+            'email' => $request->email,
+            'code' => Hash::make($code),
+            'expires_at' => Carbon::now()->addMinutes(15),
+            'created_at' => Carbon::now()
+        ]);
+
+        try {
+            // Kita menggunakan Mailer yang sama seperti User, karena desainnya universal
+            Mail::to($request->email)->send(new \App\Mail\ResetPasswordCodeMail($code));
+            return response()->json(['message' => 'Admin verification code sent to your email.']);
+        } catch (\Exception $e) {
+            Log::error('Failed to send admin reset code: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
+        }
+    }
+
+    public function adminVerifyResetCode(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|digits:6'
+        ]);
+
+        $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
+        if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
+
+        $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
+
+        if (!$resetData) {
+            return response()->json(['message' => 'Invalid or expired verification code.'], 400);
+        }
+
+        if (Carbon::now()->greaterThan($resetData->expires_at)) {
+            DB::table('password_reset_codes')->where('email', $request->email)->delete();
+            return response()->json(['message' => 'Verification code has expired.'], 400);
+        }
+
+        if (!Hash::check($request->code, $resetData->code)) {
+            return response()->json(['message' => 'Incorrect verification code.'], 400);
+        }
+
+        return response()->json(['message' => 'Code verified successfully.']);
+    }
+
+    public function adminResetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|digits:6',
+            'password' => 'required|string|min:8|confirmed'
+        ]);
+
+        $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
+        if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
+
+        $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
+
+        if (!$resetData || !Hash::check($request->code, $resetData->code) || Carbon::now()->greaterThan($resetData->expires_at)) {
+            return response()->json(['message' => 'Invalid session or code expired.'], 400);
+        }
+
+        $admin->password = Hash::make($request->password);
+        $admin->save();
+
+        DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+        return response()->json(['message' => 'Admin password has been successfully reset.']);
+    }
 }

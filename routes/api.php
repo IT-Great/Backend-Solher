@@ -28,6 +28,10 @@ Route::post('/admin/login', [AuthController::class, 'adminLogin']);
 Route::post('/forgot-password/send-code', [AuthController::class, 'sendResetCode']);
 Route::post('/forgot-password/verify-code', [AuthController::class, 'verifyResetCode']);
 Route::post('/forgot-password/reset', [AuthController::class, 'resetPassword']);
+// Rute Lupa Password khusus ADMIN
+Route::post('/admin/forgot-password/send-code', [AuthController::class, 'adminSendResetCode']);
+Route::post('/admin/forgot-password/verify-code', [AuthController::class, 'adminVerifyResetCode']);
+Route::post('/admin/forgot-password/reset', [AuthController::class, 'adminResetPassword']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/update-info', [AuthController::class, 'updateProfileInfo']);
     Route::post('/user/update-image', [AuthController::class, 'updateImage']);
