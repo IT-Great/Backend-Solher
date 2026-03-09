@@ -25,6 +25,9 @@ Route::get('/home/category/{code}', [HomeController::class, 'getProductsByCatego
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/admin/login', [AuthController::class, 'adminLogin']);
+Route::post('/forgot-password/send-code', [AuthController::class, 'sendResetCode']);
+Route::post('/forgot-password/verify-code', [AuthController::class, 'verifyResetCode']);
+Route::post('/forgot-password/reset', [AuthController::class, 'resetPassword']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/update-info', [AuthController::class, 'updateProfileInfo']);
     Route::post('/user/update-image', [AuthController::class, 'updateImage']);

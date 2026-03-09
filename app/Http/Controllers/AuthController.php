@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\Carbon;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Mail\ResetPasswordCodeMail;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -375,5 +378,93 @@ class AuthController extends Controller
         ]);
 
         return response()->json(['user' => $user, 'message' => 'Membership status updated!']);
+    }
+
+    // --- 1. MENGIRIM KODE OTP KE EMAIL ---
+    public function sendResetCode(Request $request)
+    {
+        $request->validate(['email' => 'required|email']);
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'Email address not found in our system.'], 404);
+        }
+
+        // Hapus kode lama jika ada
+        DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+        // Buat 6-digit angka random
+        $code = sprintf("%06d", mt_rand(1, 999999));
+
+        DB::table('password_reset_codes')->insert([
+            'email' => $request->email,
+            'code' => Hash::make($code), // Enkripsi kode di DB untuk keamanan
+            'expires_at' => Carbon::now()->addMinutes(15),
+            'created_at' => Carbon::now()
+        ]);
+
+        try {
+            Mail::to($request->email)->send(new ResetPasswordCodeMail($code));
+            return response()->json(['message' => 'Verification code sent to your email.']);
+        } catch (\Exception $e) {
+            Log::error('Failed to send reset code: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
+        }
+    }
+
+    // --- 2. MEMVALIDASI KODE OTP ---
+    public function verifyResetCode(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|digits:6'
+        ]);
+
+        $resetData = DB::table('password_reset_codes')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$resetData) {
+            return response()->json(['message' => 'Invalid or expired verification code.'], 400);
+        }
+
+        if (Carbon::now()->greaterThan($resetData->expires_at)) {
+            DB::table('password_reset_codes')->where('email', $request->email)->delete();
+            return response()->json(['message' => 'Verification code has expired.'], 400);
+        }
+
+        if (!Hash::check($request->code, $resetData->code)) {
+            return response()->json(['message' => 'Incorrect verification code.'], 400);
+        }
+
+        return response()->json(['message' => 'Code verified successfully.']);
+    }
+
+    // --- 3. MERESET PASSWORD BERDASARKAN OTP YANG VALID ---
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'code' => 'required|digits:6',
+            'password' => 'required|string|min:8|confirmed'
+        ]);
+
+        $resetData = DB::table('password_reset_codes')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$resetData || !Hash::check($request->code, $resetData->code) || Carbon::now()->greaterThan($resetData->expires_at)) {
+            return response()->json(['message' => 'Invalid session or code expired.'], 400);
+        }
+
+        $user = User::where('email', $request->email)->first();
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        // Hapus token reset setelah sukses digunakan
+        DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+        return response()->json(['message' => 'Password has been successfully reset.']);
     }
 }
