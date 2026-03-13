@@ -8,6 +8,7 @@ use App\Models\Payment;
 use Xendit\Configuration;
 use App\Models\Transaction;
 use Illuminate\Support\Str;
+use App\Models\ProductStock;
 use Illuminate\Http\Request;
 use Xendit\Refund\RefundApi;
 use Xendit\Invoice\InvoiceApi;
@@ -24,6 +25,69 @@ class TransactionController extends Controller
     public function __construct()
     {
         Configuration::setXenditKey(config('services.xendit.secret_key'));
+    }
+
+    // =================================================================================
+    // [BARU] HELPER FUNGSI UNTUK MENGEMBALIKAN STOK (FIFO RESTORE & ANTI RACE CONDITION)
+    // =================================================================================
+    private function restoreProductStock($productId, $quantityToRestore)
+    {
+        if ($quantityToRestore <= 0) return;
+
+        // 1. Kunci (Lock) baris produk utama untuk mencegah modifikasi berbarengan
+        $product = Product::lockForUpdate()->find($productId);
+        if (!$product) return;
+
+        $remainingToRestore = $quantityToRestore;
+
+        // 2. Ambil batch stok yang TIDAK PENUH (quantity < initial_quantity)
+        // Urutkan dari yang PALING LAMA (ASC) untuk mengembalikan secara FIFO
+        $incompleteBatches = ProductStock::where('product_id', $productId)
+            ->whereColumn('quantity', '<', 'initial_quantity')
+            ->orderBy('created_at', 'asc')
+            ->lockForUpdate() // Kunci baris batch ini selama transaksi berlangsung
+            ->get();
+
+        foreach ($incompleteBatches as $batch) {
+            if ($remainingToRestore <= 0) break;
+
+            $spaceAvailable = $batch->initial_quantity - $batch->quantity;
+
+            if ($spaceAvailable >= $remainingToRestore) {
+                // Jika lubang di batch ini cukup untuk menampung semua barang kembalian
+                $batch->increment('quantity', $remainingToRestore);
+                $remainingToRestore = 0;
+            } else {
+                // Jika tidak cukup, penuhi batch ini, sisanya cari di batch berikutnya
+                $batch->increment('quantity', $spaceAvailable);
+                $remainingToRestore -= $spaceAvailable;
+            }
+        }
+
+        // 3. Fallback/Penyelamat: Jika ternyata masih ada sisa (misal: batch lama terhapus manual oleh admin)
+        if ($remainingToRestore > 0) {
+            $latestBatch = ProductStock::where('product_id', $productId)
+                ->orderBy('created_at', 'desc')
+                ->lockForUpdate()
+                ->first();
+
+            if ($latestBatch) {
+                // Masukkan ke batch terbaru dan naikkan kapasitas awalnya agar tidak error
+                $latestBatch->increment('quantity', $remainingToRestore);
+                $latestBatch->increment('initial_quantity', $remainingToRestore);
+            } else {
+                // Jika benar-benar tidak ada batch sama sekali, buat batch pengembalian khusus
+                ProductStock::create([
+                    'product_id' => $productId,
+                    'batch_code' => 'RET-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4)),
+                    'quantity' => $remainingToRestore,
+                    'initial_quantity' => $remainingToRestore
+                ]);
+            }
+        }
+
+        // 4. Kembalikan total stok di tabel master
+        $product->increment('stock', $quantityToRestore);
     }
 
     // --- USER ACTIONS ---
@@ -96,40 +160,373 @@ class TransactionController extends Controller
     // }
 
     // --- USER ACTIONS ---
+    // public function checkout(Request $request)
+    // {
+    //     $request->validate([
+    //         'address_id' => 'required',
+    //         'shipping_method' => 'required|in:free,biteship',
+    //         'use_points' => 'nullable|integer|min:0',
+    //         'cart_ids' => 'required|array',          // <-- PASTIKAN DIKIRIM DARI FRONTEND
+    //         'cart_ids.*' => 'exists:carts,id',        // <-- PASTIKAN SEMUA ID VALID
+    //         // ... validasi shipping_cost dll bisa ditaruh di sini
+    //         'shipping_cost',
+    //         'courier_company',
+    //         'courier_type',
+    //         'delivery_type',
+    //         'order_id',
+    //         'total_amount',
+    //         'status',
+    //         'point'
+    //     ]);
+
+    //     $user = $request->user();
+    //     // $cartItems = Cart::with('product')->where('user_id', $user->id)->get();
+    //     $cartItems = Cart::with('product')
+    //         ->where('user_id', $user->id)
+    //         ->whereIn('id', $request->cart_ids) // <-- KUNCI PENYELESAIAN
+    //         ->get();
+
+    //     // if ($cartItems->isEmpty()) {
+    //     //     return response()->json(['message' => 'Cart is empty'], 400);
+    //     // }
+
+    //     if ($cartItems->isEmpty()) {
+    //         return response()->json(['message' => 'No items selected for checkout'], 400);
+    //     }
+
+    //     return DB::transaction(function () use ($user, $cartItems, $request) {
+    //         $totalAmount = $cartItems->sum('gross_amount');
+    //         $orderId = 'SOL-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
+
+    //         $earnedPoints = 0;
+    //         if ($user->is_membership) {
+    //             $earnedPoints = floor($totalAmount / 100000);
+    //         }
+
+    //         // 1. HITUNG DISKON POIN
+    //         $pointsUsed = 0;
+    //         $pointDiscountAmount = 0;
+    //         if ($request->use_points > 0 && $user->is_membership) {
+    //             $pointsUsed = min($request->use_points, $user->point);
+    //             $pointDiscountAmount = min($pointsUsed * 1000, $totalAmount);
+    //             if ($pointsUsed > 0) $user->decrement('point', $pointsUsed);
+    //         }
+
+    //         // 2. HITUNG ONGKIR
+    //         $totalQuantity = $cartItems->sum('quantity') ?: 1;
+    //         $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+    //         $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+    //         // 3. BUAT TRANSAKSI (Langsung status PENDING)
+    //         $transaction = Transaction::create([
+    //             'user_id' => $user->id,
+    //             'address_id' => $request->address_id,
+    //             'shipping_method' => $request->shipping_method,
+    //             'shipping_cost' => $totalShippingCost,
+    //             'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
+    //             'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
+    //             'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+    //             'delivery_date' => $request->delivery_date,
+    //             'delivery_time' => $request->delivery_time,
+    //             'order_id' => $orderId,
+    //             'total_amount' => $totalAmount,
+    //             'status' => 'pending', // LANGSUNG PENDING (Siap Bayar)
+    //             'point' => $earnedPoints
+    //         ]);
+
+    //         // 4. BUAT DETAIL TRANSAKSI
+    //         $xenditItems = [];
+    //         foreach ($cartItems as $item) {
+    //             $product = Product::lockForUpdate()->find($item->product_id);
+    //             if ($product->stock < $item->quantity) {
+    //                 throw new \Exception("Stock {$product->name} insufficient");
+    //             }
+
+    //             $price = $item->product->discount_price ?? $item->product->price;
+
+    //             TransactionDetail::create([
+    //                 'transaction_id' => $transaction->id,
+    //                 'product_id' => $item->product_id,
+    //                 'quantity' => $item->quantity,
+    //                 'price' => $price
+    //             ]);
+
+    //             $product->decrement('stock', $item->quantity);
+
+    //             // Siapkan item untuk Xendit
+    //             $xenditItems[] = [
+    //                 'name' => $product->name,
+    //                 'quantity' => $item->quantity,
+    //                 'price' => (int) $price,
+    //                 'category' => 'PHYSICAL_PRODUCT'
+    //             ];
+    //         }
+
+    //         // 5. HAPUS KERANJANG (HANYA KETIKA CHECKOUT BERHASIL)
+    //         // Cart::where('user_id', $user->id)->delete();
+    //         Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
+
+    //         // 6. GENERATE XENDIT INVOICE DI SINI!
+    //         $externalId = 'PAY-' . $orderId;
+
+    //         if ($pointDiscountAmount > 0) {
+    //             $xenditItems[] = [
+    //                 'name' => 'Loyalty Point Discount (' . $pointsUsed . ' Pts)',
+    //                 'quantity' => 1,
+    //                 'price' => -(int) $pointDiscountAmount,
+    //                 'category' => 'DISCOUNT'
+    //             ];
+    //         }
+
+    //         if ($totalShippingCost > 0) {
+    //             $xenditItems[] = [
+    //                 'name' => 'Shipping Cost (' . $request->courier_company . ')',
+    //                 'quantity' => (int) $totalQuantity,
+    //                 'price' => (int) $baseShippingRate,
+    //                 'category' => 'SHIPPING_FEE'
+    //             ];
+    //         }
+
+    //         $finalAmount = (int) $totalAmount + $totalShippingCost - $pointDiscountAmount;
+
+    //         $invoiceRequest = new CreateInvoiceRequest([
+    //             'external_id' => $externalId,
+    //             'payer_email' => $user->email,
+    //             'amount' => $finalAmount,
+    //             'description' => 'Payment for Order ' . $orderId,
+    //             'items' => $xenditItems,
+    //             'success_redirect_url' => config('app.frontend_url') . '/payment-success?external_id=' . $externalId . '&order_id=' . $orderId,
+    //             'failure_redirect_url' => config('app.frontend_url') . '/payment-failed',
+    //         ]);
+
+    //         $api = new InvoiceApi();
+    //         $invoice = $api->createInvoice($invoiceRequest);
+
+    //         Payment::create([
+    //             'transaction_id' => $transaction->id,
+    //             'external_id' => $externalId,
+    //             'checkout_url' => $invoice['invoice_url'],
+    //             'amount' => $totalAmount,
+    //             'status' => 'pending'
+    //         ]);
+
+    //         // Kembalikan URL Xendit ke Frontend
+    //         return response()->json([
+    //             'checkout_url' => $invoice['invoice_url']
+    //         ], 201);
+    //     });
+    // }
+
+    // public function checkout(Request $request)
+    // {
+    //     $request->validate([
+    //         'address_id' => 'required',
+    //         'shipping_method' => 'required|in:free,biteship',
+    //         'use_points' => 'nullable|integer|min:0',
+    //         'cart_ids' => 'required|array',
+    //         'cart_ids.*' => 'exists:carts,id',
+    //         'shipping_cost' => 'nullable|numeric',
+    //         'courier_company' => 'nullable|string',
+    //         'courier_type' => 'nullable|string',
+    //         'delivery_type' => 'nullable|string',
+    //     ]);
+
+    //     $user = $request->user();
+
+    //     $cartItems = Cart::with('product')
+    //         ->where('user_id', $user->id)
+    //         ->whereIn('id', $request->cart_ids)
+    //         ->get();
+
+    //     if ($cartItems->isEmpty()) {
+    //         return response()->json(['message' => 'No items selected for checkout'], 400);
+    //     }
+
+    //     // Mulai Transaksi Database
+    //     return DB::transaction(function () use ($user, $cartItems, $request) {
+
+    //         $totalAmount = $cartItems->sum('gross_amount');
+    //         $orderId = 'SOL-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
+
+    //         $earnedPoints = 0;
+    //         if ($user->is_membership) {
+    //             $earnedPoints = floor($totalAmount / 100000);
+    //         }
+
+    //         // 1. HITUNG DISKON POIN
+    //         $pointsUsed = 0;
+    //         $pointDiscountAmount = 0;
+    //         if ($request->use_points > 0 && $user->is_membership) {
+    //             $pointsUsed = min($request->use_points, $user->point);
+    //             $pointDiscountAmount = min($pointsUsed * 1000, $totalAmount);
+    //             if ($pointsUsed > 0) $user->decrement('point', $pointsUsed);
+    //         }
+
+    //         // 2. HITUNG ONGKIR
+    //         $totalQuantity = $cartItems->sum('quantity') ?: 1;
+    //         $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+    //         $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+    //         // 3. BUAT TRANSAKSI
+    //         $transaction = Transaction::create([
+    //             'user_id' => $user->id,
+    //             'address_id' => $request->address_id,
+    //             'shipping_method' => $request->shipping_method,
+    //             'shipping_cost' => $totalShippingCost,
+    //             'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
+    //             'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
+    //             'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+    //             'order_id' => $orderId,
+    //             'total_amount' => $totalAmount,
+    //             'status' => 'pending',
+    //             'point' => $earnedPoints
+    //         ]);
+
+    //         $xenditItems = [];
+
+    //         // 4. LOOPING KERANJANG - CEK STOK & FIFO REDUCTION DENGAN LOCKING
+    //         foreach ($cartItems as $item) {
+    //             // [PENTING] LockForUpdate memastikan tidak ada race condition!
+    //             $product = Product::lockForUpdate()->find($item->product_id);
+
+    //             // Validasi Stok Utama
+    //             if ($product->stock < $item->quantity) {
+    //                 throw new \Exception("Stock for '{$product->name}' is insufficient. Available: {$product->stock}");
+    //             }
+
+    //             $price = $item->product->discount_price ?? $item->product->price;
+
+    //             TransactionDetail::create([
+    //                 'transaction_id' => $transaction->id,
+    //                 'product_id' => $item->product_id,
+    //                 'quantity' => $item->quantity,
+    //                 'price' => $price
+    //             ]);
+
+    //             // ========================================================
+    //             // LOGIKA FIFO: PENGURANGAN STOK BERDASARKAN BATCH TERLAMA
+    //             // ========================================================
+    //             $remainingQuantityToDeduct = $item->quantity;
+
+    //             // Ambil semua batch stok yang masih ada isinya, urutkan dari yang PALING LAMA (created_at ASC)
+    //             $activeBatches = \App\Models\ProductStock::where('product_id', $product->id)
+    //                 ->where('quantity', '>', 0)
+    //                 ->orderBy('created_at', 'asc')
+    //                 // lockForUpdate() agar batch tidak dimodifikasi proses lain
+    //                 ->lockForUpdate()
+    //                 ->get();
+
+    //             foreach ($activeBatches as $batch) {
+    //                 if ($remainingQuantityToDeduct <= 0) break; // Jika sudah terpenuhi, hentikan loop
+
+    //                 if ($batch->quantity >= $remainingQuantityToDeduct) {
+    //                     // Batch ini cukup untuk menutupi sisa pesanan
+    //                     $batch->decrement('quantity', $remainingQuantityToDeduct);
+    //                     $remainingQuantityToDeduct = 0;
+    //                 } else {
+    //                     // Batch ini tidak cukup, kurangi semua isinya, lalu sisa pesanan dicarikan di batch berikutnya
+    //                     $remainingQuantityToDeduct -= $batch->quantity;
+    //                     $batch->update(['quantity' => 0]);
+    //                 }
+    //             }
+
+    //             // Jika setelah melooping semua batch ternyata masih ada sisa (Data tidak sinkron antara master dan batch)
+    //             if ($remainingQuantityToDeduct > 0) {
+    //                 throw new \Exception("System error: Stock batch mismatch for '{$product->name}'. Please contact admin.");
+    //             }
+
+    //             // Kurangi Total Stok di tabel Master Products
+    //             $product->decrement('stock', $item->quantity);
+    //             // ========================================================
+
+    //             // Siapkan item untuk Xendit
+    //             $xenditItems[] = [
+    //                 'name' => $product->name,
+    //                 'quantity' => $item->quantity,
+    //                 'price' => (int) $price,
+    //                 'category' => 'PHYSICAL_PRODUCT'
+    //             ];
+    //         }
+
+    //         // 5. HAPUS KERANJANG
+    //         Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
+
+    //         // 6. GENERATE XENDIT INVOICE
+    //         $externalId = 'PAY-' . $orderId;
+
+    //         if ($pointDiscountAmount > 0) {
+    //             $xenditItems[] = [
+    //                 'name' => 'Loyalty Point Discount (' . $pointsUsed . ' Pts)',
+    //                 'quantity' => 1,
+    //                 'price' => -(int) $pointDiscountAmount,
+    //                 'category' => 'DISCOUNT'
+    //             ];
+    //         }
+
+    //         if ($totalShippingCost > 0) {
+    //             $xenditItems[] = [
+    //                 'name' => 'Shipping Cost (' . $request->courier_company . ')',
+    //                 'quantity' => (int) $totalQuantity,
+    //                 'price' => (int) $baseShippingRate,
+    //                 'category' => 'SHIPPING_FEE'
+    //             ];
+    //         }
+
+    //         $finalAmount = (int) $totalAmount + $totalShippingCost - $pointDiscountAmount;
+
+    //         $invoiceRequest = new CreateInvoiceRequest([
+    //             'external_id' => $externalId,
+    //             'payer_email' => $user->email,
+    //             'amount' => $finalAmount,
+    //             'description' => 'Payment for Order ' . $orderId,
+    //             'items' => $xenditItems,
+    //             'success_redirect_url' => config('app.frontend_url') . '/payment-success?external_id=' . $externalId . '&order_id=' . $orderId,
+    //             'failure_redirect_url' => config('app.frontend_url') . '/payment-failed',
+    //         ]);
+
+    //         $api = new InvoiceApi();
+    //         $invoice = $api->createInvoice($invoiceRequest);
+
+    //         Payment::create([
+    //             'transaction_id' => $transaction->id,
+    //             'external_id' => $externalId,
+    //             'checkout_url' => $invoice['invoice_url'],
+    //             'amount' => $totalAmount,
+    //             'status' => 'pending'
+    //         ]);
+
+    //         return response()->json([
+    //             'checkout_url' => $invoice['invoice_url']
+    //         ], 201);
+    //     });
+    // }
+
+    // --- USER ACTIONS ---
     public function checkout(Request $request)
     {
         $request->validate([
             'address_id' => 'required',
             'shipping_method' => 'required|in:free,biteship',
             'use_points' => 'nullable|integer|min:0',
-            'cart_ids' => 'required|array',          // <-- PASTIKAN DIKIRIM DARI FRONTEND
-            'cart_ids.*' => 'exists:carts,id',        // <-- PASTIKAN SEMUA ID VALID
-            // ... validasi shipping_cost dll bisa ditaruh di sini
-            'shipping_cost',
-            'courier_company',
-            'courier_type',
-            'delivery_type',
-            'order_id',
-            'total_amount',
-            'status',
-            'point'
+            'cart_ids' => 'required|array',
+            'cart_ids.*' => 'exists:carts,id',
+            'shipping_cost' => 'nullable|numeric',
+            'courier_company' => 'nullable|string',
+            'courier_type' => 'nullable|string',
+            'delivery_type' => 'nullable|string',
         ]);
 
         $user = $request->user();
-        // $cartItems = Cart::with('product')->where('user_id', $user->id)->get();
         $cartItems = Cart::with('product')
             ->where('user_id', $user->id)
-            ->whereIn('id', $request->cart_ids) // <-- KUNCI PENYELESAIAN
+            ->whereIn('id', $request->cart_ids)
             ->get();
-
-        // if ($cartItems->isEmpty()) {
-        //     return response()->json(['message' => 'Cart is empty'], 400);
-        // }
 
         if ($cartItems->isEmpty()) {
             return response()->json(['message' => 'No items selected for checkout'], 400);
         }
 
+        // [PENTING] Membungkus seluruh checkout dengan DB Transaction (Mencegah Race Condition)
         return DB::transaction(function () use ($user, $cartItems, $request) {
             $totalAmount = $cartItems->sum('gross_amount');
             $orderId = 'SOL-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
@@ -162,17 +559,16 @@ class TransactionController extends Controller
                 'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
                 'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
                 'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
-                'delivery_date' => $request->delivery_date,
-                'delivery_time' => $request->delivery_time,
                 'order_id' => $orderId,
                 'total_amount' => $totalAmount,
-                'status' => 'pending', // LANGSUNG PENDING (Siap Bayar)
+                'status' => 'pending',
                 'point' => $earnedPoints
             ]);
 
-            // 4. BUAT DETAIL TRANSAKSI
             $xenditItems = [];
             foreach ($cartItems as $item) {
+
+                // [PENTING] Kunci baris produk (Anti Race Condition saat stok menipis)
                 $product = Product::lockForUpdate()->find($item->product_id);
                 if ($product->stock < $item->quantity) {
                     throw new \Exception("Stock {$product->name} insufficient");
@@ -187,9 +583,37 @@ class TransactionController extends Controller
                     'price' => $price
                 ]);
 
-                $product->decrement('stock', $item->quantity);
+                // ========================================================
+                // PENGURANGAN STOK FIFO DARI TABEL BATCH
+                // ========================================================
+                $remainingQuantityToDeduct = $item->quantity;
 
-                // Siapkan item untuk Xendit
+                $activeBatches = ProductStock::where('product_id', $product->id)
+                    ->where('quantity', '>', 0)
+                    ->orderBy('created_at', 'asc') // FIFO: Ambil yang tertua
+                    ->lockForUpdate() // Kunci batch ini
+                    ->get();
+
+                foreach ($activeBatches as $batch) {
+                    if ($remainingQuantityToDeduct <= 0) break;
+
+                    if ($batch->quantity >= $remainingQuantityToDeduct) {
+                        $batch->decrement('quantity', $remainingQuantityToDeduct);
+                        $remainingQuantityToDeduct = 0;
+                    } else {
+                        $remainingQuantityToDeduct -= $batch->quantity;
+                        $batch->update(['quantity' => 0]);
+                    }
+                }
+
+                if ($remainingQuantityToDeduct > 0) {
+                    throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+                }
+
+                // Kurangi Total Stok Master
+                $product->decrement('stock', $item->quantity);
+                // ========================================================
+
                 $xenditItems[] = [
                     'name' => $product->name,
                     'quantity' => $item->quantity,
@@ -198,11 +622,10 @@ class TransactionController extends Controller
                 ];
             }
 
-            // 5. HAPUS KERANJANG (HANYA KETIKA CHECKOUT BERHASIL)
-            // Cart::where('user_id', $user->id)->delete();
+            // 5. HAPUS KERANJANG
             Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
 
-            // 6. GENERATE XENDIT INVOICE DI SINI!
+            // 6. GENERATE XENDIT INVOICE
             $externalId = 'PAY-' . $orderId;
 
             if ($pointDiscountAmount > 0) {
@@ -246,7 +669,6 @@ class TransactionController extends Controller
                 'status' => 'pending'
             ]);
 
-            // Kembalikan URL Xendit ke Frontend
             return response()->json([
                 'checkout_url' => $invoice['invoice_url']
             ], 201);
@@ -328,16 +750,105 @@ class TransactionController extends Controller
     //     return response()->json(['message' => 'Order cancelled successfully']);
     // }
 
+    // public function cancelOrder(Request $request, $id)
+    // {
+    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+    //     // [PERBAIKAN 1] Izinkan pembatalan untuk status processing
+    //     if (!in_array($transaction->status, ['awaiting_payment', 'pending', 'processing'])) {
+    //         return response()->json(['message' => 'Cannot cancel this order.'], 400);
+    //     }
+
+    //     // Jika statusnya processing (sudah dibayar), lakukan pre-check ke Biteship
+    //     if ($transaction->status === 'processing' && $transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+    //         try {
+    //             $res = \Illuminate\Support\Facades\Http::withHeaders([
+    //                 'Authorization' => config('services.biteship.api_key')
+    //             ])->get("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id);
+
+    //             if ($res->successful()) {
+    //                 $data = $res->json();
+    //                 $biteshipStatus = strtolower($data['status'] ?? '');
+
+    //                 // Jika barang sudah diambil kurir, TOLAK pembatalan
+    //                 $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'return_in_transit', 'returned', 'disposed'];
+    //                 if (in_array($biteshipStatus, $unCancellableStatuses)) {
+    //                     return response()->json([
+    //                         'message' => 'Cannot cancel: The package is already being processed by the courier (Status: ' . strtoupper($biteshipStatus) . ').'
+    //                     ], 400);
+    //                 }
+
+    //                 // Jika masih aman, batalkan order di Biteship
+    //                 \Illuminate\Support\Facades\Http::withHeaders([
+    //                     'Authorization' => config('services.biteship.api_key')
+    //                 ])->delete("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id);
+    //             }
+    //         } catch (\Exception $e) {
+    //             \Illuminate\Support\Facades\Log::error('Biteship Pre-Check Cancel Error: ' . $e->getMessage());
+    //             return response()->json(['message' => 'Failed to verify logistics status with Biteship.'], 500);
+    //         }
+
+    //         // [PENTING] Lakukan proses Refund via Xendit karena statusnya processing (sudah bayar)
+    //         try {
+    //             $transaction->load('payment');
+    //             if ($transaction->payment && $transaction->payment->external_id) {
+    //                 $invoiceApi = new InvoiceApi();
+    //                 $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+
+    //                 if (!empty($invoices) && count($invoices) > 0) {
+    //                     $xenditInvoiceId = $invoices[0]['id'];
+    //                     $refundApi = new RefundApi();
+
+    //                     $refundRequest = new CreateRefund([
+    //                         'invoice_id' => $xenditInvoiceId,
+    //                         'reason' => 'REQUESTED_BY_CUSTOMER',
+    //                         'amount' => (int) $transaction->total_amount,
+    //                         'metadata' => ['order_id' => $transaction->order_id]
+    //                     ]);
+
+    //                     $refundApi->createRefund(null, null, $refundRequest);
+    //                 }
+    //             }
+    //         } catch (\Exception $e) {
+    //             \Illuminate\Support\Facades\Log::error('Auto-Refund on Cancel Error: ' . $e->getMessage());
+    //             // Jika auto-refund gagal, kita ubah statusnya agar admin memprosesnya secara manual
+    //             $transaction->update(['status' => 'refund_manual_required']);
+
+    //             // Kembalikan stok
+    //             foreach ($transaction->details as $detail) {
+    //                 $detail->product->increment('stock', $detail->quantity);
+    //             }
+
+    //             return response()->json(['message' => 'Order cancelled, but automatic refund failed. Admin will process it manually.']);
+    //         }
+    //     }
+
+    //     // Update status database lokal (jika bukan processing, atau refund berhasil)
+    //     if ($transaction->status !== 'refund_manual_required') {
+    //         $transaction->update(['status' => 'cancelled']);
+    //     }
+
+    //     if ($transaction->payment && $transaction->status !== 'refund_manual_required') {
+    //         $transaction->payment->update(['status' => 'EXPIRED']); // Atau REFUNDED jika dari processing
+    //     }
+
+    //     // Kembalikan stok
+    //     foreach ($transaction->details as $detail) {
+    //         $detail->product->increment('stock', $detail->quantity);
+    //     }
+
+    //     return response()->json(['message' => 'Order cancelled successfully']);
+    // }
+
     public function cancelOrder(Request $request, $id)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
-        // [PERBAIKAN 1] Izinkan pembatalan untuk status processing
         if (!in_array($transaction->status, ['awaiting_payment', 'pending', 'processing'])) {
             return response()->json(['message' => 'Cannot cancel this order.'], 400);
         }
 
-        // Jika statusnya processing (sudah dibayar), lakukan pre-check ke Biteship
+        // PRE-CHECK BITESHIP (Berjalan di luar transaksi database agar tidak memberatkan server)
         if ($transaction->status === 'processing' && $transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
             try {
                 $res = \Illuminate\Support\Facades\Http::withHeaders([
@@ -348,25 +859,22 @@ class TransactionController extends Controller
                     $data = $res->json();
                     $biteshipStatus = strtolower($data['status'] ?? '');
 
-                    // Jika barang sudah diambil kurir, TOLAK pembatalan
                     $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'return_in_transit', 'returned', 'disposed'];
                     if (in_array($biteshipStatus, $unCancellableStatuses)) {
                         return response()->json([
-                            'message' => 'Cannot cancel: The package is already being processed by the courier (Status: ' . strtoupper($biteshipStatus) . ').'
+                            'message' => 'Cannot cancel: The package is already being processed by the courier.'
                         ], 400);
                     }
 
-                    // Jika masih aman, batalkan order di Biteship
                     \Illuminate\Support\Facades\Http::withHeaders([
                         'Authorization' => config('services.biteship.api_key')
                     ])->delete("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id);
                 }
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Biteship Pre-Check Cancel Error: ' . $e->getMessage());
                 return response()->json(['message' => 'Failed to verify logistics status with Biteship.'], 500);
             }
 
-            // [PENTING] Lakukan proses Refund via Xendit karena statusnya processing (sudah bayar)
+            // AUTO-REFUND XENDIT
             try {
                 $transaction->load('payment');
                 if ($transaction->payment && $transaction->payment->external_id) {
@@ -388,32 +896,37 @@ class TransactionController extends Controller
                     }
                 }
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Auto-Refund on Cancel Error: ' . $e->getMessage());
-                // Jika auto-refund gagal, kita ubah statusnya agar admin memprosesnya secara manual
-                $transaction->update(['status' => 'refund_manual_required']);
-
-                // Kembalikan stok
-                foreach ($transaction->details as $detail) {
-                    $detail->product->increment('stock', $detail->quantity);
-                }
+                // JIKA REFUND GAGAL (TAPI KURIR SUDAH DIBATALKAN), LEMPAR KE REFUND MANUAL TAPI KEMBALIKAN STOKNYA
+                DB::transaction(function () use ($transaction) {
+                    $transaction->update(['status' => 'refund_manual_required']);
+                    foreach ($transaction->details as $detail) {
+                        // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore
+                        $this->restoreProductStock($detail->product_id, $detail->quantity);
+                    }
+                });
 
                 return response()->json(['message' => 'Order cancelled, but automatic refund failed. Admin will process it manually.']);
             }
         }
 
-        // Update status database lokal (jika bukan processing, atau refund berhasil)
-        if ($transaction->status !== 'refund_manual_required') {
-            $transaction->update(['status' => 'cancelled']);
-        }
+        // [PENTING] Bungkus pembatalan status dan pengembalian stok dalam DB Transaction
+        DB::transaction(function () use ($transaction) {
+            // Re-fetch dan Lock untuk mencegah error paralel
+            $lockedTransaction = Transaction::lockForUpdate()->find($transaction->id);
 
-        if ($transaction->payment && $transaction->status !== 'refund_manual_required') {
-            $transaction->payment->update(['status' => 'EXPIRED']); // Atau REFUNDED jika dari processing
-        }
+            if ($lockedTransaction->status !== 'refund_manual_required') {
+                $lockedTransaction->update(['status' => 'cancelled']);
+            }
 
-        // Kembalikan stok
-        foreach ($transaction->details as $detail) {
-            $detail->product->increment('stock', $detail->quantity);
-        }
+            if ($lockedTransaction->payment && $lockedTransaction->status !== 'refund_manual_required') {
+                $lockedTransaction->payment->update(['status' => 'EXPIRED']);
+            }
+
+            // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore
+            foreach ($lockedTransaction->details as $detail) {
+                $this->restoreProductStock($detail->product_id, $detail->quantity);
+            }
+        });
 
         return response()->json(['message' => 'Order cancelled successfully']);
     }
@@ -667,6 +1180,73 @@ class TransactionController extends Controller
         }
 
         // --- JIKA KURIR BERHASIL DIBATALKAN, BARU KEMBALIKAN UANGNYA ---
+        // try {
+        //     $invoiceApi = new InvoiceApi();
+        //     $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+
+        //     if (empty($invoices) || count($invoices) === 0) {
+        //         throw new \Exception("Invoice not found in Xendit.");
+        //     }
+
+        //     $xenditInvoiceId = $invoices[0]['id'];
+        //     $refundApi = new RefundApi();
+
+        //     $refundRequest = new CreateRefund([
+        //         'invoice_id' => $xenditInvoiceId,
+        //         'reason' => 'REQUESTED_BY_CUSTOMER',
+        //         'amount' => (int) $transaction->total_amount,
+        //         'metadata' => ['order_id' => $transaction->order_id]
+        //     ]);
+
+        //     $result = $refundApi->createRefund(null, null, $refundRequest);
+
+        //     // Jika Xendit sukses, update database lokal
+        //     DB::transaction(function () use ($transaction) {
+        //         $transaction->update(['status' => 'refunded']);
+        //         if ($transaction->payment) {
+        //             $transaction->payment->update(['status' => 'REFUNDED']);
+        //         }
+
+        //         // Pastikan user adalah member dan transaksi ini sebelumnya menghasilkan poin
+        //         if ($transaction->point > 0 && $transaction->user->is_membership) {
+        //             // Cegah poin user menjadi minus jika dia sudah terlanjur memakainya
+        //             $currentPoints = $transaction->user->point;
+        //             $pointsToDeduct = min($currentPoints, $transaction->point);
+
+        //             if ($pointsToDeduct > 0) {
+        //                 $transaction->user->decrement('point', $pointsToDeduct);
+        //             }
+
+        //             // Nolkan poin di transaksi agar tidak ditarik ganda di masa depan
+        //             $transaction->update(['point' => 0]);
+        //         }
+        //     });
+
+        //     return response()->json([
+        //         'message' => 'Refund processed successfully. Funds returned automatically.',
+        //         'type' => 'automatic'
+        //     ]);
+        // } catch (XenditSdkException $e) {
+        //     $errorMessage = $e->getMessage();
+
+        //     if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
+        //         // Kurir sudah dibatalkan di atas, jadi aman untuk mengubah ke manual_required
+        //         $transaction->update(['status' => 'refund_manual_required']);
+
+        //         return response()->json([
+        //             'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
+        //             'code' => 'MANUAL_REFUND_NEEDED'
+        //         ], 200);
+        //     }
+
+        //     \Illuminate\Support\Facades\Log::error('Xendit Refund Error: ' . $errorMessage);
+        //     return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
+        // } catch (\Exception $e) {
+        //     \Illuminate\Support\Facades\Log::error('System Refund Error: ' . $e->getMessage());
+        //     return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
+        // }
+
+        // --- EKSEKUSI REFUND KE XENDIT ---
         try {
             $invoiceApi = new InvoiceApi();
             $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
@@ -685,27 +1265,27 @@ class TransactionController extends Controller
                 'metadata' => ['order_id' => $transaction->order_id]
             ]);
 
-            $result = $refundApi->createRefund(null, null, $refundRequest);
+            $refundApi->createRefund(null, null, $refundRequest);
 
-            // Jika Xendit sukses, update database lokal
+            // [PENTING] Jika Xendit sukses, update DB & Kembalikan Stok FIFO dalam 1 Transaksi
             DB::transaction(function () use ($transaction) {
                 $transaction->update(['status' => 'refunded']);
                 if ($transaction->payment) {
                     $transaction->payment->update(['status' => 'REFUNDED']);
                 }
 
-                // Pastikan user adalah member dan transaksi ini sebelumnya menghasilkan poin
                 if ($transaction->point > 0 && $transaction->user->is_membership) {
-                    // Cegah poin user menjadi minus jika dia sudah terlanjur memakainya
                     $currentPoints = $transaction->user->point;
                     $pointsToDeduct = min($currentPoints, $transaction->point);
-
                     if ($pointsToDeduct > 0) {
                         $transaction->user->decrement('point', $pointsToDeduct);
                     }
-
-                    // Nolkan poin di transaksi agar tidak ditarik ganda di masa depan
                     $transaction->update(['point' => 0]);
+                }
+
+                // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore saat sukses direfund
+                foreach ($transaction->details as $detail) {
+                    $this->restoreProductStock($detail->product_id, $detail->quantity);
                 }
             });
 
@@ -717,8 +1297,14 @@ class TransactionController extends Controller
             $errorMessage = $e->getMessage();
 
             if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
-                // Kurir sudah dibatalkan di atas, jadi aman untuk mengubah ke manual_required
-                $transaction->update(['status' => 'refund_manual_required']);
+                // [PENTING] Karena manual refund, stok juga kita kembalikan sekarang karena barangnya batal terkirim
+                DB::transaction(function () use ($transaction) {
+                    $transaction->update(['status' => 'refund_manual_required']);
+
+                    foreach ($transaction->details as $detail) {
+                        $this->restoreProductStock($detail->product_id, $detail->quantity);
+                    }
+                });
 
                 return response()->json([
                     'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
@@ -726,10 +1312,8 @@ class TransactionController extends Controller
                 ], 200);
             }
 
-            \Illuminate\Support\Facades\Log::error('Xendit Refund Error: ' . $errorMessage);
             return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('System Refund Error: ' . $e->getMessage());
             return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
         }
     }
