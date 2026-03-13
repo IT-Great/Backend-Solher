@@ -20,13 +20,15 @@ class Transaction extends Model
         'payment_method',
         'courier_company',
         'courier_type',
-        'delivery_type', 
-        'delivery_date', 
-        'delivery_time', 
+        'delivery_type',
+        'delivery_date',
+        'delivery_time',
         'tracking_number',
         'shipping_status',
         'biteship_order_id',
-        'point'
+        'point',
+        'refund_reason',
+        'refund_proof_url'
     ];
 
     /**

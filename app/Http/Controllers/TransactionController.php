@@ -434,17 +434,56 @@ class TransactionController extends Controller
         return response()->json(['message' => 'Order completed!']);
     }
 
+    // public function requestRefund(Request $request, $id)
+    // {
+    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+    //     // Refund bisa diajukan saat status ini
+    //     if (!in_array($transaction->status, ['completed', 'shipping_failed'])) {
+    //         return response()->json(['message' => 'Cannot request refund for this order state.'], 400);
+    //     }
+
+    //     $transaction->update(['status' => 'refund_requested']);
+    //     return response()->json(['message' => 'Refund requested. Waiting for admin approval.']);
+    // }
+
     public function requestRefund(Request $request, $id)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
-        // Refund bisa diajukan saat status ini
+        // Validasi: Refund hanya bisa diajukan saat pesanan selesai atau gagal kirim
         if (!in_array($transaction->status, ['completed', 'shipping_failed'])) {
             return response()->json(['message' => 'Cannot request refund for this order state.'], 400);
         }
 
-        $transaction->update(['status' => 'refund_requested']);
-        return response()->json(['message' => 'Refund requested. Waiting for admin approval.']);
+        // [BARU] Validasi input text dan file bukti (gambar atau video)
+        $request->validate([
+            'reason' => 'required|string|max:1000',
+            'proof_file' => 'required|file|mimes:jpeg,png,jpg,mp4,mov|max:10240' // Max 10MB
+        ]);
+
+        try {
+            // [BARU] Upload file ke AWS S3
+            $file = $request->file('proof_file');
+            $path = $file->store('refund_proofs', [
+                'disk' => 's3',
+                'visibility' => 'public'
+            ]);
+            $proofUrl = \Illuminate\Support\Facades\Storage::disk('s3')->url($path);
+
+            // Update transaksi
+            $transaction->update([
+                'status' => 'refund_requested',
+                'refund_reason' => $request->reason,
+                'refund_proof_url' => $proofUrl
+            ]);
+
+            return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to upload refund proof: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to process refund request. Please try again.'], 500);
+        }
     }
 
     // User klik "Refund Now" setelah disetujui admin
