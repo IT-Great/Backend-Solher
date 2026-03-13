@@ -29,7 +29,7 @@
     "crons": [
         {
             "path": "/api/trigger-queue?token=rahasia123",
-            "schedule": "* * * * *"
+            "schedule": "30 * * * *"
         }
     ]
 }
