@@ -116,6 +116,41 @@ class AuthController extends Controller
         ], 200);
     }
 
+    // public function adminLogin(Request $request)
+    // {
+    //     $validator = Validator::make($request->all(), [
+    //         'email'    => 'required|email',
+    //         'password' => 'required',
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json($validator->errors(), 422);
+    //     }
+
+    //     // $user = User::where('email', $request->email)
+    //     //     ->where('usertype', 'admin') // Filter khusus admin
+    //     //     ->first();
+
+    //     $user = User::where('email', $request->email)
+    //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
+    //         ->first();
+
+    //     if (!$user || !Hash::check($request->password, $user->password)) {
+    //         return response()->json([
+    //             'message' => 'Akses ditolak. Email/Password salah atau Anda bukan Admin.'
+    //         ], 401);
+    //     }
+
+    //     $token = $user->createToken('admin_token')->plainTextToken;
+
+    //     return response()->json([
+    //         'message'      => 'Admin Login Berhasil',
+    //         'access_token' => $token,
+    //         'token_type'   => 'Bearer',
+    //         'user'         => $user
+    //     ], 200);
+    // }
+
     public function adminLogin(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -127,20 +162,21 @@ class AuthController extends Controller
             return response()->json($validator->errors(), 422);
         }
 
+        // [PERBAIKAN] Izinkan semua role selain 'user' biasa untuk login di portal Admin
         $user = User::where('email', $request->email)
-            ->where('usertype', 'admin') // Filter khusus admin
+            ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
             ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
-                'message' => 'Akses ditolak. Email/Password salah atau Anda bukan Admin.'
+                'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.'
             ], 401);
         }
 
         $token = $user->createToken('admin_token')->plainTextToken;
 
         return response()->json([
-            'message'      => 'Admin Login Berhasil',
+            'message'      => 'Login Berhasil',
             'access_token' => $token,
             'token_type'   => 'Bearer',
             'user'         => $user
@@ -473,15 +509,49 @@ class AuthController extends Controller
     // FUNGSI FORGOT PASSWORD KHUSUS ADMIN
     // ====================================================================
 
+    // public function adminSendResetCode(Request $request)
+    // {
+    //     $request->validate(['email' => 'required|email']);
+
+    //     // [PENTING] Pastikan email ini milik ADMIN, bukan user biasa
+    //     $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
+
+    //     if (!$admin) {
+    //         return response()->json(['message' => 'Admin email address not found or unauthorized.'], 404);
+    //     }
+
+    //     DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+    //     $code = sprintf("%06d", mt_rand(1, 999999));
+
+    //     DB::table('password_reset_codes')->insert([
+    //         'email' => $request->email,
+    //         'code' => Hash::make($code),
+    //         'expires_at' => Carbon::now()->addMinutes(15),
+    //         'created_at' => Carbon::now()
+    //     ]);
+
+    //     try {
+    //         // Kita menggunakan Mailer yang sama seperti User, karena desainnya universal
+    //         Mail::to($request->email)->send(new \App\Mail\ResetPasswordCodeMail($code));
+    //         return response()->json(['message' => 'Admin verification code sent to your email.']);
+    //     } catch (\Exception $e) {
+    //         Log::error('Failed to send admin reset code: ' . $e->getMessage());
+    //         return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
+    //     }
+    // }
+
     public function adminSendResetCode(Request $request)
     {
         $request->validate(['email' => 'required|email']);
 
-        // [PENTING] Pastikan email ini milik ADMIN, bukan user biasa
-        $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
+        // [PERBAIKAN] Cek apakah email ini milik staf internal (bukan pelanggan biasa)
+        $admin = User::where('email', $request->email)
+            ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
+            ->first();
 
         if (!$admin) {
-            return response()->json(['message' => 'Admin email address not found or unauthorized.'], 404);
+            return response()->json(['message' => 'Alamat email tidak ditemukan atau tidak memiliki izin akses.'], 404);
         }
 
         DB::table('password_reset_codes')->where('email', $request->email)->delete();
@@ -496,14 +566,41 @@ class AuthController extends Controller
         ]);
 
         try {
-            // Kita menggunakan Mailer yang sama seperti User, karena desainnya universal
             Mail::to($request->email)->send(new \App\Mail\ResetPasswordCodeMail($code));
-            return response()->json(['message' => 'Admin verification code sent to your email.']);
+            return response()->json(['message' => 'Kode verifikasi telah dikirim ke email Anda.']);
         } catch (\Exception $e) {
             Log::error('Failed to send admin reset code: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
+            return response()->json(['message' => 'Gagal mengirim email. Silakan coba lagi nanti.'], 500);
         }
     }
+
+    // public function adminVerifyResetCode(Request $request)
+    // {
+    //     $request->validate([
+    //         'email' => 'required|email',
+    //         'code' => 'required|digits:6'
+    //     ]);
+
+    //     $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
+    //     if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
+
+    //     $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
+
+    //     if (!$resetData) {
+    //         return response()->json(['message' => 'Invalid or expired verification code.'], 400);
+    //     }
+
+    //     if (Carbon::now()->greaterThan($resetData->expires_at)) {
+    //         DB::table('password_reset_codes')->where('email', $request->email)->delete();
+    //         return response()->json(['message' => 'Verification code has expired.'], 400);
+    //     }
+
+    //     if (!Hash::check($request->code, $resetData->code)) {
+    //         return response()->json(['message' => 'Incorrect verification code.'], 400);
+    //     }
+
+    //     return response()->json(['message' => 'Code verified successfully.']);
+    // }
 
     public function adminVerifyResetCode(Request $request)
     {
@@ -512,26 +609,54 @@ class AuthController extends Controller
             'code' => 'required|digits:6'
         ]);
 
-        $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
-        if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
+        // [PERBAIKAN] Validasi staf
+        $admin = User::where('email', $request->email)
+            ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
+            ->first();
+        if (!$admin) return response()->json(['message' => 'Akses ditolak.'], 403);
 
         $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
 
         if (!$resetData) {
-            return response()->json(['message' => 'Invalid or expired verification code.'], 400);
+            return response()->json(['message' => 'Kode verifikasi tidak valid atau telah kedaluwarsa.'], 400);
         }
 
         if (Carbon::now()->greaterThan($resetData->expires_at)) {
             DB::table('password_reset_codes')->where('email', $request->email)->delete();
-            return response()->json(['message' => 'Verification code has expired.'], 400);
+            return response()->json(['message' => 'Kode verifikasi telah kedaluwarsa.'], 400);
         }
 
         if (!Hash::check($request->code, $resetData->code)) {
-            return response()->json(['message' => 'Incorrect verification code.'], 400);
+            return response()->json(['message' => 'Kode verifikasi salah.'], 400);
         }
 
-        return response()->json(['message' => 'Code verified successfully.']);
+        return response()->json(['message' => 'Kode berhasil diverifikasi.']);
     }
+
+    // public function adminResetPassword(Request $request)
+    // {
+    //     $request->validate([
+    //         'email' => 'required|email',
+    //         'code' => 'required|digits:6',
+    //         'password' => 'required|string|min:8|confirmed'
+    //     ]);
+
+    //     $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
+    //     if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
+
+    //     $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
+
+    //     if (!$resetData || !Hash::check($request->code, $resetData->code) || Carbon::now()->greaterThan($resetData->expires_at)) {
+    //         return response()->json(['message' => 'Invalid session or code expired.'], 400);
+    //     }
+
+    //     $admin->password = Hash::make($request->password);
+    //     $admin->save();
+
+    //     DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+    //     return response()->json(['message' => 'Admin password has been successfully reset.']);
+    // }
 
     public function adminResetPassword(Request $request)
     {
@@ -541,13 +666,16 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed'
         ]);
 
-        $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
-        if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
+        // [PERBAIKAN] Validasi staf
+        $admin = User::where('email', $request->email)
+            ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
+            ->first();
+        if (!$admin) return response()->json(['message' => 'Akses ditolak.'], 403);
 
         $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
 
         if (!$resetData || !Hash::check($request->code, $resetData->code) || Carbon::now()->greaterThan($resetData->expires_at)) {
-            return response()->json(['message' => 'Invalid session or code expired.'], 400);
+            return response()->json(['message' => 'Sesi tidak valid atau kode kedaluwarsa.'], 400);
         }
 
         $admin->password = Hash::make($request->password);
@@ -555,6 +683,6 @@ class AuthController extends Controller
 
         DB::table('password_reset_codes')->where('email', $request->email)->delete();
 
-        return response()->json(['message' => 'Admin password has been successfully reset.']);
+        return response()->json(['message' => 'Kata sandi berhasil disetel ulang.']);
     }
 }
