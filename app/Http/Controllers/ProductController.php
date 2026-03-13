@@ -149,12 +149,46 @@ class ProductController extends Controller
         // $product = Product::create($request->all());
 
         DB::beginTransaction(); // Gunakan transaksi database
+        // try {
+        //     $product = Product::create($request->all());
+
+        //     // [BARU] Buat batch stok pertama kali
+        //     if ($request->stock > 0) {
+        //         $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+        //         ProductStock::create([
+        //             'product_id' => $product->id,
+        //             'batch_code' => $batchCode,
+        //             'quantity' => $request->stock,
+        //             'initial_quantity' => $request->stock
+        //         ]);
+        //     }
+        //     // [BARU] BROADCAST KE SEMUA SUBSCRIBER AKTIF
+        //     // Catatan: Di production skala besar, gunakan Mail::to()->queue() agar web admin tidak loading lama.
+        //     $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
+
+        //     foreach ($subscribers as $email) {
+        //         try {
+        //             \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\NewProductAlertMail($product));
+        //         } catch (\Exception $e) {
+        //             \Illuminate\Support\Facades\Log::error("Gagal broadcast produk ke $email: " . $e->getMessage());
+        //             // Lanjut ke email berikutnya jika 1 gagal
+        //             continue;
+        //         }
+        //     }
+
+        //     DB::commit();
+        //     return response()->json($product, 201);
+        // } catch (\Exception $e) {
+        //     DB::rollBack();
+        //     return response()->json(['message' => $e->getMessage()], 500);
+        // }
+
         try {
             $product = Product::create($request->all());
 
-            // [BARU] Buat batch stok pertama kali
+            // Buat batch stok pertama kali
             if ($request->stock > 0) {
-                $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+                $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4));
                 ProductStock::create([
                     'product_id' => $product->id,
                     'batch_code' => $batchCode,
@@ -162,19 +196,18 @@ class ProductController extends Controller
                     'initial_quantity' => $request->stock
                 ]);
             }
-            // [BARU] BROADCAST KE SEMUA SUBSCRIBER AKTIF
-            // Catatan: Di production skala besar, gunakan Mail::to()->queue() agar web admin tidak loading lama.
+
+            // =========================================================================
+            // [PERBAIKAN] ASYNCHRONOUS BROADCAST MENGGUNAKAN LARAVEL QUEUE
+            // =========================================================================
             $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
 
             foreach ($subscribers as $email) {
-                try {
-                    \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\NewProductAlertMail($product));
-                } catch (\Exception $e) {
-                    \Illuminate\Support\Facades\Log::error("Gagal broadcast produk ke $email: " . $e->getMessage());
-                    // Lanjut ke email berikutnya jika 1 gagal
-                    continue;
-                }
+                // Melempar (Dispatch) tugas ke tabel antrean (jobs)
+                // Ini terjadi dalam hitungan milidetik, tanpa menunggu email terkirim!
+                \App\Jobs\SendNewProductEmailJob::dispatch($email, $product);
             }
+            // =========================================================================
 
             DB::commit();
             return response()->json($product, 201);

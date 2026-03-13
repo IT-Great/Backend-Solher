@@ -19,6 +19,26 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransferReceivePaymentController;
 use App\Http\Controllers\AddressController; // Pastikan ini di-import
 
+// Route khusus untuk Vercel Cron Job
+Route::get('/trigger-queue', function (\Illuminate\Http\Request $request) {
+    // 1. Keamanan: Pastikan hanya Vercel/Anda yang bisa memanggil URL ini
+    if ($request->query('token') !== config('app.queue_token', 'rahasia123')) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    // 2. Jalankan worker, tapi paksa berhenti jika antrean kosong atau sudah berjalan 10 detik (batas aman Vercel)
+    try {
+        \Illuminate\Support\Facades\Artisan::call('queue:work', [
+            '--stop-when-empty' => true,
+            '--max-time' => 10, // Berhenti setelah 10 detik agar tidak Vercel Timeout 504
+        ]);
+
+        return response()->json(['message' => 'Queue processed successfully.']);
+    } catch (\Exception $e) {
+        return response()->json(['message' => 'Queue failed: ' . $e->getMessage()], 500);
+    }
+});
+
 // Route Public
 Route::get('/home/find-product', [HomeController::class, 'getProductBySearch']);
 Route::get('/home/category/{code}', [HomeController::class, 'getProductsByCategory']);
