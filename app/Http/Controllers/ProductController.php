@@ -537,7 +537,7 @@ class ProductController extends Controller
             $product->delete();
         } catch (QueryException $e) {
             // return back()->with('error', 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi.');
-            return response()->json([$e => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi']);
+            return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi']);
         }
     }
 }
