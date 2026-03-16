@@ -2,14 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use Str;
+use App\Jobs\SendNewProductEmailJob;
 use App\Models\Product;
-use Illuminate\Http\Request;
 use App\Models\ProductStock;
+use App\Models\Subscriber;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Str;
 
 class ProductController extends Controller
 {
@@ -18,13 +20,13 @@ class ProductController extends Controller
     //     return response()->json(Product::with('category')->latest()->get(), 200);
     // }
 
-
     public function index()
     {
         $products = Product::with('category')
             ->where('status', 'active') // Hanya yang aktif
             ->latest()
             ->get();
+
         return response()->json($products, 200);
     }
 
@@ -34,6 +36,7 @@ class ProductController extends Controller
             ->where('status', 'inactive')
             ->latest()
             ->get();
+
         return response()->json($products, 200);
     }
 
@@ -220,7 +223,7 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         // 1. Validasi File Fisik
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        $validator = Validator::make($request->all(), [
             'code' => 'required|unique:products',
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
@@ -232,8 +235,9 @@ class ProductController extends Controller
             'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
         ]);
 
-        if ($validator->fails())
+        if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
+        }
 
         DB::beginTransaction();
         try {
@@ -268,25 +272,27 @@ class ProductController extends Controller
 
             // Buat batch stok pertama kali
             if ($request->stock > 0) {
-                $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4));
+                $batchCode = 'STK-'.now()->format('YmdHis').'-'.strtoupper(\Illuminate\Support\Str::random(4));
                 ProductStock::create([
                     'product_id' => $product->id,
                     'batch_code' => $batchCode,
                     'quantity' => $request->stock,
-                    'initial_quantity' => $request->stock
+                    'initial_quantity' => $request->stock,
                 ]);
             }
 
             // BROADCAST KE SEMUA SUBSCRIBER AKTIF MENGGUNAKAN LARAVEL QUEUE
-            $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
+            $subscribers = Subscriber::where('is_active', true)->pluck('email');
             foreach ($subscribers as $email) {
-                \App\Jobs\SendNewProductEmailJob::dispatch($email, $product);
+                SendNewProductEmailJob::dispatch($email, $product);
             }
 
             DB::commit();
+
             return response()->json($product, 201);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json(['message' => $e->getMessage()], 500);
         }
     }
@@ -426,11 +432,11 @@ class ProductController extends Controller
     //     return response()->json($product, 200);
     // }
 
-     public function update(Request $request, $id)
+    public function update(Request $request, $id)
     {
         $product = Product::findOrFail($id);
 
-        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        $validator = Validator::make($request->all(), [
             'code' => "required|unique:products,code,$id",
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
@@ -443,8 +449,9 @@ class ProductController extends Controller
             'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
         ]);
 
-        if ($validator->fails())
+        if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
+        }
 
         $data = $request->except(['variant_images', 'variant_video', 'image', 'stock', '_method']);
 
@@ -504,6 +511,7 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
         $product->update(['status' => 'inactive']);
+
         return response()->json(['message' => 'Product deactivated'], 200);
     }
 
@@ -511,6 +519,7 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
         $product->update(['status' => 'active']);
+
         return response()->json(['message' => 'Product activated'], 200);
     }
 
@@ -521,7 +530,13 @@ class ProductController extends Controller
             $path = str_replace(Storage::disk('s3')->url(''), '', $product->image);
             Storage::disk('s3')->delete($path);
         }
-        $product->delete();
-        return response()->json(['message' => 'Product deleted permanently'], 200);
+        // $product->delete();
+        // return response()->json(['message' => 'Product deleted permanently'], 200);
+
+        try {
+            $product->delete();
+        } catch (QueryException $e) {
+            return back()->with('error', 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi.');
+        }
     }
 }
