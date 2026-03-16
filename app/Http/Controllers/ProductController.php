@@ -130,31 +130,145 @@ class ProductController extends Controller
     //     return response()->json($product, 201);
     // }
 
+    // public function store(Request $request)
+    // {
+    //     $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+    //         'code' => 'required|unique:products',
+    //         'name' => 'required',
+    //         'category_id' => 'required|exists:categories,id',
+    //         'price' => 'required|numeric',
+    //         'stock' => 'required|integer',
+    //         'image' => 'required|string',
+    //         'variant_images' => 'nullable|array',
+    //         'variant_video' => 'nullable|string',
+    //     ]);
+
+    //     if ($validator->fails())
+    //         return response()->json($validator->errors(), 422);
+
+    //     // $product = Product::create($request->all());
+
+    //     DB::beginTransaction(); // Gunakan transaksi database
+    //     // try {
+    //     //     $product = Product::create($request->all());
+
+    //     //     // [BARU] Buat batch stok pertama kali
+    //     //     if ($request->stock > 0) {
+    //     //         $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+    //     //         ProductStock::create([
+    //     //             'product_id' => $product->id,
+    //     //             'batch_code' => $batchCode,
+    //     //             'quantity' => $request->stock,
+    //     //             'initial_quantity' => $request->stock
+    //     //         ]);
+    //     //     }
+    //     //     // [BARU] BROADCAST KE SEMUA SUBSCRIBER AKTIF
+    //     //     // Catatan: Di production skala besar, gunakan Mail::to()->queue() agar web admin tidak loading lama.
+    //     //     $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
+
+    //     //     foreach ($subscribers as $email) {
+    //     //         try {
+    //     //             \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\NewProductAlertMail($product));
+    //     //         } catch (\Exception $e) {
+    //     //             \Illuminate\Support\Facades\Log::error("Gagal broadcast produk ke $email: " . $e->getMessage());
+    //     //             // Lanjut ke email berikutnya jika 1 gagal
+    //     //             continue;
+    //     //         }
+    //     //     }
+
+    //     //     DB::commit();
+    //     //     return response()->json($product, 201);
+    //     // } catch (\Exception $e) {
+    //     //     DB::rollBack();
+    //     //     return response()->json(['message' => $e->getMessage()], 500);
+    //     // }
+
+    //     try {
+    //         $product = Product::create($request->all());
+
+    //         // Buat batch stok pertama kali
+    //         if ($request->stock > 0) {
+    //             $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4));
+    //             ProductStock::create([
+    //                 'product_id' => $product->id,
+    //                 'batch_code' => $batchCode,
+    //                 'quantity' => $request->stock,
+    //                 'initial_quantity' => $request->stock
+    //             ]);
+    //         }
+
+    //         // =========================================================================
+    //         // [PERBAIKAN] ASYNCHRONOUS BROADCAST MENGGUNAKAN LARAVEL QUEUE
+    //         // =========================================================================
+    //         $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
+
+    //         foreach ($subscribers as $email) {
+    //             // Melempar (Dispatch) tugas ke tabel antrean (jobs)
+    //             // Ini terjadi dalam hitungan milidetik, tanpa menunggu email terkirim!
+    //             \App\Jobs\SendNewProductEmailJob::dispatch($email, $product);
+    //         }
+    //         // =========================================================================
+
+    //         DB::commit();
+    //         return response()->json($product, 201);
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         return response()->json(['message' => $e->getMessage()], 500);
+    //     }
+    // }
+
     public function store(Request $request)
     {
+        // 1. Validasi File Fisik
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'code' => 'required|unique:products',
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric',
             'stock' => 'required|integer',
-            'image' => 'required|string',
-            'variant_images' => 'nullable|array',
-            'variant_video' => 'nullable|string',
+            'image' => 'required|image|max:2048', // Harus file gambar, maks 2MB
+            'variant_images' => 'nullable|array|max:5',
+            'variant_images.*' => 'image|max:2048',
+            'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
         ]);
 
         if ($validator->fails())
             return response()->json($validator->errors(), 422);
 
-        // $product = Product::create($request->all());
-
-        DB::beginTransaction(); // Gunakan transaksi database
+        DB::beginTransaction();
         try {
-            $product = Product::create($request->all());
+            $data = $request->except(['variant_images', 'variant_video', 'image']);
 
-            // [BARU] Buat batch stok pertama kali
+            // 2. Upload Gambar Utama ke Local Storage
+            if ($request->hasFile('image')) {
+                // public disk akan mengarah ke storage/app/public
+                $path = $request->file('image')->store('products', 'public');
+                // url() akan menghasilkan https://domain.com/storage/products/...
+                $data['image'] = url(Storage::url($path));
+            }
+
+            // 3. Upload Gambar Varian (Array)
+            $variantImagesUrls = [];
+            if ($request->hasFile('variant_images')) {
+                foreach ($request->file('variant_images') as $file) {
+                    $path = $file->store('products/variants', 'public');
+                    $variantImagesUrls[] = url(Storage::url($path));
+                }
+            }
+            $data['variant_images'] = count($variantImagesUrls) > 0 ? $variantImagesUrls : null;
+
+            // 4. Upload Video
+            if ($request->hasFile('variant_video')) {
+                $path = $request->file('variant_video')->store('products/videos', 'public');
+                $data['variant_video'] = url(Storage::url($path));
+            }
+
+            // Simpan ke DB
+            $product = Product::create($data);
+
+            // Buat batch stok pertama kali
             if ($request->stock > 0) {
-                $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+                $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4));
                 ProductStock::create([
                     'product_id' => $product->id,
                     'batch_code' => $batchCode,
@@ -162,18 +276,11 @@ class ProductController extends Controller
                     'initial_quantity' => $request->stock
                 ]);
             }
-            // [BARU] BROADCAST KE SEMUA SUBSCRIBER AKTIF
-            // Catatan: Di production skala besar, gunakan Mail::to()->queue() agar web admin tidak loading lama.
-            $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
 
+            // BROADCAST KE SEMUA SUBSCRIBER AKTIF MENGGUNAKAN LARAVEL QUEUE
+            $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
             foreach ($subscribers as $email) {
-                try {
-                    \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\NewProductAlertMail($product));
-                } catch (\Exception $e) {
-                    \Illuminate\Support\Facades\Log::error("Gagal broadcast produk ke $email: " . $e->getMessage());
-                    // Lanjut ke email berikutnya jika 1 gagal
-                    continue;
-                }
+                \App\Jobs\SendNewProductEmailJob::dispatch($email, $product);
             }
 
             DB::commit();
@@ -182,39 +289,6 @@ class ProductController extends Controller
             DB::rollBack();
             return response()->json(['message' => $e->getMessage()], 500);
         }
-
-        // try {
-        //     $product = Product::create($request->all());
-
-        //     // Buat batch stok pertama kali
-        //     if ($request->stock > 0) {
-        //         $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4));
-        //         ProductStock::create([
-        //             'product_id' => $product->id,
-        //             'batch_code' => $batchCode,
-        //             'quantity' => $request->stock,
-        //             'initial_quantity' => $request->stock
-        //         ]);
-        //     }
-
-        //     // =========================================================================
-        //     // [PERBAIKAN] ASYNCHRONOUS BROADCAST MENGGUNAKAN LARAVEL QUEUE
-        //     // =========================================================================
-        //     $subscribers = \App\Models\Subscriber::where('is_active', true)->pluck('email');
-
-        //     foreach ($subscribers as $email) {
-        //         // Melempar (Dispatch) tugas ke tabel antrean (jobs)
-        //         // Ini terjadi dalam hitungan milidetik, tanpa menunggu email terkirim!
-        //         \App\Jobs\SendNewProductEmailJob::dispatch($email, $product);
-        //     }
-        //     // =========================================================================
-
-        //     DB::commit();
-        //     return response()->json($product, 201);
-        // } catch (\Exception $e) {
-        //     DB::rollBack();
-        //     return response()->json(['message' => $e->getMessage()], 500);
-        // }
     }
 
     // public function update(Request $request, $id)
@@ -282,71 +356,134 @@ class ProductController extends Controller
     //     return response()->json($product, 200);
     // }
 
-    public function update(Request $request, $id)
+    // public function update(Request $request, $id)
+    // {
+    //     $product = Product::findOrFail($id);
+
+    //     $validator = Validator::make($request->all(), [
+    //         'code' => "required|unique:products,code,$id",
+    //         'name' => 'required',
+    //         'category_id' => 'required|exists:categories,id',
+    //         'price' => 'required|numeric',
+    //         // 'stock' => 'required|integer',
+
+    //         'image' => 'nullable|string',
+    //         'variant_images' => 'nullable|array',
+    //         'variant_video' => 'nullable|string',
+    //     ]);
+
+    //     if ($validator->fails())
+    //         return response()->json($validator->errors(), 422);
+
+    //     /*
+    // |--------------------------------------------------------------------------
+    // | DELETE OLD FILE IF URL CHANGED
+    // |--------------------------------------------------------------------------
+    // */
+
+    //     if ($request->image && $product->image !== $request->image) {
+    //         $oldPath = str_replace(
+    //             Storage::disk('s3')->url(''),
+    //             '',
+    //             $product->image
+    //         );
+    //         Storage::disk('s3')->delete($oldPath);
+    //     }
+
+    //     if ($request->variant_images) {
+    //         foreach ($product->variant_images ?? [] as $oldImg) {
+    //             if (!in_array($oldImg, $request->variant_images)) {
+    //                 $oldPath = str_replace(
+    //                     Storage::disk('s3')->url(''),
+    //                     '',
+    //                     $oldImg
+    //                 );
+    //                 Storage::disk('s3')->delete($oldPath);
+    //             }
+    //         }
+    //     }
+
+    //     if (
+    //         $request->variant_video &&
+    //         $product->variant_video !== $request->variant_video
+    //     ) {
+
+    //         $oldPath = str_replace(
+    //             Storage::disk('s3')->url(''),
+    //             '',
+    //             $product->variant_video
+    //         );
+
+    //         Storage::disk('s3')->delete($oldPath);
+    //     }
+
+    //     // $product->update($request->all());
+
+    //     // [PERBAIKAN] Jangan biarkan 'stock' di-update dari halaman edit
+    //     $data = $request->except(['stock']);
+    //     $product->update($data);
+
+    //     return response()->json($product, 200);
+    // }
+
+     public function update(Request $request, $id)
     {
         $product = Product::findOrFail($id);
 
-        $validator = Validator::make($request->all(), [
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'code' => "required|unique:products,code,$id",
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric',
-            // 'stock' => 'required|integer',
 
-            'image' => 'nullable|string',
-            'variant_images' => 'nullable|array',
-            'variant_video' => 'nullable|string',
+            // Saat update, image boleh kosong (jika tidak diganti)
+            'image' => 'nullable|image|max:2048',
+            'variant_images' => 'nullable|array|max:5',
+            'variant_images.*' => 'image|max:2048',
+            'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
         ]);
 
         if ($validator->fails())
             return response()->json($validator->errors(), 422);
 
-        /*
-    |--------------------------------------------------------------------------
-    | DELETE OLD FILE IF URL CHANGED
-    |--------------------------------------------------------------------------
-    */
+        $data = $request->except(['variant_images', 'variant_video', 'image', 'stock', '_method']);
 
-        if ($request->image && $product->image !== $request->image) {
-            $oldPath = str_replace(
-                Storage::disk('s3')->url(''),
-                '',
-                $product->image
-            );
-            Storage::disk('s3')->delete($oldPath);
+        // 1. Hapus & Ganti Gambar Utama Jika Ada Upload Baru
+        if ($request->hasFile('image')) {
+            if ($product->image) {
+                $oldPath = str_replace(url(Storage::url('')), '', $product->image);
+                Storage::disk('public')->delete($oldPath);
+            }
+            $path = $request->file('image')->store('products', 'public');
+            $data['image'] = url(Storage::url($path));
         }
 
-        if ($request->variant_images) {
-            foreach ($product->variant_images ?? [] as $oldImg) {
-                if (!in_array($oldImg, $request->variant_images)) {
-                    $oldPath = str_replace(
-                        Storage::disk('s3')->url(''),
-                        '',
-                        $oldImg
-                    );
-                    Storage::disk('s3')->delete($oldPath);
+        // 2. Hapus & Ganti Varian Jika Ada Upload Baru (OVERWRITE ALL)
+        if ($request->hasFile('variant_images')) {
+            if ($product->variant_images) {
+                foreach ($product->variant_images as $oldImgUrl) {
+                    $oldPath = str_replace(url(Storage::url('')), '', $oldImgUrl);
+                    Storage::disk('public')->delete($oldPath);
                 }
             }
+            $variantImagesUrls = [];
+            foreach ($request->file('variant_images') as $file) {
+                $path = $file->store('products/variants', 'public');
+                $variantImagesUrls[] = url(Storage::url($path));
+            }
+            $data['variant_images'] = $variantImagesUrls;
         }
 
-        if (
-            $request->variant_video &&
-            $product->variant_video !== $request->variant_video
-        ) {
-
-            $oldPath = str_replace(
-                Storage::disk('s3')->url(''),
-                '',
-                $product->variant_video
-            );
-
-            Storage::disk('s3')->delete($oldPath);
+        // 3. Hapus & Ganti Video Jika Ada Upload Baru
+        if ($request->hasFile('variant_video')) {
+            if ($product->variant_video) {
+                $oldPath = str_replace(url(Storage::url('')), '', $product->variant_video);
+                Storage::disk('public')->delete($oldPath);
+            }
+            $path = $request->file('variant_video')->store('products/videos', 'public');
+            $data['variant_video'] = url(Storage::url($path));
         }
 
-        // $product->update($request->all());
-
-        // [PERBAIKAN] Jangan biarkan 'stock' di-update dari halaman edit
-        $data = $request->except(['stock']);
         $product->update($data);
 
         return response()->json($product, 200);
