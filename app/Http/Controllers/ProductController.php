@@ -523,49 +523,49 @@ class ProductController extends Controller
         return response()->json(['message' => 'Product activated'], 200);
     }
 
-    // public function forceDelete($id)
-    // {
-    //     $product = Product::findOrFail($id);
-    //     if ($product->image) {
-    //         $path = str_replace(Storage::disk('s3')->url(''), '', $product->image);
-    //         Storage::disk('s3')->delete($path);
-    //     }
-    //     // $product->delete();
-    //     // return response()->json(['message' => 'Product deleted permanently'], 200);
-
-    //     try {
-    //         $product->delete();
-    //     } catch (QueryException $e) {
-    //         // return back()->with('error', 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi.');
-    //         return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi']);
-    //     }
-    // }
-
     public function forceDelete($id)
     {
-        // Gunakan findWithTrashed karena produk yang mau di-force delete
-        // biasanya sudah dalam kondisi soft delete (inactive)
-        $product = Product::withTrashed()->findOrFail($id);
-
+        $product = Product::findOrFail($id);
         if ($product->image) {
             $path = str_replace(Storage::disk('s3')->url(''), '', $product->image);
             Storage::disk('s3')->delete($path);
         }
+        // $product->delete();
+        // return response()->json(['message' => 'Product deleted permanently'], 200);
 
         try {
-            // Gunakan forceDelete() jika Anda menggunakan SoftDeletes,
-            // kalau delete() biasa dia hanya akan mengisi kolom deleted_at lagi
-            $product->forceDelete();
-
-            return response()->json([
-                'message' => 'Produk berhasil dihapus permanen',
-            ], 200);
-
+            $product->delete();
         } catch (QueryException $e) {
-            // Tambahkan status code 422 atau 400 agar Axios menganggap ini ERROR
-            return response()->json([
-                'message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi (Integrity Constraint).',
-            ], 422);
+            // return back()->with('error', 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi.');
+            return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi'], 422);
         }
     }
+
+    // public function forceDelete($id)
+    // {
+    //     // Gunakan findWithTrashed karena produk yang mau di-force delete
+    //     // biasanya sudah dalam kondisi soft delete (inactive)
+    //     $product = Product::withTrashed()->findOrFail($id);
+
+    //     if ($product->image) {
+    //         $path = str_replace(Storage::disk('s3')->url(''), '', $product->image);
+    //         Storage::disk('s3')->delete($path);
+    //     }
+
+    //     try {
+    //         // Gunakan forceDelete() jika Anda menggunakan SoftDeletes,
+    //         // kalau delete() biasa dia hanya akan mengisi kolom deleted_at lagi
+    //         $product->forceDelete();
+
+    //         return response()->json([
+    //             'message' => 'Produk berhasil dihapus permanen',
+    //         ], 200);
+
+    //     } catch (QueryException $e) {
+    //         // Tambahkan status code 422 atau 400 agar Axios menganggap ini ERROR
+    //         return response()->json([
+    //             'message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi (Integrity Constraint).',
+    //         ], 422);
+    //     }
+    // }
 }
