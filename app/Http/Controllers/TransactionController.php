@@ -606,12 +606,33 @@ class TransactionController extends Controller
                     }
                 }
 
+                // if ($remainingQuantityToDeduct > 0) {
+                //     throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+                // }
+
+                // // Kurangi Total Stok Master
+                // $product->decrement('stock', $item->quantity);
+
+                // [PERBAIKAN] SELF-HEALING DATA USANG
+                // Jika setelah looping batch ternyata masih ada sisa yang belum terpotong
+                // Ini terjadi pada produk LAMA yang diinput sebelum fitur FIFO dibuat.
                 if ($remainingQuantityToDeduct > 0) {
-                    throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+                    \Illuminate\Support\Facades\Log::warning("Auto-healing stock mismatch for product ID: {$product->id}. Creating missing legacy batch.");
+
+                    // Buat batch fiktif (System Adjustment) on-the-fly untuk menyeimbangkan neraca
+                    ProductStock::create([
+                        'product_id' => $product->id,
+                        'batch_code' => 'SYS-ADJ-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4)),
+                        'quantity' => 0, // Langsung 0 karena dipakai habis untuk pesanan ini
+                        'initial_quantity' => $remainingQuantityToDeduct
+                    ]);
+
+                    $remainingQuantityToDeduct = 0; // Anggap sudah berhasil dipotong
                 }
 
                 // Kurangi Total Stok Master
                 $product->decrement('stock', $item->quantity);
+
                 // ========================================================
 
                 $xenditItems[] = [
