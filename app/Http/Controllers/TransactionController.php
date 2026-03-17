@@ -588,46 +588,96 @@ class TransactionController extends Controller
                 // ========================================================
                 $remainingQuantityToDeduct = $item->quantity;
 
-                $activeBatches = ProductStock::where('product_id', $product->id)
-                    ->where('quantity', '>', 0)
-                    ->orderBy('created_at', 'asc') // FIFO: Ambil yang tertua
-                    ->lockForUpdate() // Kunci batch ini
-                    ->get();
+                // $activeBatches = ProductStock::where('product_id', $product->id)
+                //     ->where('quantity', '>', 0)
+                //     ->orderBy('created_at', 'asc') // FIFO: Ambil yang tertua
+                //     ->lockForUpdate() // Kunci batch ini
+                //     ->get();
 
-                foreach ($activeBatches as $batch) {
-                    if ($remainingQuantityToDeduct <= 0) break;
+                // foreach ($activeBatches as $batch) {
+                //     if ($remainingQuantityToDeduct <= 0) break;
 
-                    if ($batch->quantity >= $remainingQuantityToDeduct) {
-                        $batch->decrement('quantity', $remainingQuantityToDeduct);
-                        $remainingQuantityToDeduct = 0;
-                    } else {
-                        $remainingQuantityToDeduct -= $batch->quantity;
-                        $batch->update(['quantity' => 0]);
-                    }
-                }
+                //     if ($batch->quantity >= $remainingQuantityToDeduct) {
+                //         $batch->decrement('quantity', $remainingQuantityToDeduct);
+                //         $remainingQuantityToDeduct = 0;
+                //     } else {
+                //         $remainingQuantityToDeduct -= $batch->quantity;
+                //         $batch->update(['quantity' => 0]);
+                //     }
+                // }
 
+                // // if ($remainingQuantityToDeduct > 0) {
+                // //     throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+                // // }
+
+                // // // Kurangi Total Stok Master
+                // // $product->decrement('stock', $item->quantity);
+
+                // // [PERBAIKAN] SELF-HEALING DATA USANG
+                // // Jika setelah looping batch ternyata masih ada sisa yang belum terpotong
+                // // Ini terjadi pada produk LAMA yang diinput sebelum fitur FIFO dibuat.
                 // if ($remainingQuantityToDeduct > 0) {
-                //     throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+                //     \Illuminate\Support\Facades\Log::warning("Auto-healing stock mismatch for product ID: {$product->id}. Creating missing legacy batch.");
+
+                //     // Buat batch fiktif (System Adjustment) on-the-fly untuk menyeimbangkan neraca
+                //     ProductStock::create([
+                //         'product_id' => $product->id,
+                //         'batch_code' => 'SYS-ADJ-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4)),
+                //         'quantity' => 0, // Langsung 0 karena dipakai habis untuk pesanan ini
+                //         'initial_quantity' => $remainingQuantityToDeduct
+                //     ]);
+
+                //     $remainingQuantityToDeduct = 0; // Anggap sudah berhasil dipotong
                 // }
 
                 // // Kurangi Total Stok Master
                 // $product->decrement('stock', $item->quantity);
 
-                // [PERBAIKAN] SELF-HEALING DATA USANG
-                // Jika setelah looping batch ternyata masih ada sisa yang belum terpotong
-                // Ini terjadi pada produk LAMA yang diinput sebelum fitur FIFO dibuat.
-                if ($remainingQuantityToDeduct > 0) {
-                    \Illuminate\Support\Facades\Log::warning("Auto-healing stock mismatch for product ID: {$product->id}. Creating missing legacy batch.");
+                // 1. CEK STOK SILUMAN (LEGACY STOCK) TERLEBIH DAHULU!
+                // Menghitung selisih antara master stok dengan total batch fisik
+                // Stok siluman adalah stok paling tua (sebelum fitur batch ada), wajib dihabiskan pertama.
+                $totalBatchQuantity = ProductStock::where('product_id', $product->id)->sum('quantity');
+                $legacyStock = $product->stock - $totalBatchQuantity;
 
-                    // Buat batch fiktif (System Adjustment) on-the-fly untuk menyeimbangkan neraca
+                if ($legacyStock > 0) {
+                    // Ambil dari stok lama sebanyak yang dibutuhkan (tidak boleh lebih dari sisa stok lama)
+                    $takeFromLegacy = min($remainingQuantityToDeduct, $legacyStock);
+
+                    // Buat riwayat pemotongan fiktif agar terekam di database
                     ProductStock::create([
                         'product_id' => $product->id,
-                        'batch_code' => 'SYS-ADJ-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4)),
+                        'batch_code' => 'SYS-LEGACY-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4)),
                         'quantity' => 0, // Langsung 0 karena dipakai habis untuk pesanan ini
-                        'initial_quantity' => $remainingQuantityToDeduct
+                        'initial_quantity' => $takeFromLegacy
                     ]);
 
-                    $remainingQuantityToDeduct = 0; // Anggap sudah berhasil dipotong
+                    $remainingQuantityToDeduct -= $takeFromLegacy;
+                }
+
+                // 2. JIKA MASIH ADA SISA PESANAN, BARU POTONG DARI BATCH FISIK
+                if ($remainingQuantityToDeduct > 0) {
+                    $activeBatches = ProductStock::where('product_id', $product->id)
+                        ->where('quantity', '>', 0)
+                        ->orderBy('created_at', 'asc') // FIFO: Ambil yang tertua
+                        ->lockForUpdate() // Kunci batch ini untuk cegah Race Condition
+                        ->get();
+
+                    foreach ($activeBatches as $batch) {
+                        if ($remainingQuantityToDeduct <= 0) break;
+
+                        if ($batch->quantity >= $remainingQuantityToDeduct) {
+                            $batch->decrement('quantity', $remainingQuantityToDeduct);
+                            $remainingQuantityToDeduct = 0;
+                        } else {
+                            $remainingQuantityToDeduct -= $batch->quantity;
+                            $batch->update(['quantity' => 0]);
+                        }
+                    }
+                }
+
+                // Jika ternyata masih ada sisa setelah looping (Seharusnya tidak mungkin terjadi karena sudah divalidasi $product->stock di awal)
+                if ($remainingQuantityToDeduct > 0) {
+                    throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
                 }
 
                 // Kurangi Total Stok Master
