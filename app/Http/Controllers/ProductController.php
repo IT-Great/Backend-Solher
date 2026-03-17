@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Cache;
 use Str;
 
 class ProductController extends Controller
@@ -20,22 +21,49 @@ class ProductController extends Controller
     //     return response()->json(Product::with('category')->latest()->get(), 200);
     // }
 
+    // public function index()
+    // {
+    //     $products = Product::with('category')
+    //         ->where('status', 'active') // Hanya yang aktif
+    //         ->latest()
+    //         ->get();
+
+    //     return response()->json($products, 200);
+    // }
+
+    // 1. MEMBACA DATA (BACA DARI REDIS CACHE, JIKA KOSONG BACA DARI MYSQL)
+    // =========================================================================
     public function index()
     {
-        $products = Product::with('category')
-            ->where('status', 'active') // Hanya yang aktif
-            ->latest()
-            ->get();
+        // Menyimpan data di RAM (Redis) selama 1 Hari (86400 detik) dengan label 'catalog'
+        $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
+            return Product::with('category')
+                ->where('status', 'active')
+                ->latest()
+                ->get();
+        });
 
         return response()->json($products, 200);
     }
 
+    // public function inactiveProducts()
+    // {
+    //     $products = Product::with('category')
+    //         ->where('status', 'inactive')
+    //         ->latest()
+    //         ->get();
+
+    //     return response()->json($products, 200);
+    // }
+
     public function inactiveProducts()
     {
-        $products = Product::with('category')
-            ->where('status', 'inactive')
-            ->latest()
-            ->get();
+        $products = Cache::tags(['catalog'])->remember('products.inactive', 86400, function () {
+            return Product::with('category')
+                ->where('status', 'inactive')
+                ->latest()
+                ->get();
+        });
 
         return response()->json($products, 200);
     }
@@ -46,11 +74,23 @@ class ProductController extends Controller
     // }
 
     // Update fungsi show() agar memuat relasi stocks
+    // public function show($id)
+    // {
+    //     return response()->json(Product::with(['category', 'stocks' => function ($q) {
+    //         $q->orderBy('created_at', 'asc');
+    //     }])->findOrFail($id), 200);
+    // }
+
     public function show($id)
     {
-        return response()->json(Product::with(['category', 'stocks' => function ($q) {
-            $q->orderBy('created_at', 'asc');
-        }])->findOrFail($id), 200);
+        // Cache per produk berdasarkan ID-nya
+        $product = Cache::tags(['catalog'])->remember("products.detail.{$id}", 86400, function () use ($id) {
+            return Product::with(['category', 'stocks' => function ($q) {
+                $q->orderBy('created_at', 'asc');
+            }])->findOrFail($id);
+        });
+
+        return response()->json($product, 200);
     }
 
     // public function store(Request $request)
@@ -289,6 +329,9 @@ class ProductController extends Controller
 
             DB::commit();
 
+            // [BARU] Bersihkan Cache agar Katalog di Web User langsung ter-update!
+            Cache::tags(['catalog'])->flush();
+
             return response()->json($product, 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -493,6 +536,9 @@ class ProductController extends Controller
 
         $product->update($data);
 
+        // [BARU] Bersihkan Cache!
+        Cache::tags(['catalog'])->flush();
+
         return response()->json($product, 200);
     }
 
@@ -512,6 +558,9 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
         $product->update(['status' => 'inactive']);
 
+        // [BARU] Bersihkan Cache!
+        Cache::tags(['catalog'])->flush();
+
         return response()->json(['message' => 'Product deactivated'], 200);
     }
 
@@ -520,23 +569,49 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
         $product->update(['status' => 'active']);
 
+        Cache::tags(['catalog'])->flush();
+
         return response()->json(['message' => 'Product activated'], 200);
     }
+
+    // public function forceDelete($id)
+    // {
+    //     $product = Product::findOrFail($id);
+    //     if ($product->image) {
+    //         $path = str_replace(Storage::disk('s3')->url(''), '', $product->image);
+    //         Storage::disk('s3')->delete($path);
+    //     }
+    //     // $product->delete();
+    //     // return response()->json(['message' => 'Product deleted permanently'], 200);
+
+    //     try {
+    //         $product->delete();
+    //     } catch (QueryException $e) {
+    //         // return back()->with('error', 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi.');
+    //         return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi'], 422);
+    //     }
+    // }
 
     public function forceDelete($id)
     {
         $product = Product::findOrFail($id);
+
+        // 1. Sesuaikan dengan Local Storage (Bukan S3 lagi)
         if ($product->image) {
-            $path = str_replace(Storage::disk('s3')->url(''), '', $product->image);
-            Storage::disk('s3')->delete($path);
+            $path = str_replace(url(Storage::url('')), '', $product->image);
+            Storage::disk('public')->delete($path);
         }
-        // $product->delete();
-        // return response()->json(['message' => 'Product deleted permanently'], 200);
 
         try {
             $product->delete();
-        } catch (QueryException $e) {
-            // return back()->with('error', 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi.');
+
+            // 2. Bersihkan Cache setelah produk permanen dihapus
+            Cache::tags(['catalog'])->flush();
+
+            // 3. Kembalikan respon sukses
+            return response()->json(['message' => 'Product deleted permanently'], 200);
+
+        } catch (\Illuminate\Database\QueryException $e) {
             return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi'], 422);
         }
     }

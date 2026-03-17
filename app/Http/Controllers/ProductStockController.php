@@ -56,6 +56,7 @@ use App\Models\ProductStock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class ProductStockController extends Controller
 {
@@ -106,6 +107,8 @@ class ProductStockController extends Controller
                 // 4. Perbarui Total Stok Master (Aman dari Race Condition karena sudah di-lock)
                 $product->increment('stock', $request->quantity);
             });
+
+            Cache::tags(['catalog'])->flush();
 
             return response()->json(['message' => 'New stock batch added successfully.']);
 

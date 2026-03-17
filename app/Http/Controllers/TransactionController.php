@@ -16,6 +16,7 @@ use Xendit\XenditSdkException;
 use Xendit\Refund\CreateRefund;
 use App\Models\TransactionDetail;
 use App\Services\BiteshipService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Xendit\Invoice\CreateInvoiceRequest;
@@ -740,6 +741,8 @@ class TransactionController extends Controller
                 'status' => 'pending'
             ]);
 
+            Cache::tags(['catalog'])->flush();
+
             return response()->json([
                 'checkout_url' => $invoice['invoice_url']
             ], 201);
@@ -998,6 +1001,8 @@ class TransactionController extends Controller
                 $this->restoreProductStock($detail->product_id, $detail->quantity);
             }
         });
+
+        Cache::tags(['catalog'])->flush();
 
         return response()->json(['message' => 'Order cancelled successfully']);
     }
@@ -1360,6 +1365,8 @@ class TransactionController extends Controller
                 }
             });
 
+            Cache::tags(['catalog'])->flush();
+
             return response()->json([
                 'message' => 'Refund processed successfully. Funds returned automatically.',
                 'type' => 'automatic'
@@ -1376,6 +1383,8 @@ class TransactionController extends Controller
                         $this->restoreProductStock($detail->product_id, $detail->quantity);
                     }
                 });
+
+                Cache::tags(['catalog'])->flush();
 
                 return response()->json([
                     'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
