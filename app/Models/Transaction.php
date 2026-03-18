@@ -27,6 +27,7 @@ class Transaction extends Model
         'shipping_status',
         'biteship_order_id',
         'point',
+        'points_used',
         'refund_reason',
         'refund_proof_url'
     ];

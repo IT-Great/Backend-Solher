@@ -563,7 +563,8 @@ class TransactionController extends Controller
                 'order_id' => $orderId,
                 'total_amount' => $totalAmount,
                 'status' => 'pending',
-                'point' => $earnedPoints
+                'point' => $earnedPoints,
+                'points_used' => $pointsUsed // SIMPAN POIN YANG DIPAKAI
             ]);
 
             $xenditItems = [];
@@ -988,11 +989,16 @@ class TransactionController extends Controller
             // Re-fetch dan Lock untuk mencegah error paralel
             $lockedTransaction = Transaction::lockForUpdate()->find($transaction->id);
 
-            if ($lockedTransaction->status !== 'refund_manual_required') {
+            if ($lockedTransaction->status !== 'refund_manual_required' && $lockedTransaction->status !== 'cancelled') {
                 $lockedTransaction->update([
                     'status' => 'cancelled',
                     'shipping_status' => 'cancelled' // [PERBAIKAN] Sinkronisasi status pengiriman
                 ]);
+
+                // [PERBAIKAN] KEMBALIKAN POIN YANG HANGUS
+                if ($lockedTransaction->points_used > 0) {
+                    $lockedTransaction->user->increment('point', $lockedTransaction->points_used);
+                }
             }
 
             if ($lockedTransaction->payment && $lockedTransaction->status !== 'refund_manual_required') {
@@ -1205,21 +1211,229 @@ class TransactionController extends Controller
     //     }
     // }
 
+    // public function processRefundUser(Request $request, $id)
+    // {
+    //     $transaction = Transaction::with('payment')
+    //         ->where('user_id', $request->user()->id)
+    //         ->findOrFail($id);
+
+    //     if ($transaction->status !== 'refund_approved') {
+    //         return response()->json(['message' => 'Refund not approved yet.'], 400);
+    //     }
+
+    //     if (!$transaction->payment) {
+    //         return response()->json(['message' => 'Payment data not found.'], 404);
+    //     }
+
+    //     // --- PRE-CHECK DAN EKSEKUSI PEMBATALAN KURIR (DILAKUKAN PERTAMA) ---
+    //     if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+    //         try {
+    //             $res = \Illuminate\Support\Facades\Http::withHeaders([
+    //                 'Authorization' => config('services.biteship.api_key')
+    //             ])->get("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id);
+
+    //             if ($res->successful()) {
+    //                 $data = $res->json();
+    //                 $biteshipStatus = strtolower($data['status'] ?? '');
+
+    //                 $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'rejected', 'return_in_transit', 'returned'];
+
+    //                 if (in_array($biteshipStatus, $unCancellableStatuses)) {
+    //                     return response()->json([
+    //                         'message' => 'Cannot process refund: The package is already in transit or has issues (Status: ' . strtoupper($biteshipStatus) . '). Please contact logistics.'
+    //                     ], 400);
+    //                 }
+
+    //                 // JIKA AMAN, BATALKAN KURIR SEKARANG JUGA
+    //                 if (!in_array($biteshipStatus, ['cancelled'])) {
+    //                     $cancelRes = \Illuminate\Support\Facades\Http::withHeaders([
+    //                         'Authorization' => config('services.biteship.api_key')
+    //                     ])->delete("https://api.biteship.com/v1/orders/" . $transaction->biteship_order_id);
+
+    //                     $cancelData = $cancelRes->json();
+    //                     if (isset($cancelData['success']) && $cancelData['success'] === false) {
+    //                         return response()->json([
+    //                             'message' => 'Failed to cancel courier. Refund aborted to prevent loss.'
+    //                         ], 400);
+    //                     }
+    //                 }
+    //             }
+    //         } catch (\Exception $e) {
+    //             \Illuminate\Support\Facades\Log::error('Biteship Pre-Check Error: ' . $e->getMessage());
+    //             return response()->json(['message' => 'Failed to verify logistics status. Try again later.'], 500);
+    //         }
+    //     }
+
+    //     // --- JIKA KURIR BERHASIL DIBATALKAN, BARU KEMBALIKAN UANGNYA ---
+    //     // try {
+    //     //     $invoiceApi = new InvoiceApi();
+    //     //     $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+
+    //     //     if (empty($invoices) || count($invoices) === 0) {
+    //     //         throw new \Exception("Invoice not found in Xendit.");
+    //     //     }
+
+    //     //     $xenditInvoiceId = $invoices[0]['id'];
+    //     //     $refundApi = new RefundApi();
+
+    //     //     $refundRequest = new CreateRefund([
+    //     //         'invoice_id' => $xenditInvoiceId,
+    //     //         'reason' => 'REQUESTED_BY_CUSTOMER',
+    //     //         'amount' => (int) $transaction->total_amount,
+    //     //         'metadata' => ['order_id' => $transaction->order_id]
+    //     //     ]);
+
+    //     //     $result = $refundApi->createRefund(null, null, $refundRequest);
+
+    //     //     // Jika Xendit sukses, update database lokal
+    //     //     DB::transaction(function () use ($transaction) {
+    //     //         $transaction->update(['status' => 'refunded']);
+    //     //         if ($transaction->payment) {
+    //     //             $transaction->payment->update(['status' => 'REFUNDED']);
+    //     //         }
+
+    //     //         // Pastikan user adalah member dan transaksi ini sebelumnya menghasilkan poin
+    //     //         if ($transaction->point > 0 && $transaction->user->is_membership) {
+    //     //             // Cegah poin user menjadi minus jika dia sudah terlanjur memakainya
+    //     //             $currentPoints = $transaction->user->point;
+    //     //             $pointsToDeduct = min($currentPoints, $transaction->point);
+
+    //     //             if ($pointsToDeduct > 0) {
+    //     //                 $transaction->user->decrement('point', $pointsToDeduct);
+    //     //             }
+
+    //     //             // Nolkan poin di transaksi agar tidak ditarik ganda di masa depan
+    //     //             $transaction->update(['point' => 0]);
+    //     //         }
+    //     //     });
+
+    //     //     return response()->json([
+    //     //         'message' => 'Refund processed successfully. Funds returned automatically.',
+    //     //         'type' => 'automatic'
+    //     //     ]);
+    //     // } catch (XenditSdkException $e) {
+    //     //     $errorMessage = $e->getMessage();
+
+    //     //     if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
+    //     //         // Kurir sudah dibatalkan di atas, jadi aman untuk mengubah ke manual_required
+    //     //         $transaction->update(['status' => 'refund_manual_required']);
+
+    //     //         return response()->json([
+    //     //             'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
+    //     //             'code' => 'MANUAL_REFUND_NEEDED'
+    //     //         ], 200);
+    //     //     }
+
+    //     //     \Illuminate\Support\Facades\Log::error('Xendit Refund Error: ' . $errorMessage);
+    //     //     return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
+    //     // } catch (\Exception $e) {
+    //     //     \Illuminate\Support\Facades\Log::error('System Refund Error: ' . $e->getMessage());
+    //     //     return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
+    //     // }
+
+    //     // --- EKSEKUSI REFUND KE XENDIT ---
+    //     try {
+    //         $invoiceApi = new InvoiceApi();
+    //         $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+
+    //         if (empty($invoices) || count($invoices) === 0) {
+    //             throw new \Exception("Invoice not found in Xendit.");
+    //         }
+
+    //         $xenditInvoiceId = $invoices[0]['id'];
+    //         $refundApi = new RefundApi();
+
+    //         $refundRequest = new CreateRefund([
+    //             'invoice_id' => $xenditInvoiceId,
+    //             'reason' => 'REQUESTED_BY_CUSTOMER',
+    //             'amount' => (int) $transaction->total_amount,
+    //             'metadata' => ['order_id' => $transaction->order_id]
+    //         ]);
+
+    //         $refundApi->createRefund(null, null, $refundRequest);
+
+    //         // [PENTING] Jika Xendit sukses, update DB & Kembalikan Stok FIFO dalam 1 Transaksi
+    //         DB::transaction(function () use ($transaction) {
+    //             $transaction->update(['status' => 'refunded']);
+    //             if ($transaction->payment) {
+    //                 $transaction->payment->update(['status' => 'REFUNDED']);
+    //             }
+
+    //             if ($transaction->point > 0 && $transaction->user->is_membership) {
+    //                 $currentPoints = $transaction->user->point;
+    //                 $pointsToDeduct = min($currentPoints, $transaction->point);
+    //                 if ($pointsToDeduct > 0) {
+    //                     $transaction->user->decrement('point', $pointsToDeduct);
+    //                 }
+    //                 $transaction->update(['point' => 0]);
+    //             }
+
+    //             // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore saat sukses direfund
+    //             foreach ($transaction->details as $detail) {
+    //                 $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //             }
+    //         });
+
+    //         Cache::tags(['catalog'])->flush();
+
+    //         return response()->json([
+    //             'message' => 'Refund processed successfully. Funds returned automatically.',
+    //             'type' => 'automatic'
+    //         ]);
+    //     } catch (XenditSdkException $e) {
+    //         $errorMessage = $e->getMessage();
+
+    //         if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
+    //             // [PENTING] Karena manual refund, stok juga kita kembalikan sekarang karena barangnya batal terkirim
+    //             DB::transaction(function () use ($transaction) {
+    //                 $transaction->update(['status' => 'refund_manual_required']);
+
+    //                 foreach ($transaction->details as $detail) {
+    //                     $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //                 }
+    //             });
+
+    //             Cache::tags(['catalog'])->flush();
+
+    //             return response()->json([
+    //                 'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
+    //                 'code' => 'MANUAL_REFUND_NEEDED'
+    //             ], 200);
+    //         }
+
+    //         return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
+    //     } catch (\Exception $e) {
+    //         return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
+    //     }
+    // }
+
     public function processRefundUser(Request $request, $id)
     {
+        // 1. Ambil data transaksi (Tanpa Lock terlebih dahulu)
         $transaction = Transaction::with('payment')
             ->where('user_id', $request->user()->id)
             ->findOrFail($id);
 
-        if ($transaction->status !== 'refund_approved') {
-            return response()->json(['message' => 'Refund not approved yet.'], 400);
+        // =========================================================================
+        // [PERBAIKAN] ATOMIC STATE TRANSITION (Pencegah Double Refund)
+        // Kita paksa ubah statusnya di database SEBELUM memanggil API Xendit.
+        // Jika ada 2 request masuk bersamaan, request kedua akan menghasilkan $locked = 0 (Gagal)
+        // =========================================================================
+        $locked = Transaction::where('id', $id)
+            ->where('status', 'refund_approved')
+            ->update(['status' => 'refund_processing']); // Status sementara
+
+        if (!$locked) {
+            return response()->json(['message' => 'Refund is already being processed or not valid.'], 400);
         }
 
         if (!$transaction->payment) {
+            // Rollback status karena gagal
+            $transaction->update(['status' => 'refund_approved']);
             return response()->json(['message' => 'Payment data not found.'], 404);
         }
 
-        // --- PRE-CHECK DAN EKSEKUSI PEMBATALAN KURIR (DILAKUKAN PERTAMA) ---
+        // --- PRE-CHECK DAN EKSEKUSI PEMBATALAN KURIR ---
         if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
             try {
                 $res = \Illuminate\Support\Facades\Http::withHeaders([
@@ -1233,12 +1447,14 @@ class TransactionController extends Controller
                     $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'rejected', 'return_in_transit', 'returned'];
 
                     if (in_array($biteshipStatus, $unCancellableStatuses)) {
+                        // Rollback status karena kurir sudah jalan
+                        $transaction->update(['status' => 'refund_approved']);
                         return response()->json([
-                            'message' => 'Cannot process refund: The package is already in transit or has issues (Status: ' . strtoupper($biteshipStatus) . '). Please contact logistics.'
+                            'message' => 'Cannot process refund: The package is already in transit or has issues. Please contact logistics.'
                         ], 400);
                     }
 
-                    // JIKA AMAN, BATALKAN KURIR SEKARANG JUGA
+                    // JIKA AMAN, BATALKAN KURIR
                     if (!in_array($biteshipStatus, ['cancelled'])) {
                         $cancelRes = \Illuminate\Support\Facades\Http::withHeaders([
                             'Authorization' => config('services.biteship.api_key')
@@ -1246,6 +1462,7 @@ class TransactionController extends Controller
 
                         $cancelData = $cancelRes->json();
                         if (isset($cancelData['success']) && $cancelData['success'] === false) {
+                            $transaction->update(['status' => 'refund_approved']); // Rollback
                             return response()->json([
                                 'message' => 'Failed to cancel courier. Refund aborted to prevent loss.'
                             ], 400);
@@ -1253,77 +1470,11 @@ class TransactionController extends Controller
                     }
                 }
             } catch (\Exception $e) {
+                $transaction->update(['status' => 'refund_approved']); // Rollback
                 \Illuminate\Support\Facades\Log::error('Biteship Pre-Check Error: ' . $e->getMessage());
                 return response()->json(['message' => 'Failed to verify logistics status. Try again later.'], 500);
             }
         }
-
-        // --- JIKA KURIR BERHASIL DIBATALKAN, BARU KEMBALIKAN UANGNYA ---
-        // try {
-        //     $invoiceApi = new InvoiceApi();
-        //     $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
-
-        //     if (empty($invoices) || count($invoices) === 0) {
-        //         throw new \Exception("Invoice not found in Xendit.");
-        //     }
-
-        //     $xenditInvoiceId = $invoices[0]['id'];
-        //     $refundApi = new RefundApi();
-
-        //     $refundRequest = new CreateRefund([
-        //         'invoice_id' => $xenditInvoiceId,
-        //         'reason' => 'REQUESTED_BY_CUSTOMER',
-        //         'amount' => (int) $transaction->total_amount,
-        //         'metadata' => ['order_id' => $transaction->order_id]
-        //     ]);
-
-        //     $result = $refundApi->createRefund(null, null, $refundRequest);
-
-        //     // Jika Xendit sukses, update database lokal
-        //     DB::transaction(function () use ($transaction) {
-        //         $transaction->update(['status' => 'refunded']);
-        //         if ($transaction->payment) {
-        //             $transaction->payment->update(['status' => 'REFUNDED']);
-        //         }
-
-        //         // Pastikan user adalah member dan transaksi ini sebelumnya menghasilkan poin
-        //         if ($transaction->point > 0 && $transaction->user->is_membership) {
-        //             // Cegah poin user menjadi minus jika dia sudah terlanjur memakainya
-        //             $currentPoints = $transaction->user->point;
-        //             $pointsToDeduct = min($currentPoints, $transaction->point);
-
-        //             if ($pointsToDeduct > 0) {
-        //                 $transaction->user->decrement('point', $pointsToDeduct);
-        //             }
-
-        //             // Nolkan poin di transaksi agar tidak ditarik ganda di masa depan
-        //             $transaction->update(['point' => 0]);
-        //         }
-        //     });
-
-        //     return response()->json([
-        //         'message' => 'Refund processed successfully. Funds returned automatically.',
-        //         'type' => 'automatic'
-        //     ]);
-        // } catch (XenditSdkException $e) {
-        //     $errorMessage = $e->getMessage();
-
-        //     if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
-        //         // Kurir sudah dibatalkan di atas, jadi aman untuk mengubah ke manual_required
-        //         $transaction->update(['status' => 'refund_manual_required']);
-
-        //         return response()->json([
-        //             'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
-        //             'code' => 'MANUAL_REFUND_NEEDED'
-        //         ], 200);
-        //     }
-
-        //     \Illuminate\Support\Facades\Log::error('Xendit Refund Error: ' . $errorMessage);
-        //     return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
-        // } catch (\Exception $e) {
-        //     \Illuminate\Support\Facades\Log::error('System Refund Error: ' . $e->getMessage());
-        //     return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
-        // }
 
         // --- EKSEKUSI REFUND KE XENDIT ---
         try {
@@ -1346,23 +1497,15 @@ class TransactionController extends Controller
 
             $refundApi->createRefund(null, null, $refundRequest);
 
-            // [PENTING] Jika Xendit sukses, update DB & Kembalikan Stok FIFO dalam 1 Transaksi
+            // Jika Xendit sukses, update ke status Akhir (Refunded)
             DB::transaction(function () use ($transaction) {
                 $transaction->update(['status' => 'refunded']);
                 if ($transaction->payment) {
                     $transaction->payment->update(['status' => 'REFUNDED']);
                 }
 
-                if ($transaction->point > 0 && $transaction->user->is_membership) {
-                    $currentPoints = $transaction->user->point;
-                    $pointsToDeduct = min($currentPoints, $transaction->point);
-                    if ($pointsToDeduct > 0) {
-                        $transaction->user->decrement('point', $pointsToDeduct);
-                    }
-                    $transaction->update(['point' => 0]);
-                }
+                // Pengembalian poin yang dipakai ada di Fix Bencana 2 di bawah
 
-                // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore saat sukses direfund
                 foreach ($transaction->details as $detail) {
                     $this->restoreProductStock($detail->product_id, $detail->quantity);
                 }
@@ -1378,25 +1521,24 @@ class TransactionController extends Controller
             $errorMessage = $e->getMessage();
 
             if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
-                // [PENTING] Karena manual refund, stok juga kita kembalikan sekarang karena barangnya batal terkirim
                 DB::transaction(function () use ($transaction) {
                     $transaction->update(['status' => 'refund_manual_required']);
-
                     foreach ($transaction->details as $detail) {
                         $this->restoreProductStock($detail->product_id, $detail->quantity);
                     }
                 });
 
                 Cache::tags(['catalog'])->flush();
-
                 return response()->json([
                     'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
                     'code' => 'MANUAL_REFUND_NEEDED'
                 ], 200);
             }
 
+            $transaction->update(['status' => 'refund_approved']); // Rollback
             return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
         } catch (\Exception $e) {
+            $transaction->update(['status' => 'refund_approved']); // Rollback
             return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
         }
     }

@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Address;
 use App\Models\Payment;
-use Xendit\Configuration;
 use App\Models\Transaction;
-use Illuminate\Http\Request;
-use Xendit\Invoice\InvoiceApi;
 use App\Services\BiteshipService;
+use Illuminate\Http\Request;
+use Xendit\Configuration;
 use Xendit\Invoice\CreateInvoiceRequest;
+use Xendit\Invoice\InvoiceApi;
 
 class PaymentController extends Controller
 {
@@ -30,22 +30,22 @@ class PaymentController extends Controller
             'delivery_type' => 'nullable|string|in:now,later,scheduled',
             'delivery_date' => 'nullable|date',
             'delivery_time' => 'nullable|date_format:H:i',
-            'use_points' => 'nullable|integer|min:0'
+            'use_points' => 'nullable|integer|min:0',
         ]);
 
         $transaction = Transaction::with(['user', 'details.product', 'payment'])
             ->findOrFail($request->transaction_id);
 
-        if ($transaction->payment && $transaction->payment->status === 'pending' && !empty($transaction->payment->checkout_url)) {
+        if ($transaction->payment && $transaction->payment->status === 'pending' && ! empty($transaction->payment->checkout_url)) {
             return response()->json([
-                'checkout_url' => $transaction->payment->checkout_url
+                'checkout_url' => $transaction->payment->checkout_url,
             ]);
         }
 
         // [PERBAIKAN LOGIKA] Hitung Total Quantity Barang
         $totalQuantity = $transaction->details->sum('quantity') ?: 1;
 
-        if (!$transaction->shipping_cost || $transaction->shipping_cost == 0) {
+        if (! $transaction->shipping_cost || $transaction->shipping_cost == 0) {
 
             // Harga dasar pengiriman per item (atau per kg)
             $baseShippingRate = $request->shipping_method === 'free' ? 0 : $request->shipping_cost;
@@ -66,7 +66,7 @@ class PaymentController extends Controller
                 'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
                 'delivery_date' => $request->delivery_date,
                 'delivery_time' => $request->delivery_time,
-                'status' => 'pending'
+                'status' => 'pending',
             ]);
         }
 
@@ -90,7 +90,7 @@ class PaymentController extends Controller
             }
         }
 
-        $externalId = 'PAY-' . $transaction->order_id . ($transaction->payment ? '-' . time() : '');
+        $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
 
         $items = [];
         foreach ($transaction->details as $detail) {
@@ -98,17 +98,17 @@ class PaymentController extends Controller
                 'name' => $detail->product->name,
                 'quantity' => $detail->quantity,
                 'price' => (int) $detail->price,
-                'category' => 'PHYSICAL_PRODUCT'
+                'category' => 'PHYSICAL_PRODUCT',
             ];
         }
 
         // Tambahkan item "Diskon Poin" ke Invoice Xendit sebagai nilai minus
         if ($pointDiscountAmount > 0) {
             $items[] = [
-                'name' => 'Loyalty Point Discount (' . $pointsUsed . ' Pts)',
+                'name' => 'Loyalty Point Discount ('.$pointsUsed.' Pts)',
                 'quantity' => 1,
                 'price' => -(int) $pointDiscountAmount, // Nilai minus agar memotong total tagihan Xendit
-                'category' => 'DISCOUNT'
+                'category' => 'DISCOUNT',
             ];
         }
 
@@ -119,10 +119,10 @@ class PaymentController extends Controller
             $basePriceXendit = $transaction->shipping_cost / $totalQuantity;
             // $basePriceXendit = $transaction->shipping_cost;
             $items[] = [
-                'name' => 'Shipping Cost (' . $transaction->courier_company . ')',
+                'name' => 'Shipping Cost ('.$transaction->courier_company.')',
                 'quantity' => (int) $totalQuantity,
                 'price' => (int) $basePriceXendit,
-                'category' => 'SHIPPING_FEE'
+                'category' => 'SHIPPING_FEE',
             ];
         }
 
@@ -134,15 +134,15 @@ class PaymentController extends Controller
             'payer_email' => $transaction->user->email,
             // 'amount' => (int) $transaction->total_amount + $basePriceXendit * $totalQuantity, // Sekarang nilainya sudah tepat secara matematika!
             'amount' => $finalAmount,
-            'description' => 'Payment for Order ' . $transaction->order_id,
+            'description' => 'Payment for Order '.$transaction->order_id,
             'items' => $items,
             'success_redirect_url' => config('app.frontend_url')
-                . '/payment-success?external_id=' . $externalId
-                . '&order_id=' . $transaction->order_id,
-            'failure_redirect_url' => config('app.frontend_url') . '/payment-failed',
+                .'/payment-success?external_id='.$externalId
+                .'&order_id='.$transaction->order_id,
+            'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
 
-        $api = new InvoiceApi();
+        $api = new InvoiceApi;
         $invoice = $api->createInvoice($invoiceRequest);
 
         Payment::create([
@@ -150,11 +150,11 @@ class PaymentController extends Controller
             'external_id' => $externalId,
             'checkout_url' => $invoice['invoice_url'],
             'amount' => $transaction->total_amount,
-            'status' => 'pending'
+            'status' => 'pending',
         ]);
 
         return response()->json([
-            'checkout_url' => $invoice['invoice_url']
+            'checkout_url' => $invoice['invoice_url'],
         ]);
     }
 
@@ -162,7 +162,9 @@ class PaymentController extends Controller
     public function callback(Request $request)
     {
         $payment = Payment::where('external_id', $request->external_id)->first();
-        if (!$payment) return response()->json(['message' => 'Payment not found'], 404);
+        if (! $payment) {
+            return response()->json(['message' => 'Payment not found'], 404);
+        }
 
         $status = $request->status;
         $payment->update(['status' => $status]);
@@ -172,7 +174,7 @@ class PaymentController extends Controller
 
             $paymentMethod = $request->input('payment_method', 'Unknown');
             $paymentChannel = $request->input('payment_channel', '');
-            $fullPaymentMethod = trim($paymentMethod . ' ' . $paymentChannel);
+            $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);
 
             // Jika shipping_method adalah 'free' (Ambil di Toko), langsung set ke 'completed'.
             // Jika menggunakan Biteship, set ke 'processing' seperti biasa.
@@ -181,7 +183,7 @@ class PaymentController extends Controller
             // Update status dan payment method sekaligus
             $transaction->update([
                 'status' => $targetTransactionStatus,
-                'payment_method' => $fullPaymentMethod
+                'payment_method' => $fullPaymentMethod,
             ]);
 
             // Jika Free Shipping (langsung completed), tambahkan poin ke user
@@ -238,47 +240,52 @@ class PaymentController extends Controller
             // --- EKSEKUSI PEMESANAN KURIR ---
             if ($transaction->shipping_method === 'biteship') {
                 try {
-                    $biteship = new BiteshipService();
+                    $biteship = new BiteshipService;
                     $order = $biteship->createOrder($transaction);
 
                     if (isset($order['success']) && $order['success'] === false) {
-                        \Log::error('Gagal Create Order Biteship: ' . json_encode($order));
+                        \Log::error('Gagal Create Order Biteship: '.json_encode($order));
                     }
 
                     if (isset($order['id'])) {
                         $transaction->update([
                             'biteship_order_id' => $order['id'],
                             'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
-                            'shipping_status' => strtolower($order['status'] ?? 'pending') // [PERBAIKAN] Simpan status awal
+                            'shipping_status' => strtolower($order['status'] ?? 'pending'), // [PERBAIKAN] Simpan status awal
                         ]);
                     } else {
                         $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
                         $transaction->update([
-                            'tracking_number' => 'API ERR: ' . substr($errorMsg, 0, 200),
-                            'shipping_status' => 'error' // [PERBAIKAN]
+                            'tracking_number' => 'API ERR: '.substr($errorMsg, 0, 200),
+                            'shipping_status' => 'error', // [PERBAIKAN]
                         ]);
-                        \Log::error('Biteship Create Order Failed: ' . json_encode($order));
+                        \Log::error('Biteship Create Order Failed: '.json_encode($order));
                     }
                 } catch (\Exception $e) {
                     $transaction->update([
-                        'tracking_number' => 'SYS ERR: ' . substr($e->getMessage(), 0, 200),
-                        'shipping_status' => 'error' // [PERBAIKAN]
+                        'tracking_number' => 'SYS ERR: '.substr($e->getMessage(), 0, 200),
+                        'shipping_status' => 'error', // [PERBAIKAN]
                     ]);
-                    \Log::error('Biteship Exception: ' . $e->getMessage());
+                    \Log::error('Biteship Exception: '.$e->getMessage());
                 }
             } else {
                 // Untuk transaksi 'free' shipping, beri label Internal-Pickup
                 $transaction->update([
                     'tracking_number' => 'In-Store Pickup',
-                    'shipping_status' => 'ready_for_pickup' // [PERBAIKAN]
+                    'shipping_status' => 'ready_for_pickup', // [PERBAIKAN]
                 ]);
             }
         } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
             if ($transaction->status !== 'cancelled') {
                 $transaction->update([
-                'status' => 'cancelled',
-                'shipping_status' => 'cancelled' // [PERBAIKAN] Sinkronisasi status pengiriman
+                    'status' => 'cancelled',
+                    'shipping_status' => 'cancelled', // [PERBAIKAN] Sinkronisasi status pengiriman
                 ]);
+
+                // [PERBAIKAN] KEMBALIKAN POIN JIKA EXPIRED
+                if ($transaction->points_used > 0) {
+                    $transaction->user->increment('point', $transaction->points_used);
+                }
             }
         } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
             $transaction->update(['status' => 'pending']);
@@ -293,14 +300,14 @@ class PaymentController extends Controller
 
         $address = Address::find($request->address_id);
 
-        if (!$address || !$address->postal_code) {
+        if (! $address || ! $address->postal_code) {
             return response()->json([
-                'message' => 'Alamat tidak valid atau kodepos tidak ditemukan.'
+                'message' => 'Alamat tidak valid atau kodepos tidak ditemukan.',
             ], 400);
         }
 
         try {
-            $biteship = new BiteshipService();
+            $biteship = new BiteshipService;
 
             // [PERBAIKAN] Kirim seluruh objek $address, bukan cuma kode pos
             // Sebelumnya: $rates = $biteship->getRates($address->postal_code);
@@ -309,14 +316,14 @@ class PaymentController extends Controller
             // Cek jika API Biteship memberikan respon success: false
             if (isset($rates['success']) && $rates['success'] === false) {
                 return response()->json([
-                    'message' => 'Biteship API Error: ' . ($rates['error'] ?? 'Unknown error')
+                    'message' => 'Biteship API Error: '.($rates['error'] ?? 'Unknown error'),
                 ], 400);
             }
 
             return response()->json($rates);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Gagal mengambil ongkos kirim: ' . $e->getMessage()
+                'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -325,7 +332,9 @@ class PaymentController extends Controller
     private function checkAndAssignMembership($user)
     {
         // Jika user sudah member, tidak perlu cek lagi
-        if ($user->is_membership) return;
+        if ($user->is_membership) {
+            return;
+        }
 
         // Hitung total belanja dari semua transaksi yang BERHASIL (completed)
         $totalSpent = Transaction::where('user_id', $user->id)
