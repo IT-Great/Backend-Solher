@@ -275,7 +275,10 @@ class PaymentController extends Controller
             }
         } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
             if ($transaction->status !== 'cancelled') {
-                $transaction->update(['status' => 'cancelled']);
+                $transaction->update([
+                'status' => 'cancelled',
+                'shipping_status' => 'cancelled' // [PERBAIKAN] Sinkronisasi status pengiriman
+                ]);
             }
         } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
             $transaction->update(['status' => 'pending']);

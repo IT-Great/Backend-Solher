@@ -989,7 +989,10 @@ class TransactionController extends Controller
             $lockedTransaction = Transaction::lockForUpdate()->find($transaction->id);
 
             if ($lockedTransaction->status !== 'refund_manual_required') {
-                $lockedTransaction->update(['status' => 'cancelled']);
+                $lockedTransaction->update([
+                    'status' => 'cancelled',
+                    'shipping_status' => 'cancelled' // [PERBAIKAN] Sinkronisasi status pengiriman
+                ]);
             }
 
             if ($lockedTransaction->payment && $lockedTransaction->status !== 'refund_manual_required') {
