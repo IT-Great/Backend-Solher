@@ -269,10 +269,13 @@ class ProductController extends Controller
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric',
             'stock' => 'required|integer',
-            'image' => 'required|image|max:2048', // Harus file gambar, maks 2MB
+            // 'image' => 'required|image|max:2048', // Harus file gambar, maks 2MB
+            'image' => 'required|image',
             'variant_images' => 'nullable|array|max:5',
-            'variant_images.*' => 'image|max:2048',
-            'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
+            // 'variant_images.*' => 'image|max:2048',
+            'variant_images.*' => 'image',
+            // 'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
+            'variant_video' => 'nullable|mimes:mp4,mov,avi',
         ]);
 
         if ($validator->fails()) {
@@ -491,10 +494,13 @@ class ProductController extends Controller
             'price' => 'required|numeric',
 
             // Saat update, image boleh kosong (jika tidak diganti)
-            'image' => 'nullable|image|max:2048',
+            // 'image' => 'nullable|image|max:2048',
+            'image' => 'nullable|image',
             'variant_images' => 'nullable|array|max:5',
-            'variant_images.*' => 'image|max:2048',
-            'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
+            // 'variant_images.*' => 'image|max:2048',
+            'variant_images.*' => 'image',
+            // 'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
+            'variant_video' => 'nullable|mimes:mp4,mov,avi',
         ]);
 
         if ($validator->fails()) {
