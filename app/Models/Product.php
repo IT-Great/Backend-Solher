@@ -44,52 +44,111 @@ class Product extends Model
         return $this->hasMany(ProductStock::class)->orderBy('created_at', 'asc'); // ASC untuk FIFO
     }
 
-    // Accessor untuk field 'image'
+    // // Accessor untuk field 'image'
+    // public function getImageAttribute($value)
+    // {
+    //     if (!$value) return null;
+
+    //     // Cek jika nilainya sudah berupa URL (Legacy Data dari S3)
+    //     if (filter_var($value, FILTER_VALIDATE_URL)) {
+    //         return $value;
+    //     }
+
+    //     // Cek jika nilainya sudah ada URL VPS (Gara-gara kode lama yang salah)
+    //     if (str_starts_with($value, 'http')) {
+    //          // Bersihkan jika ada dobel HTTP
+    //          $cleanValue = preg_replace('/^http[s]?:\/\/[^\/]+/', '', $value);
+    //          return url($cleanValue);
+    //     }
+
+    //     // Jika path relatif biasa (/storage/...)
+    //     return url($value);
+    // }
+
+    // // Accessor untuk field 'variant_images'
+    // public function getVariantImagesAttribute($value)
+    // {
+    //     $images = json_decode($value, true);
+    //     if (!$images) return [];
+
+    //     return array_map(function($img) {
+    //         if (filter_var($img, FILTER_VALIDATE_URL)) return $img;
+    //         if (str_starts_with($img, 'http')) {
+    //             $cleanImg = preg_replace('/^http[s]?:\/\/[^\/]+/', '', $img);
+    //             return url($cleanImg);
+    //         }
+    //         return url($img);
+    //     }, $images);
+    // }
+
+    // // Accessor untuk field 'variant_video'
+    // public function getVariantVideoAttribute($value)
+    // {
+    //     if (!$value) return null;
+    //     if (filter_var($value, FILTER_VALIDATE_URL)) return $value;
+    //     if (str_starts_with($value, 'http')) {
+    //         $cleanValue = preg_replace('/^http[s]?:\/\/[^\/]+/', '', $value);
+    //         return url($cleanValue);
+    //     }
+    //     return url($value);
+    // }
+
+    // ====================================================================
+    // [PERBAIKAN] ACCESSOR ANTI-BADAI (AUTO-HEALING URLs)
+    // ====================================================================
+
     public function getImageAttribute($value)
     {
         if (!$value) return null;
 
-        // Cek jika nilainya sudah berupa URL (Legacy Data dari S3)
-        if (filter_var($value, FILTER_VALIDATE_URL)) {
+        // 1. Jika ini adalah URL asli dari AWS S3 masa lalu, biarkan saja
+        if (str_contains($value, 'amazonaws.com')) {
             return $value;
         }
 
-        // Cek jika nilainya sudah ada URL VPS (Gara-gara kode lama yang salah)
-        if (str_starts_with($value, 'http')) {
-             // Bersihkan jika ada dobel HTTP
-             $cleanValue = preg_replace('/^http[s]?:\/\/[^\/]+/', '', $value);
-             return url($cleanValue);
+        // 2. Ekstrak HANYA path relatifnya, buang semua domain cacat bawaan database
+        // Jika di database tersimpan 'http:31.97.60.207:8246/storage/products/1.png'
+        // Maka kita paksa potong dan hanya ambil '/storage/products/1.png'
+        if (str_contains($value, '/storage/')) {
+            $pathOnly = substr($value, strpos($value, '/storage/'));
+        } else {
+            // Jaga-jaga jika tersimpan tanpa '/storage/'
+            $pathOnly = str_starts_with($value, '/') ? $value : '/' . $value;
         }
 
-        // Jika path relatif biasa (/storage/...)
-        return url($value);
+        // 3. Rangkai kembali dengan url() bawaan Laravel
+        return url($pathOnly);
     }
 
-    // Accessor untuk field 'variant_images'
     public function getVariantImagesAttribute($value)
     {
         $images = json_decode($value, true);
         if (!$images) return [];
 
         return array_map(function($img) {
-            if (filter_var($img, FILTER_VALIDATE_URL)) return $img;
-            if (str_starts_with($img, 'http')) {
-                $cleanImg = preg_replace('/^http[s]?:\/\/[^\/]+/', '', $img);
-                return url($cleanImg);
+            if (str_contains($img, 'amazonaws.com')) return $img;
+
+            if (str_contains($img, '/storage/')) {
+                $pathOnly = substr($img, strpos($img, '/storage/'));
+            } else {
+                $pathOnly = str_starts_with($img, '/') ? $img : '/' . $img;
             }
-            return url($img);
+
+            return url($pathOnly);
         }, $images);
     }
 
-    // Accessor untuk field 'variant_video'
     public function getVariantVideoAttribute($value)
     {
         if (!$value) return null;
-        if (filter_var($value, FILTER_VALIDATE_URL)) return $value;
-        if (str_starts_with($value, 'http')) {
-            $cleanValue = preg_replace('/^http[s]?:\/\/[^\/]+/', '', $value);
-            return url($cleanValue);
+        if (str_contains($value, 'amazonaws.com')) return $value;
+
+        if (str_contains($value, '/storage/')) {
+            $pathOnly = substr($value, strpos($value, '/storage/'));
+        } else {
+            $pathOnly = str_starts_with($value, '/') ? $value : '/' . $value;
         }
-        return url($value);
+
+        return url($pathOnly);
     }
 }
