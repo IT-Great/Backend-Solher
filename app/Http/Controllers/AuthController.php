@@ -201,6 +201,69 @@ class AuthController extends Controller
         return response()->json(['message' => 'Info profil diperbarui', 'user' => $user]);
     }
 
+    // public function updateImage(Request $request)
+    // {
+    //     Log::info('Update profile image started', [
+    //         'user_id' => $request->user()->id
+    //     ]);
+
+    //     $request->validate([
+    //         'image' => 'required|image|mimes:jpeg,png,jpg|max:2048'
+    //     ]);
+
+    //     $user = $request->user();
+
+    //     try {
+    //         // Jika ada foto lama
+    //         if ($user->profile_image) {
+    //             $oldPath = 'profiles/' . basename($user->profile_image);
+
+    //             Log::info('Deleting old profile image', [
+    //                 'user_id' => $user->id,
+    //                 'old_path' => $oldPath
+    //             ]);
+
+    //             Storage::disk('s3')->delete($oldPath);
+    //         }
+
+    //         // Upload foto baru
+    //         $path = $request->file('image')->store('profiles', [
+    //             'disk' => 's3',
+    //             'visibility' => 'public'
+    //         ]);
+
+    //         Log::info('New profile image uploaded', [
+    //             'user_id' => $user->id,
+    //             'new_path' => $path
+    //         ]);
+
+    //         $user->profile_image = Storage::disk('s3')->url($path);
+    //         $user->save();
+
+    //         $user = $user->fresh();
+
+    //         Log::info('Profile image updated successfully', [
+    //             'user_id' => $user->id,
+    //             'profile_image_url' => $user->profile_image
+    //         ]);
+
+    //         return response()->json([
+    //             'message' => 'Foto profil diperbarui',
+    //             'user' => $user
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         Log::error('Failed to update profile image', [
+    //             'user_id' => $user->id ?? null,
+    //             'error_message' => $e->getMessage(),
+    //             'trace' => $e->getTraceAsString()
+    //         ]);
+
+    //         return response()->json([
+    //             'message' => 'Gagal memperbarui foto profil'
+    //         ], 500);
+    //     }
+    // }
+
     public function updateImage(Request $request)
     {
         Log::info('Update profile image started', [
@@ -214,30 +277,30 @@ class AuthController extends Controller
         $user = $request->user();
 
         try {
-            // Jika ada foto lama
+            // [PERBAIKAN] Jika ada foto lama, hapus dari Local Storage
             if ($user->profile_image) {
-                $oldPath = 'profiles/' . basename($user->profile_image);
+                // Bersihkan URL agar hanya menyisakan path relatifnya saja
+                $oldPath = str_replace(url(Storage::url('')), '', $user->profile_image);
+                $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
 
                 Log::info('Deleting old profile image', [
                     'user_id' => $user->id,
                     'old_path' => $oldPath
                 ]);
 
-                Storage::disk('s3')->delete($oldPath);
+                Storage::disk('public')->delete($oldPath);
             }
 
-            // Upload foto baru
-            $path = $request->file('image')->store('profiles', [
-                'disk' => 's3',
-                'visibility' => 'public'
-            ]);
+            // [PERBAIKAN] Upload foto baru ke Local Storage (disk 'public' -> storage/app/public/profiles)
+            $path = $request->file('image')->store('profiles', 'public');
 
             Log::info('New profile image uploaded', [
                 'user_id' => $user->id,
                 'new_path' => $path
             ]);
 
-            $user->profile_image = Storage::disk('s3')->url($path);
+            // [PERBAIKAN] Karena kita tidak memakai Accessor di User Model, kita simpan URL penuhnya langsung
+            $user->profile_image = url(Storage::url($path));
             $user->save();
 
             $user = $user->fresh();
@@ -346,6 +409,40 @@ class AuthController extends Controller
         ]);
     }
 
+    // public function updateAdminImage(Request $request)
+    // {
+    //     $request->validate([
+    //         'image' => 'required|image|mimes:jpeg,png,jpg'
+    //     ]);
+
+    //     $admin = $request->user();
+
+    //     try {
+
+    //         if ($admin->profile_image) {
+    //             $oldPath = 'profiles/' . basename($admin->profile_image);
+    //             Storage::disk('s3')->delete($oldPath);
+    //         }
+
+    //         $path = $request->file('image')->store('profiles', [
+    //             'disk' => 's3',
+    //             'visibility' => 'public'
+    //         ]);
+
+    //         $admin->profile_image = Storage::disk('s3')->url($path);
+    //         $admin->save();
+
+    //         return response()->json([
+    //             'message' => 'Admin photo updated',
+    //             'admin'   => $admin->fresh()
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'message' => 'Failed to update admin photo'
+    //         ], 500);
+    //     }
+    // }
+
     public function updateAdminImage(Request $request)
     {
         $request->validate([
@@ -355,18 +452,20 @@ class AuthController extends Controller
         $admin = $request->user();
 
         try {
-
+            // [PERBAIKAN] Jika ada foto lama, hapus dari Local Storage
             if ($admin->profile_image) {
-                $oldPath = 'profiles/' . basename($admin->profile_image);
-                Storage::disk('s3')->delete($oldPath);
+                // Bersihkan URL agar hanya menyisakan path relatifnya saja
+                $oldPath = str_replace(url(Storage::url('')), '', $admin->profile_image);
+                $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
+
+                Storage::disk('public')->delete($oldPath);
             }
 
-            $path = $request->file('image')->store('profiles', [
-                'disk' => 's3',
-                'visibility' => 'public'
-            ]);
+            // [PERBAIKAN] Upload foto baru ke Local Storage
+            $path = $request->file('image')->store('profiles', 'public');
 
-            $admin->profile_image = Storage::disk('s3')->url($path);
+            // [PERBAIKAN] Simpan URL penuhnya ke database
+            $admin->profile_image = url(Storage::url($path));
             $admin->save();
 
             return response()->json([
