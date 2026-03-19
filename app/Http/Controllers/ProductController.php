@@ -288,7 +288,10 @@ class ProductController extends Controller
                 // public disk akan mengarah ke storage/app/public
                 $path = $request->file('image')->store('products', 'public');
                 // url() akan menghasilkan https://domain.com/storage/products/...
-                $data['image'] = url(Storage::url($path));
+                // $data['image'] = url(Storage::url($path));
+
+                // [PERBAIKAN] Hanya simpan path relatifnya saja, buang fungsi url()
+                $data['image'] = Storage::url($path);
             }
 
             // 3. Upload Gambar Varian (Array)
@@ -296,7 +299,8 @@ class ProductController extends Controller
             if ($request->hasFile('variant_images')) {
                 foreach ($request->file('variant_images') as $file) {
                     $path = $file->store('products/variants', 'public');
-                    $variantImagesUrls[] = url(Storage::url($path));
+                    // $variantImagesUrls[] = url(Storage::url($path));
+                    $variantImagesUrls[] = Storage::url($path); // [PERBAIKAN]
                 }
             }
             $data['variant_images'] = count($variantImagesUrls) > 0 ? $variantImagesUrls : null;
@@ -304,7 +308,8 @@ class ProductController extends Controller
             // 4. Upload Video
             if ($request->hasFile('variant_video')) {
                 $path = $request->file('variant_video')->store('products/videos', 'public');
-                $data['variant_video'] = url(Storage::url($path));
+                // $data['variant_video'] = url(Storage::url($path));
+                $data['variant_video'] = Storage::url($path); // [PERBAIKAN]
             }
 
             // Simpan ke DB
@@ -501,25 +506,32 @@ class ProductController extends Controller
         // 1. Hapus & Ganti Gambar Utama Jika Ada Upload Baru
         if ($request->hasFile('image')) {
             if ($product->image) {
-                $oldPath = str_replace(url(Storage::url('')), '', $product->image);
+                // $oldPath = str_replace(url(Storage::url('')), '', $product->image);
+                // Storage::disk('public')->delete($oldPath);
+
+                // Karena kita akan menyimpan path relatif yang dimulai dengan /storage/
+                $oldPath = str_replace('/storage/', '', $product->image);
                 Storage::disk('public')->delete($oldPath);
             }
             $path = $request->file('image')->store('products', 'public');
-            $data['image'] = url(Storage::url($path));
+            // $data['image'] = url(Storage::url($path));
+            $data['image'] = Storage::url($path); // [PERBAIKAN]
         }
 
         // 2. Hapus & Ganti Varian Jika Ada Upload Baru (OVERWRITE ALL)
         if ($request->hasFile('variant_images')) {
             if ($product->variant_images) {
                 foreach ($product->variant_images as $oldImgUrl) {
-                    $oldPath = str_replace(url(Storage::url('')), '', $oldImgUrl);
+                    // $oldPath = str_replace(url(Storage::url('')), '', $oldImgUrl);
+                    $oldPath = str_replace('/storage/', '', $oldImgUrl);
                     Storage::disk('public')->delete($oldPath);
                 }
             }
             $variantImagesUrls = [];
             foreach ($request->file('variant_images') as $file) {
                 $path = $file->store('products/variants', 'public');
-                $variantImagesUrls[] = url(Storage::url($path));
+                // $variantImagesUrls[] = url(Storage::url($path));
+                $variantImagesUrls[] = Storage::url($path); // [PERBAIKAN]
             }
             $data['variant_images'] = $variantImagesUrls;
         }
@@ -527,11 +539,13 @@ class ProductController extends Controller
         // 3. Hapus & Ganti Video Jika Ada Upload Baru
         if ($request->hasFile('variant_video')) {
             if ($product->variant_video) {
-                $oldPath = str_replace(url(Storage::url('')), '', $product->variant_video);
+                // $oldPath = str_replace(url(Storage::url('')), '', $product->variant_video);
+                $oldPath = str_replace('/storage/', '', $product->variant_video);
                 Storage::disk('public')->delete($oldPath);
             }
             $path = $request->file('variant_video')->store('products/videos', 'public');
-            $data['variant_video'] = url(Storage::url($path));
+            // $data['variant_video'] = url(Storage::url($path));
+            $data['variant_video'] = Storage::url($path); // [PERBAIKAN]
         }
 
         $product->update($data);
@@ -597,9 +611,14 @@ class ProductController extends Controller
         $product = Product::findOrFail($id);
 
         // 1. Sesuaikan dengan Local Storage (Bukan S3 lagi)
+        // if ($product->image) {
+        //     $path = str_replace(url(Storage::url('')), '', $product->image);
+        //     Storage::disk('public')->delete($path);
+        // }
+
         if ($product->image) {
-            $path = str_replace(url(Storage::url('')), '', $product->image);
-            Storage::disk('public')->delete($path);
+            $oldPath = str_replace('/storage/', '', $product->image);
+            Storage::disk('public')->delete($oldPath);
         }
 
         try {
