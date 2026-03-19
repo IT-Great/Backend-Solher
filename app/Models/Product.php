@@ -117,35 +117,108 @@ class Product extends Model
     // [PERBAIKAN] UNIVERSAL AUTO-HEALING URLs (ANTI FATAL ERROR)
     // ====================================================================
 
+    // public function getImageAttribute($value)
+    // {
+    //     if (!$value) return null;
+
+    //     // 1. Tangani kasus terburuk: Duplikasi URL (http://ip/https://domain...)
+    //     if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $value, $matches)) {
+    //         return $matches[2];
+    //     }
+
+    //     // 2. Jika sudah berupa URL penuh yang valid
+    //     if (filter_var($value, FILTER_VALIDATE_URL) || str_starts_with($value, 'http')) {
+    //         return $value;
+    //     }
+
+    //     // 3. Jika path relatif biasa
+    //     $pathOnly = str_starts_with($value, '/') ? $value : '/' . $value;
+    //     return url($pathOnly);
+    // }
+
+    // public function getVariantImagesAttribute($value)
+    // {
+    //     // [PERBAIKAN ERROR 500]: Cek apakah $value sudah array (efek $casts)
+    //     // Jika sudah array, jangan di-json_decode lagi!
+    //     $images = is_array($value) ? $value : json_decode($value, true);
+
+    //     if (!$images || !is_array($images)) return [];
+
+    //     return array_map(function($img) {
+    //         if (!$img) return null;
+
+    //         // Handle duplikasi URL
+    //         if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $img, $matches)) {
+    //             return $matches[2];
+    //         }
+
+    //         // Jika sudah berupa URL penuh
+    //         if (filter_var($img, FILTER_VALIDATE_URL) || str_starts_with($img, 'http')) {
+    //             return $img;
+    //         }
+
+    //         // Path relatif
+    //         $pathOnly = str_starts_with($img, '/') ? $img : '/' . $img;
+    //         return url($pathOnly);
+    //     }, $images);
+    // }
+
+    // public function getVariantVideoAttribute($value)
+    // {
+    //     if (!$value) return null;
+
+    //     // Handle duplikasi URL
+    //     if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $value, $matches)) {
+    //         return $matches[2];
+    //     }
+
+    //     // Jika sudah berupa URL penuh
+    //     if (filter_var($value, FILTER_VALIDATE_URL) || str_starts_with($value, 'http')) {
+    //         return $value;
+    //     }
+
+    //     // Path relatif
+    //     $pathOnly = str_starts_with($value, '/') ? $value : '/' . $value;
+    //     return url($pathOnly);
+    // }
+
+    // ====================================================================
+    // [PERBAIKAN] UNIVERSAL AUTO-HEALING URLs (ANTI FATAL ERROR)
+    // ====================================================================
+
     public function getImageAttribute($value)
     {
-        if (!$value) return null;
+        // 1. Jika kosong sama sekali, kembalikan null
+        if (empty($value) || $value === 'null') return null;
 
-        // 1. Tangani kasus terburuk: Duplikasi URL (http://ip/https://domain...)
+        // 2. Tangani kasus terburuk: Duplikasi URL (http://ip/https://domain...)
         if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $value, $matches)) {
             return $matches[2];
         }
 
-        // 2. Jika sudah berupa URL penuh yang valid
+        // 3. Jika sudah berupa URL penuh yang valid
         if (filter_var($value, FILTER_VALIDATE_URL) || str_starts_with($value, 'http')) {
             return $value;
         }
 
-        // 3. Jika path relatif biasa
+        // 4. Jika path relatif biasa
         $pathOnly = str_starts_with($value, '/') ? $value : '/' . $value;
         return url($pathOnly);
     }
 
     public function getVariantImagesAttribute($value)
     {
-        // [PERBAIKAN ERROR 500]: Cek apakah $value sudah array (efek $casts)
-        // Jika sudah array, jangan di-json_decode lagi!
+        // 1. Pengecekan Aman Pertama: Jika kosong langsung kembalikan array kosong
+        if (empty($value) || $value === 'null') return [];
+
+        // 2. Lakukan konversi dengan aman
         $images = is_array($value) ? $value : json_decode($value, true);
 
-        if (!$images || !is_array($images)) return [];
+        // 3. Pengecekan Aman Kedua: Pastikan variabel $images benar-benar array
+        if (!is_array($images)) return [];
 
         return array_map(function($img) {
-            if (!$img) return null;
+            if (empty($img)) return null;
 
             // Handle duplikasi URL
             if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $img, $matches)) {
@@ -165,7 +238,8 @@ class Product extends Model
 
     public function getVariantVideoAttribute($value)
     {
-        if (!$value) return null;
+        // 1. Pengecekan Aman: Jika kosong langsung kembalikan null
+        if (empty($value) || $value === 'null') return null;
 
         // Handle duplikasi URL
         if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $value, $matches)) {
