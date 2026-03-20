@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 
 class BiteshipService
 {
     protected $baseUrl = 'https://api.biteship.com/v1';
+
     protected $apiKey;
 
     public function __construct()
@@ -95,14 +97,22 @@ class BiteshipService
             'destination_postal_code' => $address->postal_code,
 
             // [PERBAIKAN 1] API Rates WAJIB menggunakan _coordinate object agar jarak akurat
-            'origin_coordinate' => [
-                'latitude' => -7.25706,
-                'longitude' => 112.74549
-            ],
-            'destination_coordinate' => [
-                'latitude' => floatval($address->latitude),
-                'longitude' => floatval($address->longitude),
-            ],
+            // 'origin_coordinate' => [
+            //     'latitude' => -7.25706,
+            //     'longitude' => 112.74549
+            // ],
+            // 'destination_coordinate' => [
+            //     'latitude' => floatval($address->latitude),
+            //     'longitude' => floatval($address->longitude),
+            // ],
+
+            'origin_latitude' => -7.25706,
+            'origin_longitude' => 112.74549,
+
+            // [PERBAIKAN PENTING] Gunakan floatval() agar Biteship mengukur Jarak (Radius KM) secara presisi!
+            // Ini mencegah Grab Same Day muncul jika jaraknya > 40 KM.
+            'destination_latitude' => floatval($address->latitude),
+            'destination_longitude' => floatval($address->longitude),
 
             'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
             'items' => [
@@ -110,14 +120,14 @@ class BiteshipService
                     'name' => 'Cart Items',
                     'value' => 10000,
                     'quantity' => $weight / 1000, // Konversi total berat kembali ke quantity
-                    'weight' => 1000 // Berat standar per item
-                ]
-            ]
+                    'weight' => 1000, // Berat standar per item
+                ],
+            ],
         ];
 
         $response = Http::withHeaders([
             'Authorization' => $this->apiKey,
-            'Content-Type' => 'application/json'
+            'Content-Type' => 'application/json',
         ])->post("{$this->baseUrl}/rates/couriers", $payload);
 
         return $response->json();
@@ -510,11 +520,11 @@ class BiteshipService
 
             'origin_coordinate' => [
                 'latitude' => -7.25706,
-                'longitude' => 112.74549
+                'longitude' => 112.74549,
             ],
 
             'destination_postal_code' => $transaction->address->postal_code,
-            'destination_contact_name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+            'destination_contact_name' => trim($transaction->address->first_name_address.' '.$transaction->address->last_name_address),
             'destination_contact_phone' => $transaction->user->phone ?? '08123456789',
             'destination_address' => $transaction->address->address_location,
 
@@ -533,8 +543,8 @@ class BiteshipService
                     'value' => (int) $transaction->total_amount,
                     'quantity' => (int) $totalQuantity,
                     // [PERBAIKAN 2] Parameter weight adalah berat PER 1 ITEM! Jangan dikalikan total quantity.
-                    'weight' => 1000
-                ]
+                    'weight' => 1000,
+                ],
             ],
             // 'status' => 'confirmed'
         ];
@@ -543,21 +553,21 @@ class BiteshipService
         // Jika 'now', biarkan logistik yang menentukan jam pickup secepatnya.
         if ($transaction->delivery_type === 'scheduled') {
             $payload['delivery_date'] = $transaction->delivery_date ?? date('Y-m-d');
-            $payload['delivery_time'] = \Carbon\Carbon::parse($transaction->delivery_time)->format('H:i');
+            $payload['delivery_time'] = Carbon::parse($transaction->delivery_time)->format('H:i');
         }
 
         \Log::channel('stderr')->info('BITESHIP FINAL PAYLOAD:', $payload);
 
         $response = Http::withHeaders([
             'Authorization' => $this->apiKey,
-            'Content-Type' => 'application/json'
+            'Content-Type' => 'application/json',
         ])->post("{$this->baseUrl}/orders", $payload);
 
         $data = $response->json();
 
         if (isset($data['success']) && $data['success'] === false) {
             $errorMsg = json_encode($data);
-            \Log::channel('stderr')->error('BITESHIP REJECTED ORDER: ' . $errorMsg);
+            \Log::channel('stderr')->error('BITESHIP REJECTED ORDER: '.$errorMsg);
         }
 
         return $data;
