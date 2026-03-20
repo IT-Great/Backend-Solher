@@ -61,22 +61,57 @@ class BiteshipService
     //     return $response->json();
     // }
 
+    // public function getRates($address, $weight = 1000)
+    // {
+    //     $payload = [
+    //         'origin_postal_code' => config('services.biteship.origin_postal_code'),
+    //         'destination_postal_code' => $address->postal_code,
+    //         'origin_latitude' => -7.25706,
+    //         'origin_longitude' => 112.74549,
+
+    //         // [PERBAIKAN PENTING] Gunakan floatval() agar Biteship mengukur Jarak (Radius KM) secara presisi!
+    //         // Ini mencegah Grab Same Day muncul jika jaraknya > 40 KM.
+    //         'destination_latitude' => floatval($address->latitude),
+    //         'destination_longitude' => floatval($address->longitude),
+
+    //         'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
+    //         'items' => [
+    //             ['weight' => $weight]
+    //         ]
+    //     ];
+
+    //     $response = Http::withHeaders([
+    //         'Authorization' => $this->apiKey,
+    //         'Content-Type' => 'application/json'
+    //     ])->post("{$this->baseUrl}/rates/couriers", $payload);
+
+    //     return $response->json();
+    // }
+
     public function getRates($address, $weight = 1000)
     {
         $payload = [
             'origin_postal_code' => config('services.biteship.origin_postal_code'),
             'destination_postal_code' => $address->postal_code,
-            'origin_latitude' => -7.25706,
-            'origin_longitude' => 112.74549,
 
-            // [PERBAIKAN PENTING] Gunakan floatval() agar Biteship mengukur Jarak (Radius KM) secara presisi!
-            // Ini mencegah Grab Same Day muncul jika jaraknya > 40 KM.
-            'destination_latitude' => floatval($address->latitude),
-            'destination_longitude' => floatval($address->longitude),
+            // [PERBAIKAN 1] API Rates WAJIB menggunakan _coordinate object agar jarak akurat
+            'origin_coordinate' => [
+                'latitude' => -7.25706,
+                'longitude' => 112.74549
+            ],
+            'destination_coordinate' => [
+                'latitude' => floatval($address->latitude),
+                'longitude' => floatval($address->longitude),
+            ],
 
             'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
             'items' => [
-                ['weight' => $weight]
+                [
+                    'name' => 'Cart Items',
+                    'value' => 10000,
+                    'quantity' => $weight / 1000, // Konversi total berat kembali ke quantity
+                    'weight' => 1000 // Berat standar per item
+                ]
             ]
         ];
 
@@ -358,91 +393,161 @@ class BiteshipService
     //     return $data;
     // }
 
+    // public function createOrder($transaction)
+    // {
+    //     // 1. Load Data
+    //     $transaction->loadMissing(['address', 'user', 'details']);
+
+    //     date_default_timezone_set('Asia/Jakarta');
+
+    //     // 2. Persiapan Format Waktu yang "Biteship-Friendly" (HH:mm)
+    //     // Kita gunakan Carbon agar detiknya benar-benar hilang
+    //     if ($transaction->delivery_time) {
+    //         try {
+    //             // Parse format apapun dari DB (14:30:00) menjadi (14:30)
+    //             $fixedTime = \Carbon\Carbon::parse($transaction->delivery_time)->format('H:i');
+    //         } catch (\Exception $e) {
+    //             // Fallback jika parsing gagal
+    //             $fixedTime = date('H:i', strtotime('+1 hour'));
+    //         }
+    //     } else {
+    //         // Default 1 jam dari sekarang
+    //         $fixedTime = date('H:i', strtotime('+1 hour'));
+    //     }
+
+    //     // Pastikan tanggal juga aman
+    //     $fixedDate = $transaction->delivery_date ?? date('Y-m-d');
+
+    //     // 3. Hitung Quantity
+    //     $totalQuantity = $transaction->details->sum('quantity');
+
+    //     // 4. Susun Payload
+    //     $payload = [
+    //         // --- INFO PENGIRIM ---
+    //         'origin_contact_name' => 'Solher Store',
+    //         'origin_contact_phone' => '08883888585',
+    //         'origin_address' => 'Jalan Kecilung N0. 8A, Kota Surabaya, Jawa Timur 60275, Indonesia', // Alamat lengkap gudang/toko Anda
+    //         'origin_postal_code' => config('services.biteship.origin_postal_code'),
+
+    //         // Koordinat Asal (Double Cover: Object & Flat)
+    //         'origin_coordinate' => [
+    //             'latitude' => -7.25706,
+    //             'longitude' => 112.74549
+    //         ],
+    //         'origin_latitude' => -7.25706,
+    //         'origin_longitude' => 112.74549,
+
+    //         // --- INFO PENERIMA ---
+    //         'destination_postal_code' => $transaction->address->postal_code,
+    //         'destination_contact_name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+    //         'destination_contact_phone' => $transaction->user->phone ?? '08123456789',
+    //         'destination_address' => $transaction->address->address_location,
+
+    //         // Koordinat Penerima
+    //         'destination_coordinate' => [
+    //             'latitude' => floatval($transaction->address->latitude),
+    //             'longitude' => floatval($transaction->address->longitude),
+    //         ],
+    //         'destination_latitude' => floatval($transaction->address->latitude),
+    //         'destination_longitude' => floatval($transaction->address->longitude),
+
+    //         // --- INFO KURIR & JADWAL ---
+    //         'courier_company' => $transaction->courier_company,
+    //         'courier_type' => $transaction->courier_type,
+    //         'delivery_type' => $transaction->delivery_type ?? 'now',
+
+    //         // Masukkan waktu yang sudah diformat di atas
+    //         'delivery_date' => $fixedDate,
+    //         'delivery_time' => $fixedTime,
+
+    //         // --- ITEMS ---
+    //         'items' => [
+    //             [
+    //                 'name' => 'Solher Products',
+    //                 'value' => (int) $transaction->total_amount,
+    //                 'quantity' => (int) $totalQuantity,
+    //                 'weight' => 1000 * $totalQuantity
+    //             ]
+    //         ],
+
+    //         // 'status' => 'allocated'
+    //         // 'status' => 'confirmed'
+    //     ];
+
+    //     // 5. Debugging Log (Cek di Laravel.log atau Vercel Logs)
+    //     \Log::channel('stderr')->info('BITESHIP FINAL PAYLOAD:', $payload);
+
+    //     // 6. Eksekusi API (HANYA SEKALI SAJA!)
+    //     $response = Http::withHeaders([
+    //         'Authorization' => $this->apiKey,
+    //         'Content-Type' => 'application/json'
+    //     ])->post("{$this->baseUrl}/orders", $payload);
+
+    //     $data = $response->json();
+
+    //     // 7. Error Handling
+    //     if (isset($data['success']) && $data['success'] === false) {
+    //         $errorMsg = json_encode($data);
+    //         \Log::channel('stderr')->error('BITESHIP REJECTED ORDER: ' . $errorMsg);
+    //         \Log::error('BITESHIP REJECTED ORDER: ' . $errorMsg);
+    //     }
+
+    //     return $data;
+    // }
+
     public function createOrder($transaction)
     {
-        // 1. Load Data
         $transaction->loadMissing(['address', 'user', 'details']);
-
         date_default_timezone_set('Asia/Jakarta');
 
-        // 2. Persiapan Format Waktu yang "Biteship-Friendly" (HH:mm)
-        // Kita gunakan Carbon agar detiknya benar-benar hilang
-        if ($transaction->delivery_time) {
-            try {
-                // Parse format apapun dari DB (14:30:00) menjadi (14:30)
-                $fixedTime = \Carbon\Carbon::parse($transaction->delivery_time)->format('H:i');
-            } catch (\Exception $e) {
-                // Fallback jika parsing gagal
-                $fixedTime = date('H:i', strtotime('+1 hour'));
-            }
-        } else {
-            // Default 1 jam dari sekarang
-            $fixedTime = date('H:i', strtotime('+1 hour'));
-        }
-
-        // Pastikan tanggal juga aman
-        $fixedDate = $transaction->delivery_date ?? date('Y-m-d');
-
-        // 3. Hitung Quantity
         $totalQuantity = $transaction->details->sum('quantity');
 
-        // 4. Susun Payload
         $payload = [
-            // --- INFO PENGIRIM ---
             'origin_contact_name' => 'Solher Store',
             'origin_contact_phone' => '08883888585',
-            'origin_address' => 'Jalan Kecilung N0. 8A, Kota Surabaya, Jawa Timur 60275, Indonesia', // Alamat lengkap gudang/toko Anda
+            'origin_address' => 'Jalan Kecilung N0. 8A, Kota Surabaya, Jawa Timur 60275, Indonesia',
             'origin_postal_code' => config('services.biteship.origin_postal_code'),
 
-            // Koordinat Asal (Double Cover: Object & Flat)
             'origin_coordinate' => [
                 'latitude' => -7.25706,
                 'longitude' => 112.74549
             ],
-            'origin_latitude' => -7.25706,
-            'origin_longitude' => 112.74549,
 
-            // --- INFO PENERIMA ---
             'destination_postal_code' => $transaction->address->postal_code,
             'destination_contact_name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
             'destination_contact_phone' => $transaction->user->phone ?? '08123456789',
             'destination_address' => $transaction->address->address_location,
 
-            // Koordinat Penerima
             'destination_coordinate' => [
                 'latitude' => floatval($transaction->address->latitude),
                 'longitude' => floatval($transaction->address->longitude),
             ],
-            'destination_latitude' => floatval($transaction->address->latitude),
-            'destination_longitude' => floatval($transaction->address->longitude),
 
-            // --- INFO KURIR & JADWAL ---
             'courier_company' => $transaction->courier_company,
             'courier_type' => $transaction->courier_type,
             'delivery_type' => $transaction->delivery_type ?? 'now',
 
-            // Masukkan waktu yang sudah diformat di atas
-            'delivery_date' => $fixedDate,
-            'delivery_time' => $fixedTime,
-
-            // --- ITEMS ---
             'items' => [
                 [
                     'name' => 'Solher Products',
                     'value' => (int) $transaction->total_amount,
                     'quantity' => (int) $totalQuantity,
-                    'weight' => 1000 * $totalQuantity
+                    // [PERBAIKAN 2] Parameter weight adalah berat PER 1 ITEM! Jangan dikalikan total quantity.
+                    'weight' => 1000
                 ]
             ],
-
-            // 'status' => 'allocated'
             // 'status' => 'confirmed'
         ];
 
-        // 5. Debugging Log (Cek di Laravel.log atau Vercel Logs)
+        // [PERBAIKAN 3] Hanya kirim jadwal jika user memilih 'scheduled' atau 'later'.
+        // Jika 'now', biarkan logistik yang menentukan jam pickup secepatnya.
+        if ($transaction->delivery_type === 'scheduled') {
+            $payload['delivery_date'] = $transaction->delivery_date ?? date('Y-m-d');
+            $payload['delivery_time'] = \Carbon\Carbon::parse($transaction->delivery_time)->format('H:i');
+        }
+
         \Log::channel('stderr')->info('BITESHIP FINAL PAYLOAD:', $payload);
 
-        // 6. Eksekusi API (HANYA SEKALI SAJA!)
         $response = Http::withHeaders([
             'Authorization' => $this->apiKey,
             'Content-Type' => 'application/json'
@@ -450,11 +555,9 @@ class BiteshipService
 
         $data = $response->json();
 
-        // 7. Error Handling
         if (isset($data['success']) && $data['success'] === false) {
             $errorMsg = json_encode($data);
             \Log::channel('stderr')->error('BITESHIP REJECTED ORDER: ' . $errorMsg);
-            \Log::error('BITESHIP REJECTED ORDER: ' . $errorMsg);
         }
 
         return $data;
