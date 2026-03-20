@@ -294,9 +294,47 @@ class PaymentController extends Controller
         return response()->json(['message' => 'Callback processed']);
     }
 
+    // public function getShippingRates(Request $request)
+    // {
+    //     $request->validate(['address_id' => 'required|exists:addresses,id']);
+
+    //     $address = Address::find($request->address_id);
+
+    //     if (! $address || ! $address->postal_code) {
+    //         return response()->json([
+    //             'message' => 'Alamat tidak valid atau kodepos tidak ditemukan.',
+    //         ], 400);
+    //     }
+
+    //     try {
+    //         $biteship = new BiteshipService;
+
+    //         // [PERBAIKAN] Kirim seluruh objek $address, bukan cuma kode pos
+    //         // Sebelumnya: $rates = $biteship->getRates($address->postal_code);
+    //         $rates = $biteship->getRates($address);
+
+    //         // Cek jika API Biteship memberikan respon success: false
+    //         if (isset($rates['success']) && $rates['success'] === false) {
+    //             return response()->json([
+    //                 'message' => 'Biteship API Error: '.($rates['error'] ?? 'Unknown error'),
+    //             ], 400);
+    //         }
+
+    //         return response()->json($rates);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function getShippingRates(Request $request)
     {
-        $request->validate(['address_id' => 'required|exists:addresses,id']);
+        $request->validate([
+            'address_id' => 'required|exists:addresses,id',
+            // [PERBAIKAN 1] Tangkap total barang dari keranjang
+            'total_quantity' => 'required|integer|min:1'
+        ]);
 
         $address = Address::find($request->address_id);
 
@@ -309,11 +347,12 @@ class PaymentController extends Controller
         try {
             $biteship = new BiteshipService;
 
-            // [PERBAIKAN] Kirim seluruh objek $address, bukan cuma kode pos
-            // Sebelumnya: $rates = $biteship->getRates($address->postal_code);
-            $rates = $biteship->getRates($address);
+            // [PERBAIKAN 2] Hitung berat riil (Asumsi 1 Tas = 1000 gram / 1 KG)
+            $weight = $request->total_quantity * 1000;
 
-            // Cek jika API Biteship memberikan respon success: false
+            // Kirim berat riil ke Biteship
+            $rates = $biteship->getRates($address, $weight);
+
             if (isset($rates['success']) && $rates['success'] === false) {
                 return response()->json([
                     'message' => 'Biteship API Error: '.($rates['error'] ?? 'Unknown error'),

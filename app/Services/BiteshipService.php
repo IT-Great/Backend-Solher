@@ -32,20 +32,47 @@ class BiteshipService
     //     return $response->json();
     // }
 
+    // public function getRates($address, $weight = 1000)
+    // {
+    //     $payload = [
+    //         'origin_postal_code' => config('services.biteship.origin_postal_code'),
+
+    //         // Masukkan data tujuan lengkap
+    //         'destination_postal_code' => $address->postal_code,
+
+    //         'origin_latitude' => '-7.25706',
+    //         'origin_longitude' => '112.74549',
+
+    //         // [TAMBAHAN PENTING] Kirim koordinat agar akurat & muncul di respon
+    //         'destination_latitude' => $address->latitude,
+    //         'destination_longitude' => $address->longitude,
+
+    //         'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
+    //         'items' => [
+    //             ['weight' => $weight]
+    //         ]
+    //     ];
+
+    //     $response = Http::withHeaders([
+    //         'Authorization' => $this->apiKey,
+    //         'Content-Type' => 'application/json'
+    //     ])->post("{$this->baseUrl}/rates/couriers", $payload);
+
+    //     return $response->json();
+    // }
+
     public function getRates($address, $weight = 1000)
     {
         $payload = [
             'origin_postal_code' => config('services.biteship.origin_postal_code'),
-
-            // Masukkan data tujuan lengkap
             'destination_postal_code' => $address->postal_code,
+            'origin_latitude' => -7.25706,
+            'origin_longitude' => 112.74549,
 
-            'origin_latitude' => '-7.25706',
-            'origin_longitude' => '112.74549',
-
-            // [TAMBAHAN PENTING] Kirim koordinat agar akurat & muncul di respon
-            'destination_latitude' => $address->latitude,
-            'destination_longitude' => $address->longitude,
+            // [PERBAIKAN PENTING] Gunakan floatval() agar Biteship mengukur Jarak (Radius KM) secara presisi!
+            // Ini mencegah Grab Same Day muncul jika jaraknya > 40 KM.
+            'destination_latitude' => floatval($address->latitude),
+            'destination_longitude' => floatval($address->longitude),
 
             'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
             'items' => [
