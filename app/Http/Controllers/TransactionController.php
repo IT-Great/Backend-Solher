@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Xendit\Invoice\CreateInvoiceRequest;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\RefundResultMail;
 
 class TransactionController extends Controller
 {
@@ -1543,26 +1545,70 @@ class TransactionController extends Controller
         }
     }
 
+    // public function approveRefund($id)
+    // {
+    //     $transaction = Transaction::findOrFail($id);
+    //     if ($transaction->status !== 'refund_requested') {
+    //         return response()->json(['message' => 'Invalid status'], 400);
+    //     }
+
+    //     $transaction->update(['status' => 'refund_approved']);
+    //     return response()->json(['message' => 'Refund request approved.']);
+    // }
+
     public function approveRefund($id)
     {
-        $transaction = Transaction::findOrFail($id);
+        // [PERBAIKAN] Tambahkan with('user') agar kita bisa membaca alamat emailnya
+        $transaction = Transaction::with('user')->findOrFail($id);
+
         if ($transaction->status !== 'refund_requested') {
             return response()->json(['message' => 'Invalid status'], 400);
         }
 
         $transaction->update(['status' => 'refund_approved']);
-        return response()->json(['message' => 'Refund request approved.']);
+
+        // [BARU] Kirim notifikasi email ke user
+        try {
+            Mail::to($transaction->user->email)->send(new RefundResultMail($transaction, 'approve'));
+        } catch (\Exception $e) {
+            // Jika gagal kirim email, jangan hentikan proses approve
+            \Illuminate\Support\Facades\Log::error("Gagal kirim email Approve Refund ke {$transaction->user->email}: " . $e->getMessage());
+        }
+
+        return response()->json(['message' => 'Refund request approved. Email sent to customer.']);
     }
+
+    // public function rejectRefund($id)
+    // {
+    //     $transaction = Transaction::findOrFail($id);
+    //     if ($transaction->status !== 'refund_requested') {
+    //         return response()->json(['message' => 'Invalid status'], 400);
+    //     }
+
+    //     $transaction->update(['status' => 'refund_rejected']);
+    //     return response()->json(['message' => 'Refund request rejected.']);
+    // }
 
     public function rejectRefund($id)
     {
-        $transaction = Transaction::findOrFail($id);
+        // [PERBAIKAN] Tambahkan with('user') agar kita bisa membaca alamat emailnya
+        $transaction = Transaction::with('user')->findOrFail($id);
+
         if ($transaction->status !== 'refund_requested') {
             return response()->json(['message' => 'Invalid status'], 400);
         }
 
         $transaction->update(['status' => 'refund_rejected']);
-        return response()->json(['message' => 'Refund request rejected.']);
+
+        // [BARU] Kirim notifikasi email ke user
+        try {
+            Mail::to($transaction->user->email)->send(new RefundResultMail($transaction, 'reject'));
+        } catch (\Exception $e) {
+            // Jika gagal kirim email, jangan hentikan proses reject
+            \Illuminate\Support\Facades\Log::error("Gagal kirim email Reject Refund ke {$transaction->user->email}: " . $e->getMessage());
+        }
+
+        return response()->json(['message' => 'Refund request rejected. Email sent to customer.']);
     }
 
     // Show single transaction
