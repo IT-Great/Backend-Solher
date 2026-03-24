@@ -171,7 +171,11 @@ class PaymentController extends Controller
         $transaction = $payment->transaction;
 
         if ($status === 'PAID') {
-
+            // [PERBAIKAN IDEMPOTENCY] Cegah proses ganda jika sudah PAID
+            if ($payment->status === 'PAID' || $transaction->status === 'processing' || $transaction->status === 'completed') {
+                return response()->json(['message' => 'Already processed']);
+            }
+            
             $paymentMethod = $request->input('payment_method', 'Unknown');
             $paymentChannel = $request->input('payment_channel', '');
             $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);

@@ -531,7 +531,15 @@ class TransactionController extends Controller
 
         // [PENTING] Membungkus seluruh checkout dengan DB Transaction (Mencegah Race Condition)
         return DB::transaction(function () use ($user, $cartItems, $request) {
-            $totalAmount = $cartItems->sum('gross_amount');
+            // $totalAmount = $cartItems->sum('gross_amount');
+            // [PERBAIKAN HARGA REAL-TIME] Jangan gunakan $cartItems->sum('gross_amount')
+            $totalAmount = 0;
+            foreach ($cartItems as $item) {
+                // Harga ditarik langsung dari relasi produk (Harga terbaru detik itu juga)
+                $currentPrice = $item->product->discount_price ?? $item->product->price;
+                $totalAmount += ($currentPrice * $item->quantity);
+            }
+            
             $orderId = 'SOL-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
 
             $earnedPoints = 0;
