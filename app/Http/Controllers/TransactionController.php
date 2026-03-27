@@ -7,6 +7,7 @@ use App\Models\Cart;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductStock;
+use App\Models\PromoClaim;
 use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use Illuminate\Http\Request;
@@ -354,21 +355,21 @@ class TransactionController extends Controller
             $promoDiscountAmount = 0;
             $appliedPromoCode = null;
 
-            if (!empty($request->promo_code)) {
+            if (! empty($request->promo_code)) {
                 // Kunci (Lock) baris promo claim agar tidak bisa di-klik ganda bersamaan
-                $promoClaim = \App\Models\PromoClaim::where('email', $user->email)
+                $promoClaim = PromoClaim::where('email', $user->email)
                     ->where('promo_code', strtoupper($request->promo_code))
                     ->lockForUpdate()
                     ->first();
 
-                if (!$promoClaim) {
-                    throw new \Exception("Kode Promo tidak valid untuk akun email ini.");
+                if (! $promoClaim) {
+                    throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
                 }
                 if ($promoClaim->is_used) {
-                    throw new \Exception("Kode Promo sudah pernah digunakan.");
+                    throw new \Exception('Kode Promo sudah pernah digunakan.');
                 }
                 if ($totalAmount < 50000) { // Syarat batas minimal belanja
-                    throw new \Exception("Minimum belanja untuk memakai promo ini adalah Rp 50.000");
+                    throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
                 }
 
                 $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
@@ -377,7 +378,7 @@ class TransactionController extends Controller
                 // Tandai promo sudah digunakan
                 $promoClaim->update([
                     'is_used' => true,
-                    'used_at' => now()
+                    'used_at' => now(),
                 ]);
             }
 
@@ -436,7 +437,7 @@ class TransactionController extends Controller
                 'point' => $earnedPoints,
                 'points_used' => $pointsUsed,
                 'promo_code' => $appliedPromoCode,
-                'promo_discount' => $promoDiscountAmount
+                'promo_discount' => $promoDiscountAmount,
             ]);
 
             $xenditItems = [];
@@ -510,6 +511,8 @@ class TransactionController extends Controller
                 'pointDiscountAmount' => $pointDiscountAmount,
                 'pointsUsed' => $pointsUsed,
                 'totalQuantity' => $totalQuantity,
+                'promoCode' => $appliedPromoCode,
+                'promoDiscountAmount' => $promoDiscountAmount,
             ];
         }); // <-- DB TRANSACTION SELESAI & LOCK DILEPAS DI SINI!
 
@@ -553,7 +556,7 @@ class TransactionController extends Controller
             // [PERBAIKAN 1]: Masukkan Item Diskon Promo ke Xendit
             if (isset($transactionData['promoDiscountAmount']) && $transactionData['promoDiscountAmount'] > 0) {
                 $transactionData['xenditItems'][] = [
-                    'name' => 'Promo Code: ' . $transactionData['promoCode'],
+                    'name' => 'Promo Code: '.$transactionData['promoCode'],
                     'quantity' => 1,
                     'price' => -(int) $transactionData['promoDiscountAmount'], // Harus Minus
                     'category' => 'DISCOUNT',
@@ -584,6 +587,20 @@ class TransactionController extends Controller
                          + $transactionData['totalShippingCost']
                          - $transactionData['pointDiscountAmount']
                          - ($transactionData['promoDiscountAmount'] ?? 0); // Kurangi Promo di sini!
+
+            // ================================================================
+            // [BARU] LOG AUDIT HARGA SEBELUM TERKIRIM KE XENDIT
+            // Cek file log di: storage/logs/laravel.log
+            // ================================================================
+            Log::info('XENDIT INVOICE CALCULATION', [
+                'order_id' => $transactionData['transaction']->order_id,
+                'subtotal_barang' => $transactionData['totalAmount'],
+                'ongkos_kirim' => $transactionData['totalShippingCost'],
+                'diskon_poin' => $transactionData['pointDiscountAmount'],
+                'diskon_promo' => $transactionData['promoDiscountAmount'] ?? 0,
+                'GRAND_TOTAL_FINAL' => $finalAmount,
+                'xendit_items_count' => count($transactionData['xenditItems']),
+            ]);
 
             $invoiceRequest = new CreateInvoiceRequest([
                 'external_id' => $externalId,
@@ -728,7 +745,7 @@ class TransactionController extends Controller
 
                 // [BARU] KEMBALIKAN PROMO CODE JIKA TRANSAKSI BATAL
                 if ($lockedTransaction->promo_code) {
-                    \App\Models\PromoClaim::where('email', $lockedTransaction->user->email)
+                    PromoClaim::where('email', $lockedTransaction->user->email)
                         ->where('promo_code', $lockedTransaction->promo_code)
                         ->update(['is_used' => false, 'used_at' => null]);
                 }
