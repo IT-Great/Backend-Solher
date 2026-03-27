@@ -99,8 +99,14 @@ class PaymentController extends Controller
         $conversionRate = 1000;
         $pointDiscountAmount = $pointsUsed * $conversionRate;
 
-        // Pastikan diskon poin tidak melebihi harga produk (Subtotal)
-        $pointDiscountAmount = min($pointDiscountAmount, $transaction->total_amount);
+        // // Pastikan diskon poin tidak melebihi harga produk (Subtotal)
+        // $pointDiscountAmount = min($pointDiscountAmount, $transaction->total_amount);
+
+        // Pastikan diskon poin tidak melebihi harga produk (Subtotal) SETELAH promo
+        // Kita hitung dulu sisa subtotal setelah promo
+        $promoDiscount = $transaction->promo_discount ?? 0;
+        $subtotalAfterPromo = max(0, $transaction->total_amount - $promoDiscount);
+        $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromo);
 
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
 
@@ -111,6 +117,16 @@ class PaymentController extends Controller
                 'quantity' => $detail->quantity,
                 'price' => (int) $detail->price,
                 'category' => 'PHYSICAL_PRODUCT',
+            ];
+        }
+
+        // [PERBAIKAN 1]: Tambahkan Promo Code ke Xendit Items
+        if ($promoDiscount > 0) {
+            $items[] = [
+                'name' => 'Promo Code: ' . ($transaction->promo_code ?? 'DISCOUNT'),
+                'quantity' => 1,
+                'price' => -(int) $promoDiscount,
+                'category' => 'DISCOUNT',
             ];
         }
 
@@ -139,7 +155,13 @@ class PaymentController extends Controller
         }
 
         // Hitung Total Pembayaran Akhir
-        $finalAmount = (int) $transaction->total_amount + ($basePriceXendit * $totalQuantity) - $pointDiscountAmount;
+        // $finalAmount = (int) $transaction->total_amount + ($basePriceXendit * $totalQuantity) - $pointDiscountAmount;
+
+        // [PERBAIKAN 2]: Hitung Total Pembayaran Akhir dengan mengurangi Promo
+        $finalAmount = (int) $transaction->total_amount
+                     + ($basePriceXendit * $totalQuantity)
+                     - $pointDiscountAmount
+                     - $promoDiscount; // Kurangi promo di sini!
 
         $invoiceRequest = new CreateInvoiceRequest([
             'external_id' => $externalId,

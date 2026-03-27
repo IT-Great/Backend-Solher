@@ -515,7 +515,50 @@ class TransactionController extends Controller
 
         // 2. PANGGIL API PIHAK KETIGA DENGAN AMAN DI LUAR TRANSAKSI
         try {
+            // $externalId = 'PAY-'.$transactionData['transaction']->order_id;
+
+            // if ($transactionData['pointDiscountAmount'] > 0) {
+            //     $transactionData['xenditItems'][] = [
+            //         'name' => 'Loyalty Point Discount ('.$transactionData['pointsUsed'].' Pts)',
+            //         'quantity' => 1,
+            //         'price' => -(int) $transactionData['pointDiscountAmount'],
+            //         'category' => 'DISCOUNT',
+            //     ];
+            // }
+
+            // if ($transactionData['totalShippingCost'] > 0) {
+            //     $baseShippingRate = $transactionData['totalShippingCost'] / $transactionData['totalQuantity'];
+            //     $transactionData['xenditItems'][] = [
+            //         'name' => 'Shipping Cost ('.$request->courier_company.')',
+            //         'quantity' => (int) $transactionData['totalQuantity'],
+            //         'price' => (int) $baseShippingRate,
+            //         'category' => 'SHIPPING_FEE',
+            //     ];
+            // }
+
+            // $finalAmount = (int) $transactionData['totalAmount'] + $transactionData['totalShippingCost'] - $transactionData['pointDiscountAmount'];
+
+            // $invoiceRequest = new CreateInvoiceRequest([
+            //     'external_id' => $externalId,
+            //     'payer_email' => $user->email,
+            //     'amount' => $finalAmount,
+            //     'description' => 'Payment for Order '.$transactionData['transaction']->order_id,
+            //     'items' => $transactionData['xenditItems'],
+            //     'success_redirect_url' => config('app.frontend_url').'/payment-success?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id,
+            //     'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
+            // ]);
+
             $externalId = 'PAY-'.$transactionData['transaction']->order_id;
+
+            // [PERBAIKAN 1]: Masukkan Item Diskon Promo ke Xendit
+            if (isset($transactionData['promoDiscountAmount']) && $transactionData['promoDiscountAmount'] > 0) {
+                $transactionData['xenditItems'][] = [
+                    'name' => 'Promo Code: ' . $transactionData['promoCode'],
+                    'quantity' => 1,
+                    'price' => -(int) $transactionData['promoDiscountAmount'], // Harus Minus
+                    'category' => 'DISCOUNT',
+                ];
+            }
 
             if ($transactionData['pointDiscountAmount'] > 0) {
                 $transactionData['xenditItems'][] = [
@@ -536,7 +579,11 @@ class TransactionController extends Controller
                 ];
             }
 
-            $finalAmount = (int) $transactionData['totalAmount'] + $transactionData['totalShippingCost'] - $transactionData['pointDiscountAmount'];
+            // [PERBAIKAN 2]: Kurangi Promo Discount dari Final Amount Xendit
+            $finalAmount = (int) $transactionData['totalAmount']
+                         + $transactionData['totalShippingCost']
+                         - $transactionData['pointDiscountAmount']
+                         - ($transactionData['promoDiscountAmount'] ?? 0); // Kurangi Promo di sini!
 
             $invoiceRequest = new CreateInvoiceRequest([
                 'external_id' => $externalId,
