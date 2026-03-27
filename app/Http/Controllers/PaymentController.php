@@ -7,6 +7,7 @@ use App\Models\Payment;
 use App\Models\Transaction;
 use App\Services\BiteshipService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Xendit\Configuration;
 use Xendit\Invoice\CreateInvoiceRequest;
 use Xendit\Invoice\InvoiceApi;
@@ -70,25 +71,36 @@ class PaymentController extends Controller
             ]);
         }
 
+        // $user = $request->user();
+        // $pointsUsed = 0;
+        // $pointDiscountAmount = 0;
+        // $conversionRate = 1000; // 1 Poin = Rp 1.000 Diskon
+
+        // if ($request->use_points > 0 && $user->is_membership) {
+        //     // Pastikan user tidak menggunakan poin lebih dari yang mereka miliki
+        //     $pointsUsed = min($request->use_points, $user->point);
+        //     $pointDiscountAmount = $pointsUsed * $conversionRate;
+
+        //     // Pastikan diskon poin tidak melebihi harga produk (Subtotal)
+        //     // Biasanya ongkir tidak boleh dipotong pakai poin, hanya harga barang
+        //     $pointDiscountAmount = min($pointDiscountAmount, $transaction->total_amount);
+
+        //     // Jika poin jadi dipakai, potong dari saldo user SEKARANG
+        //     if ($pointsUsed > 0) {
+        //         $user->decrement('point', $pointsUsed);
+        //     }
+        // }
+
         $user = $request->user();
-        $pointsUsed = 0;
-        $pointDiscountAmount = 0;
-        $conversionRate = 1000; // 1 Poin = Rp 1.000 Diskon
 
-        if ($request->use_points > 0 && $user->is_membership) {
-            // Pastikan user tidak menggunakan poin lebih dari yang mereka miliki
-            $pointsUsed = min($request->use_points, $user->point);
-            $pointDiscountAmount = $pointsUsed * $conversionRate;
+        // [PERBAIKAN MUTLAK] Jangan pernah potong poin lagi di sini!
+        // Ambil data poin yang sudah dipotong saat checkout awal di TransactionController.
+        $pointsUsed = $transaction->points_used ?? 0;
+        $conversionRate = 1000;
+        $pointDiscountAmount = $pointsUsed * $conversionRate;
 
-            // Pastikan diskon poin tidak melebihi harga produk (Subtotal)
-            // Biasanya ongkir tidak boleh dipotong pakai poin, hanya harga barang
-            $pointDiscountAmount = min($pointDiscountAmount, $transaction->total_amount);
-
-            // Jika poin jadi dipakai, potong dari saldo user SEKARANG
-            if ($pointsUsed > 0) {
-                $user->decrement('point', $pointsUsed);
-            }
-        }
+        // Pastikan diskon poin tidak melebihi harga produk (Subtotal)
+        $pointDiscountAmount = min($pointDiscountAmount, $transaction->total_amount);
 
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
 
@@ -145,13 +157,28 @@ class PaymentController extends Controller
         $api = new InvoiceApi;
         $invoice = $api->createInvoice($invoiceRequest);
 
-        Payment::create([
-            'transaction_id' => $transaction->id,
-            'external_id' => $externalId,
-            'checkout_url' => $invoice['invoice_url'],
-            'amount' => $transaction->total_amount,
-            'status' => 'pending',
-        ]);
+        // Payment::create([
+        //     'transaction_id' => $transaction->id,
+        //     'external_id' => $externalId,
+        //     'checkout_url' => $invoice['invoice_url'],
+        //     'amount' => $transaction->total_amount,
+        //     'status' => 'pending',
+        // ]);
+
+        // return response()->json([
+        //     'checkout_url' => $invoice['invoice_url'],
+        // ]);
+
+        // [PERBAIKAN MUTLAK] Gunakan updateOrCreate agar 1 Transaksi hanya memiliki 1 baris Payment
+        Payment::updateOrCreate(
+            ['transaction_id' => $transaction->id],
+            [
+                'external_id' => $externalId,
+                'checkout_url' => $invoice['invoice_url'],
+                'amount' => $transaction->total_amount,
+                'status' => 'pending',
+            ]
+        );
 
         return response()->json([
             'checkout_url' => $invoice['invoice_url'],
@@ -159,185 +186,233 @@ class PaymentController extends Controller
     }
 
     // Callback ini menangani perubahan status dari Xendit
-    public function callback(Request $request)
-    {
-        $payment = Payment::where('external_id', $request->external_id)->first();
-        if (! $payment) {
-            return response()->json(['message' => 'Payment not found'], 404);
-        }
-
-        $status = $request->status;
-        $payment->update(['status' => $status]);
-        $transaction = $payment->transaction;
-
-        if ($status === 'PAID') {
-            // [PERBAIKAN IDEMPOTENCY] Cegah proses ganda jika sudah PAID
-            if ($payment->status === 'PAID' || $transaction->status === 'processing' || $transaction->status === 'completed') {
-                return response()->json(['message' => 'Already processed']);
-            }
-            
-            $paymentMethod = $request->input('payment_method', 'Unknown');
-            $paymentChannel = $request->input('payment_channel', '');
-            $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);
-
-            // Jika shipping_method adalah 'free' (Ambil di Toko), langsung set ke 'completed'.
-            // Jika menggunakan Biteship, set ke 'processing' seperti biasa.
-            $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
-
-            // Update status dan payment method sekaligus
-            $transaction->update([
-                'status' => $targetTransactionStatus,
-                'payment_method' => $fullPaymentMethod,
-            ]);
-
-            // Jika Free Shipping (langsung completed), tambahkan poin ke user
-            // if ($targetTransactionStatus === 'completed' && $transaction->point > 0 && $transaction->user->is_membership) {
-            //     $transaction->user->increment('point', $transaction->point);
-            // }
-
-            // Jika Free Shipping (langsung completed), tambahkan poin ke user
-            if ($targetTransactionStatus === 'completed') {
-                // [PERBAIKAN] Cek apakah dia layak jadi member
-                $this->checkAndAssignMembership($transaction->user);
-
-                // Refresh data user setelah pengecekan
-                $transaction->user->refresh();
-
-                if ($transaction->point > 0 && $transaction->user->is_membership) {
-                    $transaction->user->increment('point', $transaction->point);
-                }
-            }
-
-            // --- EKSEKUSI PEMESANAN KURIR ---
-            // if ($transaction->shipping_method === 'biteship') {
-            //     try {
-            //         $biteship = new BiteshipService();
-            //         $order = $biteship->createOrder($transaction);
-
-            //         if (isset($order['success']) && $order['success'] === false) {
-            //             \Log::error('Gagal Create Order Biteship: ' . json_encode($order));
-            //         }
-
-            //         if (isset($order['id'])) {
-            //             $transaction->update([
-            //                 'biteship_order_id' => $order['id'],
-            //                 'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending'
-            //             ]);
-            //         } else {
-            //             $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
-            //             $transaction->update([
-            //                 'tracking_number' => 'API ERR: ' . substr($errorMsg, 0, 200)
-            //             ]);
-            //             \Log::error('Biteship Create Order Failed: ' . json_encode($order));
-            //         }
-            //     } catch (\Exception $e) {
-            //         $transaction->update([
-            //             'tracking_number' => 'SYS ERR: ' . substr($e->getMessage(), 0, 200)
-            //         ]);
-            //         \Log::error('Biteship Exception: ' . $e->getMessage());
-            //     }
-            // } else {
-            //     // Untuk transaksi 'free' shipping, beri label Internal-Pickup
-            //     $transaction->update(['tracking_number' => 'In-Store Pickup']);
-            // }
-
-            // --- EKSEKUSI PEMESANAN KURIR ---
-            if ($transaction->shipping_method === 'biteship') {
-                try {
-                    $biteship = new BiteshipService;
-                    $order = $biteship->createOrder($transaction);
-
-                    if (isset($order['success']) && $order['success'] === false) {
-                        \Log::error('Gagal Create Order Biteship: '.json_encode($order));
-                    }
-
-                    if (isset($order['id'])) {
-                        $transaction->update([
-                            'biteship_order_id' => $order['id'],
-                            'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
-                            'shipping_status' => strtolower($order['status'] ?? 'pending'), // [PERBAIKAN] Simpan status awal
-                        ]);
-                    } else {
-                        $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
-                        $transaction->update([
-                            'tracking_number' => 'API ERR: '.substr($errorMsg, 0, 200),
-                            'shipping_status' => 'error', // [PERBAIKAN]
-                        ]);
-                        \Log::error('Biteship Create Order Failed: '.json_encode($order));
-                    }
-                } catch (\Exception $e) {
-                    $transaction->update([
-                        'tracking_number' => 'SYS ERR: '.substr($e->getMessage(), 0, 200),
-                        'shipping_status' => 'error', // [PERBAIKAN]
-                    ]);
-                    \Log::error('Biteship Exception: '.$e->getMessage());
-                }
-            } else {
-                // Untuk transaksi 'free' shipping, beri label Internal-Pickup
-                $transaction->update([
-                    'tracking_number' => 'In-Store Pickup',
-                    'shipping_status' => 'ready_for_pickup', // [PERBAIKAN]
-                ]);
-            }
-        } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
-            if ($transaction->status !== 'cancelled') {
-                $transaction->update([
-                    'status' => 'cancelled',
-                    'shipping_status' => 'cancelled', // [PERBAIKAN] Sinkronisasi status pengiriman
-                ]);
-
-                // [PERBAIKAN] KEMBALIKAN POIN JIKA EXPIRED
-                if ($transaction->points_used > 0) {
-                    $transaction->user->increment('point', $transaction->points_used);
-                }
-            }
-        } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
-            $transaction->update(['status' => 'pending']);
-        }
-
-        return response()->json(['message' => 'Callback processed']);
-    }
-
-    // public function getShippingRates(Request $request)
+    // public function callback(Request $request)
     // {
-    //     $request->validate(['address_id' => 'required|exists:addresses,id']);
-
-    //     $address = Address::find($request->address_id);
-
-    //     if (! $address || ! $address->postal_code) {
-    //         return response()->json([
-    //             'message' => 'Alamat tidak valid atau kodepos tidak ditemukan.',
-    //         ], 400);
+    //     // [PERBAIKAN KEAMANAN MUTLAK] Tolak jika token tidak cocok!
+    //     $xenditToken = config('services.xendit.webhook_token');
+    //     if ($request->header('x-callback-token') !== $xenditToken) {
+    //         \Illuminate\Support\Facades\Log::critical('Fake Xendit Webhook Detected!', $request->all());
+    //         return response()->json(['message' => 'Forbidden - Invalid Token'], 403);
     //     }
 
-    //     try {
-    //         $biteship = new BiteshipService;
+    //     $payment = Payment::where('external_id', $request->external_id)->first();
+    //     if (! $payment) {
+    //         return response()->json(['message' => 'Payment not found'], 404);
+    //     }
 
-    //         // [PERBAIKAN] Kirim seluruh objek $address, bukan cuma kode pos
-    //         // Sebelumnya: $rates = $biteship->getRates($address->postal_code);
-    //         $rates = $biteship->getRates($address);
+    //     $status = $request->status;
+    //     $payment->update(['status' => $status]);
+    //     $transaction = $payment->transaction;
 
-    //         // Cek jika API Biteship memberikan respon success: false
-    //         if (isset($rates['success']) && $rates['success'] === false) {
-    //             return response()->json([
-    //                 'message' => 'Biteship API Error: '.($rates['error'] ?? 'Unknown error'),
-    //             ], 400);
+    //     if ($status === 'PAID') {
+    //         // [PERBAIKAN IDEMPOTENCY] Cegah proses ganda jika sudah PAID
+    //         if ($payment->status === 'PAID' || $transaction->status === 'processing' || $transaction->status === 'completed') {
+    //             return response()->json(['message' => 'Already processed']);
     //         }
 
-    //         return response()->json($rates);
-    //     } catch (\Exception $e) {
-    //         return response()->json([
-    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
-    //         ], 500);
+    //         $paymentMethod = $request->input('payment_method', 'Unknown');
+    //         $paymentChannel = $request->input('payment_channel', '');
+    //         $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);
+
+    //         // Jika shipping_method adalah 'free' (Ambil di Toko), langsung set ke 'completed'.
+    //         // Jika menggunakan Biteship, set ke 'processing' seperti biasa.
+    //         $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+    //         // Update status dan payment method sekaligus
+    //         $transaction->update([
+    //             'status' => $targetTransactionStatus,
+    //             'payment_method' => $fullPaymentMethod,
+    //         ]);
+
+    //         // Jika Free Shipping (langsung completed), tambahkan poin ke user
+    //         // if ($targetTransactionStatus === 'completed' && $transaction->point > 0 && $transaction->user->is_membership) {
+    //         //     $transaction->user->increment('point', $transaction->point);
+    //         // }
+
+    //         // Jika Free Shipping (langsung completed), tambahkan poin ke user
+    //         if ($targetTransactionStatus === 'completed') {
+    //             // [PERBAIKAN] Cek apakah dia layak jadi member
+    //             $this->checkAndAssignMembership($transaction->user);
+
+    //             // Refresh data user setelah pengecekan
+    //             $transaction->user->refresh();
+
+    //             if ($transaction->point > 0 && $transaction->user->is_membership) {
+    //                 $transaction->user->increment('point', $transaction->point);
+    //             }
+    //         }
+
+    //         // --- EKSEKUSI PEMESANAN KURIR ---
+    //         if ($transaction->shipping_method === 'biteship') {
+    //             try {
+    //                 $biteship = new BiteshipService;
+    //                 $order = $biteship->createOrder($transaction);
+
+    //                 if (isset($order['success']) && $order['success'] === false) {
+    //                     \Log::error('Gagal Create Order Biteship: '.json_encode($order));
+    //                 }
+
+    //                 if (isset($order['id'])) {
+    //                     $transaction->update([
+    //                         'biteship_order_id' => $order['id'],
+    //                         'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
+    //                         'shipping_status' => strtolower($order['status'] ?? 'pending'), // [PERBAIKAN] Simpan status awal
+    //                     ]);
+    //                 } else {
+    //                     $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
+    //                     $transaction->update([
+    //                         'tracking_number' => 'API ERR: '.substr($errorMsg, 0, 200),
+    //                         'shipping_status' => 'error', // [PERBAIKAN]
+    //                     ]);
+    //                     \Log::error('Biteship Create Order Failed: '.json_encode($order));
+    //                 }
+    //             } catch (\Exception $e) {
+    //                 $transaction->update([
+    //                     'tracking_number' => 'SYS ERR: '.substr($e->getMessage(), 0, 200),
+    //                     'shipping_status' => 'error', // [PERBAIKAN]
+    //                 ]);
+    //                 \Log::error('Biteship Exception: '.$e->getMessage());
+    //             }
+    //         } else {
+    //             // Untuk transaksi 'free' shipping, beri label Internal-Pickup
+    //             $transaction->update([
+    //                 'tracking_number' => 'In-Store Pickup',
+    //                 'shipping_status' => 'ready_for_pickup', // [PERBAIKAN]
+    //             ]);
+    //         }
+    //     } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+    //         if ($transaction->status !== 'cancelled') {
+    //             $transaction->update([
+    //                 'status' => 'cancelled',
+    //                 'shipping_status' => 'cancelled', // [PERBAIKAN] Sinkronisasi status pengiriman
+    //             ]);
+
+    //             // [PERBAIKAN] KEMBALIKAN POIN JIKA EXPIRED
+    //             if ($transaction->points_used > 0) {
+    //                 $transaction->user->increment('point', $transaction->points_used);
+    //             }
+    //         }
+    //     } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
+    //         $transaction->update(['status' => 'pending']);
     //     }
+
+    //     return response()->json(['message' => 'Callback processed']);
     // }
+
+    public function callback(Request $request)
+    {
+        // $xenditToken = config('services.xendit.webhook_token');
+        // if ($request->header('x-callback-token') !== $xenditToken) {
+        //     \Illuminate\Support\Facades\Log::critical('Fake Xendit Webhook Detected!', $request->all());
+
+        //     return response()->json(['message' => 'Forbidden - Invalid Token'], 403);
+        // }
+
+        // [PERBAIKAN MUTLAK] Gunakan DB Transaction & LockForUpdate agar webhook antre!
+        return DB::transaction(function () use ($request) {
+            $payment = Payment::where('external_id', $request->external_id)->lockForUpdate()->first();
+
+            if (! $payment) {
+                return response()->json(['message' => 'Payment not found'], 404);
+            }
+
+            $status = $request->status;
+            $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+            if ($status === 'PAID') {
+                // Cegah eksekusi ganda jika status SUDAH PAID atau transaksi sudah diproses
+                if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+                    return response()->json(['message' => 'Already processed']);
+                }
+
+                $payment->update(['status' => $status]);
+
+                $paymentMethod = $request->input('payment_method', 'Unknown');
+                $paymentChannel = $request->input('payment_channel', '');
+                $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);
+
+                $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+                $transaction->update([
+                    'status' => $targetTransactionStatus,
+                    'payment_method' => $fullPaymentMethod,
+                ]);
+
+                if ($targetTransactionStatus === 'completed') {
+                    $this->checkAndAssignMembership($transaction->user);
+                    $transaction->user->refresh();
+
+                    if ($transaction->point > 0 && $transaction->user->is_membership) {
+                        $transaction->user->increment('point', $transaction->point);
+                    }
+                }
+
+                // --- EKSEKUSI PEMESANAN KURIR (HANYA SEKALI!) ---
+                if ($transaction->shipping_method === 'biteship') {
+                    try {
+                        $biteship = new BiteshipService;
+                        $order = $biteship->createOrder($transaction);
+
+                        if (isset($order['id'])) {
+                            $transaction->update([
+                                'biteship_order_id' => $order['id'],
+                                'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
+                                'shipping_status' => strtolower($order['status'] ?? 'pending'),
+                            ]);
+                        } else {
+                            $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
+                            $transaction->update([
+                                'tracking_number' => 'API ERR: '.substr($errorMsg, 0, 200),
+                                'shipping_status' => 'error',
+                            ]);
+                            \Log::error('Biteship Create Order Failed: '.json_encode($order));
+                        }
+                    } catch (\Exception $e) {
+                        $transaction->update([
+                            'tracking_number' => 'SYS ERR: '.substr($e->getMessage(), 0, 200),
+                            'shipping_status' => 'error',
+                        ]);
+                        \Log::error('Biteship Exception: '.$e->getMessage());
+                    }
+                } else {
+                    $transaction->update([
+                        'tracking_number' => 'In-Store Pickup',
+                        'shipping_status' => 'ready_for_pickup',
+                    ]);
+                }
+            } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+                if ($transaction->status !== 'cancelled') {
+                    $payment->update(['status' => $status]);
+                    $transaction->update([
+                        'status' => 'cancelled',
+                        'shipping_status' => 'cancelled',
+                    ]);
+
+                    if ($transaction->points_used > 0) {
+                        $transaction->user->increment('point', $transaction->points_used);
+                    }
+
+                    // [PERBAIKAN MUTLAK] Kembalikan stok barang yang gagal dibayar!
+                    $transactionController = app(\App\Http\Controllers\TransactionController::class);
+                    foreach ($transaction->details as $detail) {
+                        $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
+                    }
+                }
+            } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
+                $payment->update(['status' => $status]);
+                $transaction->update(['status' => 'pending']);
+            }
+
+            return response()->json(['message' => 'Callback processed']);
+        });
+    }
 
     public function getShippingRates(Request $request)
     {
         $request->validate([
             'address_id' => 'required|exists:addresses,id',
             // [PERBAIKAN 1] Tangkap total barang dari keranjang
-            'total_quantity' => 'required|integer|min:1'
+            'total_quantity' => 'required|integer|min:1',
         ]);
 
         $address = Address::find($request->address_id);
