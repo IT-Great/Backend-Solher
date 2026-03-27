@@ -31,6 +31,21 @@ class ProductController extends Controller
     //     return response()->json($products, 200);
     // }
 
+    // // 1. MEMBACA DATA (BACA DARI REDIS CACHE, JIKA KOSONG BACA DARI MYSQL)
+    // // =========================================================================
+    // public function index()
+    // {
+    //     // Menyimpan data di RAM (Redis) selama 1 Hari (86400 detik) dengan label 'catalog'
+    //     $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
+    //         return Product::with('category')
+    //             ->where('status', 'active')
+    //             ->latest()
+    //             ->get();
+    //     });
+
+    //     return response()->json($products, 200);
+    // }
+
     // 1. MEMBACA DATA (BACA DARI REDIS CACHE, JIKA KOSONG BACA DARI MYSQL)
     // =========================================================================
     public function index()
@@ -38,9 +53,24 @@ class ProductController extends Controller
         // Menyimpan data di RAM (Redis) selama 1 Hari (86400 detik) dengan label 'catalog'
         $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
             return Product::with('category')
+                // [BARU] Hitung total penjualan dari relasi transactionDetails
+                // Ini akan menghasilkan atribut 'transaction_details_sum_quantity'
+                ->withSum(['transactionDetails' => function ($query) {
+                    // Opsional: Anda bisa membatasi hanya transaksi yang statusnya 'completed'
+                    $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+                          ->whereIn('transactions.status', ['completed']);
+                }], 'quantity')
                 ->where('status', 'active')
                 ->latest()
                 ->get();
+        });
+
+        // [BARU] Ubah nama atribut yang panjang menjadi 'total_sold' agar rapi di Frontend
+        $products->map(function ($product) {
+            // Jika kosong (belum ada penjualan), set ke 0
+            $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
+            unset($product->transaction_details_sum_quantity); // Buang nama aslinya
+            return $product;
         });
 
         return response()->json($products, 200);
