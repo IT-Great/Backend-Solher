@@ -24,8 +24,8 @@ class AdminResponseMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address('solherbag@gmail.com', 'Solher Bag Support'),
-            subject: 'Response to Your Inquiry - Solher Bag',
+            from: new Address('solherbag@gmail.com', 'Solher Support'),
+            subject: 'Response to Your Inquiry - Solher',
         );
     }
 

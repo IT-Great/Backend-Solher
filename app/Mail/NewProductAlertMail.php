@@ -24,7 +24,7 @@ class NewProductAlertMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address('solherbag@gmail.com', 'Solher Bag'),
+            from: new Address('solherbag@gmail.com', 'Solher'),
             subject: 'New Arrival: ' . $this->product->name . ' is Here!',
         );
     }

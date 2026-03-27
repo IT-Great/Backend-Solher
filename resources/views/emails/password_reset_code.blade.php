@@ -3,7 +3,7 @@
 
 <body style="font-family: Arial, sans-serif; text-align: center; color: #333;">
     <h2>Password Reset Request</h2>
-    <p>You requested to reset your password for your Solher Bag account.</p>
+    <p>You requested to reset your password for your Solher account.</p>
     <p>Please use the following 6-digit verification code to proceed:</p>
 
     <div

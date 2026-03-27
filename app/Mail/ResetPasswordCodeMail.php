@@ -23,7 +23,7 @@ class ResetPasswordCodeMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address('solherbag@gmail.com', 'Solher Bag Security'),
+            from: new Address('solherbag@gmail.com', 'Solher Security'),
             subject: 'Your Password Reset Verification Code',
         );
     }

@@ -12,7 +12,7 @@
         style="background-color: #000; color: #fff; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 5px;">Shop
         Now</a>
     <br><br>
-    <p style="font-size: 10px; color: #999;">You received this because you subscribed to Solher Bag.</p>
+    <p style="font-size: 10px; color: #999;">You received this because you subscribed to Solher.</p>
 </body>
 
 </html>

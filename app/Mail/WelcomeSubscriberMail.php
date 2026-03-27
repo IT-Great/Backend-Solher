@@ -23,8 +23,8 @@ class WelcomeSubscriberMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address('solherbag@gmail.com', 'Solher Bag Newsletter'),
-            subject: 'Welcome to Solher Bag Exclusives!',
+            from: new Address('solherbag@gmail.com', 'Solher Newsletter'),
+            subject: 'Welcome to Solher Exclusives!',
         );
     }
 

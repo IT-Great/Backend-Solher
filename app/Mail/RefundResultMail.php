@@ -22,8 +22,8 @@ class RefundResultMail extends Mailable
     public function build()
     {
         $subject = $this->action === 'approve'
-            ? 'Kabar Baik! Pengajuan Refund Disetujui - Solher Bag'
-            : 'Pembaruan Status Pengajuan Refund - Solher Bag';
+            ? 'Kabar Baik! Pengajuan Refund Disetujui - Solher'
+            : 'Pembaruan Status Pengajuan Refund - Solher';
 
         return $this->subject($subject)
                     ->view('emails.refund_result');

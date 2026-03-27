@@ -14,7 +14,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h2>Solher Bag - Info Refund</h2>
+            <h2>Solher - Info Refund</h2>
         </div>
         <div class="content">
             <p>Halo, <strong>{{ $transaction->user->first_name }} {{ $transaction->user->last_name }}</strong>,</p>
@@ -23,17 +23,17 @@
 
             @if($action === 'approve')
                 <p>Status Pengajuan: <span class="approved">DISETUJUI</span></p>
-                <p>Admin kami telah menyetujui pengajuan refund Anda. Anda sekarang dapat menekan tombol <strong>"Refund Now"</strong> pada halaman riwayat pesanan Anda di website Solher Bag untuk mencairkan dana Anda secara otomatis melalui sistem pembayaran kami.</p>
+                <p>Admin kami telah menyetujui pengajuan refund Anda. Anda sekarang dapat menekan tombol <strong>"Refund Now"</strong> pada halaman riwayat pesanan Anda di website Solher untuk mencairkan dana Anda secara otomatis melalui sistem pembayaran kami.</p>
             @else
                 <p>Status Pengajuan: <span class="rejected">DITOLAK</span></p>
                 <p>Mohon maaf, setelah melakukan peninjauan terhadap alasan dan bukti yang Anda lampirkan, admin kami tidak dapat memproses pengajuan refund Anda karena tidak memenuhi syarat & ketentuan kami.</p>
             @endif
 
             <p>Terima kasih atas pengertian Anda.</p>
-            <p>Salam,<br>Tim Solher Bag</p>
+            <p>Salam,<br>Tim Solher</p>
         </div>
         <div class="footer">
-            &copy; {{ date('Y') }} Solher Bag. All rights reserved.
+            &copy; {{ date('Y') }} Solher. All rights reserved.
         </div>
     </div>
 </body>

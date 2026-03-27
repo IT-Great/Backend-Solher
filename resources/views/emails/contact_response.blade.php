@@ -18,6 +18,6 @@
     </div>
 
     <br>
-    <p>Best Regards,<br><strong>Solher Bag Support Team</strong><br>solherbag@gmail.com</p>
+    <p>Best Regards,<br><strong>Solher Support Team</strong><br>solherbag@gmail.com</p>
 </body>
 </html>
