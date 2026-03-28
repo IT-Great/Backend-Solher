@@ -299,6 +299,11 @@ class ProductController extends Controller
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric',
             'stock' => 'required|integer',
+            'weight' => 'required|integer|min:1',          // <--- BARU
+            'length' => 'nullable|numeric|min:0',          // <--- BARU
+            'width' => 'nullable|numeric|min:0',           // <--- BARU
+            'height' => 'nullable|numeric|min:0',          // <--- BARU
+            'material' => 'nullable|string|max:255',       // <--- BARU
             // 'image' => 'required|image|max:2048', // Harus file gambar, maks 2MB
             'image' => 'required|image',
             'variant_images' => 'nullable|array|max:5',
@@ -522,7 +527,11 @@ class ProductController extends Controller
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric',
-
+            'weight' => 'required|integer|min:1',          // <--- BARU
+            'length' => 'nullable|numeric|min:0',          // <--- BARU
+            'width' => 'nullable|numeric|min:0',           // <--- BARU
+            'height' => 'nullable|numeric|min:0',          // <--- BARU
+            'material' => 'nullable|string|max:255',       // <--- BARU
             // Saat update, image boleh kosong (jika tidak diganti)
             // 'image' => 'nullable|image|max:2048',
             'image' => 'nullable|image',
