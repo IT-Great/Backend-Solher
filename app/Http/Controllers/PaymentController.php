@@ -208,119 +208,6 @@ class PaymentController extends Controller
     }
 
     // Callback ini menangani perubahan status dari Xendit
-    // public function callback(Request $request)
-    // {
-    //     // [PERBAIKAN KEAMANAN MUTLAK] Tolak jika token tidak cocok!
-    //     $xenditToken = config('services.xendit.webhook_token');
-    //     if ($request->header('x-callback-token') !== $xenditToken) {
-    //         \Illuminate\Support\Facades\Log::critical('Fake Xendit Webhook Detected!', $request->all());
-    //         return response()->json(['message' => 'Forbidden - Invalid Token'], 403);
-    //     }
-
-    //     $payment = Payment::where('external_id', $request->external_id)->first();
-    //     if (! $payment) {
-    //         return response()->json(['message' => 'Payment not found'], 404);
-    //     }
-
-    //     $status = $request->status;
-    //     $payment->update(['status' => $status]);
-    //     $transaction = $payment->transaction;
-
-    //     if ($status === 'PAID') {
-    //         // [PERBAIKAN IDEMPOTENCY] Cegah proses ganda jika sudah PAID
-    //         if ($payment->status === 'PAID' || $transaction->status === 'processing' || $transaction->status === 'completed') {
-    //             return response()->json(['message' => 'Already processed']);
-    //         }
-
-    //         $paymentMethod = $request->input('payment_method', 'Unknown');
-    //         $paymentChannel = $request->input('payment_channel', '');
-    //         $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);
-
-    //         // Jika shipping_method adalah 'free' (Ambil di Toko), langsung set ke 'completed'.
-    //         // Jika menggunakan Biteship, set ke 'processing' seperti biasa.
-    //         $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
-
-    //         // Update status dan payment method sekaligus
-    //         $transaction->update([
-    //             'status' => $targetTransactionStatus,
-    //             'payment_method' => $fullPaymentMethod,
-    //         ]);
-
-    //         // Jika Free Shipping (langsung completed), tambahkan poin ke user
-    //         // if ($targetTransactionStatus === 'completed' && $transaction->point > 0 && $transaction->user->is_membership) {
-    //         //     $transaction->user->increment('point', $transaction->point);
-    //         // }
-
-    //         // Jika Free Shipping (langsung completed), tambahkan poin ke user
-    //         if ($targetTransactionStatus === 'completed') {
-    //             // [PERBAIKAN] Cek apakah dia layak jadi member
-    //             $this->checkAndAssignMembership($transaction->user);
-
-    //             // Refresh data user setelah pengecekan
-    //             $transaction->user->refresh();
-
-    //             if ($transaction->point > 0 && $transaction->user->is_membership) {
-    //                 $transaction->user->increment('point', $transaction->point);
-    //             }
-    //         }
-
-    //         // --- EKSEKUSI PEMESANAN KURIR ---
-    //         if ($transaction->shipping_method === 'biteship') {
-    //             try {
-    //                 $biteship = new BiteshipService;
-    //                 $order = $biteship->createOrder($transaction);
-
-    //                 if (isset($order['success']) && $order['success'] === false) {
-    //                     \Log::error('Gagal Create Order Biteship: '.json_encode($order));
-    //                 }
-
-    //                 if (isset($order['id'])) {
-    //                     $transaction->update([
-    //                         'biteship_order_id' => $order['id'],
-    //                         'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
-    //                         'shipping_status' => strtolower($order['status'] ?? 'pending'), // [PERBAIKAN] Simpan status awal
-    //                     ]);
-    //                 } else {
-    //                     $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
-    //                     $transaction->update([
-    //                         'tracking_number' => 'API ERR: '.substr($errorMsg, 0, 200),
-    //                         'shipping_status' => 'error', // [PERBAIKAN]
-    //                     ]);
-    //                     \Log::error('Biteship Create Order Failed: '.json_encode($order));
-    //                 }
-    //             } catch (\Exception $e) {
-    //                 $transaction->update([
-    //                     'tracking_number' => 'SYS ERR: '.substr($e->getMessage(), 0, 200),
-    //                     'shipping_status' => 'error', // [PERBAIKAN]
-    //                 ]);
-    //                 \Log::error('Biteship Exception: '.$e->getMessage());
-    //             }
-    //         } else {
-    //             // Untuk transaksi 'free' shipping, beri label Internal-Pickup
-    //             $transaction->update([
-    //                 'tracking_number' => 'In-Store Pickup',
-    //                 'shipping_status' => 'ready_for_pickup', // [PERBAIKAN]
-    //             ]);
-    //         }
-    //     } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
-    //         if ($transaction->status !== 'cancelled') {
-    //             $transaction->update([
-    //                 'status' => 'cancelled',
-    //                 'shipping_status' => 'cancelled', // [PERBAIKAN] Sinkronisasi status pengiriman
-    //             ]);
-
-    //             // [PERBAIKAN] KEMBALIKAN POIN JIKA EXPIRED
-    //             if ($transaction->points_used > 0) {
-    //                 $transaction->user->increment('point', $transaction->points_used);
-    //             }
-    //         }
-    //     } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
-    //         $transaction->update(['status' => 'pending']);
-    //     }
-
-    //     return response()->json(['message' => 'Callback processed']);
-    // }
-
     public function callback(Request $request)
     {
         // $xenditToken = config('services.xendit.webhook_token');
@@ -429,12 +316,52 @@ class PaymentController extends Controller
         });
     }
 
+    // public function getShippingRates(Request $request)
+    // {
+    //     $request->validate([
+    //         'address_id' => 'required|exists:addresses,id',
+    //         // [PERBAIKAN 1] Tangkap total barang dari keranjang
+    //         'total_quantity' => 'required|integer|min:1',
+    //     ]);
+
+    //     $address = Address::find($request->address_id);
+
+    //     if (! $address || ! $address->postal_code) {
+    //         return response()->json([
+    //             'message' => 'Alamat tidak valid atau kodepos tidak ditemukan.',
+    //         ], 400);
+    //     }
+
+    //     try {
+    //         $biteship = new BiteshipService;
+
+    //         // [PERBAIKAN 2] Hitung berat riil (Asumsi 1 Tas = 1000 gram / 1 KG)
+    //         $weight = $request->total_quantity * 1000;
+
+    //         // Kirim berat riil ke Biteship
+    //         $rates = $biteship->getRates($address, $weight);
+
+    //         if (isset($rates['success']) && $rates['success'] === false) {
+    //             return response()->json([
+    //                 'message' => 'Biteship API Error: '.($rates['error'] ?? 'Unknown error'),
+    //             ], 400);
+    //         }
+
+    //         return response()->json($rates);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function getShippingRates(Request $request)
     {
         $request->validate([
             'address_id' => 'required|exists:addresses,id',
-            // [PERBAIKAN 1] Tangkap total barang dari keranjang
-            'total_quantity' => 'required|integer|min:1',
+            // [PERBAIKAN 1] Ganti total_quantity menjadi cart_ids array
+            'cart_ids' => 'required|array',
+            'cart_ids.*' => 'exists:carts,id',
         ]);
 
         $address = Address::find($request->address_id);
@@ -448,11 +375,24 @@ class PaymentController extends Controller
         try {
             $biteship = new BiteshipService;
 
-            // [PERBAIKAN 2] Hitung berat riil (Asumsi 1 Tas = 1000 gram / 1 KG)
-            $weight = $request->total_quantity * 1000;
+            // [PERBAIKAN 2] Hitung Total Berat Aktual (Gram) dari Database secara aman
+            // Pastikan Anda memuat relasi 'product'
+            $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->get();
 
-            // Kirim berat riil ke Biteship
-            $rates = $biteship->getRates($address, $weight);
+            $totalWeight = 0;
+            foreach ($cartItems as $item) {
+                // Ambil weight dari produk, jika null/kosong fallback ke 1000 gram
+                $itemWeight = $item->product->weight ?? 1000;
+
+                // Kalikan berat 1 barang dengan kuantitas yang dibeli
+                $totalWeight += ($itemWeight * $item->quantity);
+            }
+
+            // Cegah berat 0 jika ada error data (Minimal 1 gram)
+            if ($totalWeight <= 0) $totalWeight = 1000;
+
+            // Kirim total berat riil ke Biteship
+            $rates = $biteship->getRates($address, $totalWeight);
 
             if (isset($rates['success']) && $rates['success'] === false) {
                 return response()->json([
