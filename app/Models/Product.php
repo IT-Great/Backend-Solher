@@ -22,7 +22,7 @@ class Product extends Model
         'width',
         'height',
         'material',
-        'color', 
+        'color',
         'description',
         'care',
         'design',
@@ -31,6 +31,7 @@ class Product extends Model
 
     protected $casts = [
         'variant_images' => 'array',
+        'color' => 'array',            // <--- BARU: Casting ke Array
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
     ];
