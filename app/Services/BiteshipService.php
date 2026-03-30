@@ -215,7 +215,7 @@ class BiteshipService
 
         \Log::channel('stderr')->info('BITESHIP FINAL PAYLOAD:', $payload);
 
-        $response = Http::withHeaders([
+        $response = Http::timeout(10)->withHeaders([
             'Authorization' => $this->apiKey,
             'Content-Type' => 'application/json',
         ])->post("{$this->baseUrl}/orders", $payload);

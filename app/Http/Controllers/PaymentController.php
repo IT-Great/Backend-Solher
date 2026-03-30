@@ -35,7 +35,7 @@ class PaymentController extends Controller
         ]);
 
         $transaction = Transaction::with(['user', 'details.product', 'payment'])
-            ->findOrFail($request->transaction_id);
+            ->findOrFail($request->transaction_id)->where('user_id', $request->user()->id);
 
         if ($transaction->payment && $transaction->payment->status === 'pending' && ! empty($transaction->payment->checkout_url)) {
             return response()->json([
@@ -377,7 +377,7 @@ class PaymentController extends Controller
 
             // [PERBAIKAN 2] Hitung Total Berat Aktual (Gram) dari Database secara aman
             // Pastikan Anda memuat relasi 'product'
-            $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->get();
+            $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $request->user()->id)->get();
 
             $totalWeight = 0;
             foreach ($cartItems as $item) {
