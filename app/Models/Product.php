@@ -23,8 +23,8 @@ class Product extends Model
         'height',
         'material',
         'color',
+        'strap_length',  // <--- BARU DITAMBAHKAN
         'description',
-        'care',
         'design',
         'status',
     ];

@@ -304,6 +304,7 @@ class ProductController extends Controller
             'width' => 'nullable|numeric|min:0',           // <--- BARU
             'height' => 'nullable|numeric|min:0',          // <--- BARU
             'material' => 'nullable|string|max:255',       // <--- BARU
+            'strap_length' => 'nullable|string|max:255', // <--- BARU DITAMBAHKAN
             // 'color' => 'nullable|string|max:50',  // <--- BARU
             'color' => 'nullable|array',             // <--- UBAH JADI ARRAY
             'color.*' => 'string|max:50',            // <--- VALIDASI ISI ARRAY
