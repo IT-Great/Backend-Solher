@@ -535,7 +535,9 @@ class ProductController extends Controller
             'width' => 'nullable|numeric|min:0',           // <--- BARU
             'height' => 'nullable|numeric|min:0',          // <--- BARU
             'material' => 'nullable|string|max:255',       // <--- BARU
-            'color' => 'nullable|string|max:50',  // <--- BARU
+            // 'color' => 'nullable|string|max:50',  // <--- BARU
+            'color' => 'nullable|array',             // <--- UBAH JADI ARRAY
+            'color.*' => 'string|max:50',            // <--- VALIDASI ISI ARRAY
             // Saat update, image boleh kosong (jika tidak diganti)
             // 'image' => 'nullable|image|max:2048',
             'image' => 'nullable|image',
