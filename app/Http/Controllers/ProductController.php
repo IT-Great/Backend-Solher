@@ -304,6 +304,7 @@ class ProductController extends Controller
             'width' => 'nullable|numeric|min:0',           // <--- BARU
             'height' => 'nullable|numeric|min:0',          // <--- BARU
             'material' => 'nullable|string|max:255',       // <--- BARU
+            'color' => 'nullable|string|max:50',  // <--- BARU
             // 'image' => 'required|image|max:2048', // Harus file gambar, maks 2MB
             'image' => 'required|image',
             'variant_images' => 'nullable|array|max:5',
@@ -532,6 +533,7 @@ class ProductController extends Controller
             'width' => 'nullable|numeric|min:0',           // <--- BARU
             'height' => 'nullable|numeric|min:0',          // <--- BARU
             'material' => 'nullable|string|max:255',       // <--- BARU
+            'color' => 'nullable|string|max:50',  // <--- BARU
             // Saat update, image boleh kosong (jika tidak diganti)
             // 'image' => 'nullable|image|max:2048',
             'image' => 'nullable|image',
