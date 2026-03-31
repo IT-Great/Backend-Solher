@@ -350,7 +350,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
 
 // GRUP D: MANAJEMEN PRODUK KREASI & HAPUS (Hanya Admin)
 // *Note: View product terbuka public, tapi CRUD butuh admin
-Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
+Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () {
     Route::post('/products', [ProductController::class, 'store']);
     Route::put('/products/{id}', [ProductController::class, 'update']);
     Route::delete('/products/{id}', [ProductController::class, 'destroy']);
