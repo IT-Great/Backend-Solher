@@ -370,10 +370,10 @@ class ProductController extends Controller
             }
 
             // BROADCAST KE SEMUA SUBSCRIBER AKTIF MENGGUNAKAN LARAVEL QUEUE
-            $subscribers = Subscriber::where('is_active', true)->pluck('email');
-            foreach ($subscribers as $email) {
-                SendNewProductEmailJob::dispatch($email, $product);
-            }
+            // $subscribers = Subscriber::where('is_active', true)->pluck('email');
+            // foreach ($subscribers as $email) {
+            //     SendNewProductEmailJob::dispatch($email, $product);
+            // }
 
             DB::commit();
 
