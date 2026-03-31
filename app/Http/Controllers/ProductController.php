@@ -14,6 +14,10 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
 use Str;
 
+// [BARU] Import class Intervention Image v3
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
+
 class ProductController extends Controller
 {
     // public function index()
@@ -326,33 +330,53 @@ class ProductController extends Controller
         try {
             $data = $request->except(['variant_images', 'variant_video', 'image']);
 
-            // 2. Upload Gambar Utama ke Local Storage
-            if ($request->hasFile('image')) {
-                // public disk akan mengarah ke storage/app/public
-                $path = $request->file('image')->store('products', 'public');
-                // url() akan menghasilkan https://domain.com/storage/products/...
-                // $data['image'] = url(Storage::url($path));
+            // // 2. Upload Gambar Utama ke Local Storage
+            // if ($request->hasFile('image')) {
+            //     // public disk akan mengarah ke storage/app/public
+            //     $path = $request->file('image')->store('products', 'public');
+            //     // url() akan menghasilkan https://domain.com/storage/products/...
+            //     // $data['image'] = url(Storage::url($path));
 
-                // [PERBAIKAN] Hanya simpan path relatifnya saja, buang fungsi url()
-                $data['image'] = Storage::url($path);
+            //     // [PERBAIKAN] Hanya simpan path relatifnya saja, buang fungsi url()
+            //     $data['image'] = Storage::url($path);
+            // }
+
+            // // 3. Upload Gambar Varian (Array)
+            // $variantImagesUrls = [];
+            // if ($request->hasFile('variant_images')) {
+            //     foreach ($request->file('variant_images') as $file) {
+            //         $path = $file->store('products/variants', 'public');
+            //         // $variantImagesUrls[] = url(Storage::url($path));
+            //         $variantImagesUrls[] = Storage::url($path); // [PERBAIKAN]
+            //     }
+            // }
+            // $data['variant_images'] = count($variantImagesUrls) > 0 ? $variantImagesUrls : null;
+
+            // // 4. Upload Video
+            // if ($request->hasFile('variant_video')) {
+            //     $path = $request->file('variant_video')->store('products/videos', 'public');
+            //     // $data['variant_video'] = url(Storage::url($path));
+            //     $data['variant_video'] = Storage::url($path); // [PERBAIKAN]
+            // }
+
+            // [PERBAIKAN] 1. Upload & Optimasi Gambar Utama
+            if ($request->hasFile('image')) {
+                $data['image'] = $this->optimizeAndSaveImage($request->file('image'), 'products');
             }
 
-            // 3. Upload Gambar Varian (Array)
+            // [PERBAIKAN] 2. Upload & Optimasi Gambar Varian (Array)
             $variantImagesUrls = [];
             if ($request->hasFile('variant_images')) {
                 foreach ($request->file('variant_images') as $file) {
-                    $path = $file->store('products/variants', 'public');
-                    // $variantImagesUrls[] = url(Storage::url($path));
-                    $variantImagesUrls[] = Storage::url($path); // [PERBAIKAN]
+                    $variantImagesUrls[] = $this->optimizeAndSaveImage($file, 'products/variants');
                 }
             }
             $data['variant_images'] = count($variantImagesUrls) > 0 ? $variantImagesUrls : null;
 
-            // 4. Upload Video
+            // 3. Upload Video (TETAP MENGGUNAKAN CARA LAMA KARENA BUKAN GAMBAR)
             if ($request->hasFile('variant_video')) {
                 $path = $request->file('variant_video')->store('products/videos', 'public');
-                // $data['variant_video'] = url(Storage::url($path));
-                $data['variant_video'] = Storage::url($path); // [PERBAIKAN]
+                $data['variant_video'] = Storage::url($path);
             }
 
             // Simpan ke DB
@@ -556,54 +580,96 @@ class ProductController extends Controller
 
         $data = $request->except(['variant_images', 'variant_video', 'image', 'stock', '_method']);
 
-        // 1. Hapus & Ganti Gambar Utama Jika Ada Upload Baru
+        // // 1. Hapus & Ganti Gambar Utama Jika Ada Upload Baru
+        // if ($request->hasFile('image')) {
+        //     if ($product->image) {
+        //         // $oldPath = str_replace(url(Storage::url('')), '', $product->image);
+        //         // Storage::disk('public')->delete($oldPath);
+
+        //         // Karena kita akan menyimpan path relatif yang dimulai dengan /storage/
+        //         $oldPath = str_replace('/storage/', '', $product->image);
+        //         Storage::disk('public')->delete($oldPath);
+        //     }
+        //     $path = $request->file('image')->store('products', 'public');
+        //     // $data['image'] = url(Storage::url($path));
+        //     $data['image'] = Storage::url($path); // [PERBAIKAN]
+        // }
+
+        // // 2. Hapus & Ganti Varian Jika Ada Upload Baru (OVERWRITE ALL)
+        // if ($request->hasFile('variant_images')) {
+        //     if ($product->variant_images) {
+        //         foreach ($product->variant_images as $oldImgUrl) {
+        //             // $oldPath = str_replace(url(Storage::url('')), '', $oldImgUrl);
+        //             $oldPath = str_replace('/storage/', '', $oldImgUrl);
+        //             Storage::disk('public')->delete($oldPath);
+        //         }
+        //     }
+        //     $variantImagesUrls = [];
+        //     foreach ($request->file('variant_images') as $file) {
+        //         $path = $file->store('products/variants', 'public');
+        //         // $variantImagesUrls[] = url(Storage::url($path));
+        //         $variantImagesUrls[] = Storage::url($path); // [PERBAIKAN]
+        //     }
+        //     $data['variant_images'] = $variantImagesUrls;
+        // }
+
+        // // 3. Hapus & Ganti Video Jika Ada Upload Baru
+        // if ($request->hasFile('variant_video')) {
+        //     if ($product->variant_video) {
+        //         // $oldPath = str_replace(url(Storage::url('')), '', $product->variant_video);
+        //         $oldPath = str_replace('/storage/', '', $product->variant_video);
+        //         Storage::disk('public')->delete($oldPath);
+        //     }
+        //     $path = $request->file('variant_video')->store('products/videos', 'public');
+        //     // $data['variant_video'] = url(Storage::url($path));
+        //     $data['variant_video'] = Storage::url($path); // [PERBAIKAN]
+        // }
+
+        // $product->update($data);
+
+        // // [BARU] Bersihkan Cache!
+        // Cache::tags(['catalog'])->flush();
+
+        // return response()->json($product, 200);
+
+        // [PERBAIKAN] 1. Hapus & Ganti Gambar Utama
         if ($request->hasFile('image')) {
             if ($product->image) {
-                // $oldPath = str_replace(url(Storage::url('')), '', $product->image);
-                // Storage::disk('public')->delete($oldPath);
-
-                // Karena kita akan menyimpan path relatif yang dimulai dengan /storage/
                 $oldPath = str_replace('/storage/', '', $product->image);
                 Storage::disk('public')->delete($oldPath);
             }
-            $path = $request->file('image')->store('products', 'public');
-            // $data['image'] = url(Storage::url($path));
-            $data['image'] = Storage::url($path); // [PERBAIKAN]
+            // Gunakan fungsi helper untuk kompresi
+            $data['image'] = $this->optimizeAndSaveImage($request->file('image'), 'products');
         }
 
-        // 2. Hapus & Ganti Varian Jika Ada Upload Baru (OVERWRITE ALL)
+        // [PERBAIKAN] 2. Hapus & Ganti Varian
         if ($request->hasFile('variant_images')) {
             if ($product->variant_images) {
                 foreach ($product->variant_images as $oldImgUrl) {
-                    // $oldPath = str_replace(url(Storage::url('')), '', $oldImgUrl);
                     $oldPath = str_replace('/storage/', '', $oldImgUrl);
                     Storage::disk('public')->delete($oldPath);
                 }
             }
             $variantImagesUrls = [];
             foreach ($request->file('variant_images') as $file) {
-                $path = $file->store('products/variants', 'public');
-                // $variantImagesUrls[] = url(Storage::url($path));
-                $variantImagesUrls[] = Storage::url($path); // [PERBAIKAN]
+                // Gunakan fungsi helper untuk kompresi
+                $variantImagesUrls[] = $this->optimizeAndSaveImage($file, 'products/variants');
             }
             $data['variant_images'] = $variantImagesUrls;
         }
 
-        // 3. Hapus & Ganti Video Jika Ada Upload Baru
+        // 3. Hapus & Ganti Video (TETAP MENGGUNAKAN CARA LAMA)
         if ($request->hasFile('variant_video')) {
             if ($product->variant_video) {
-                // $oldPath = str_replace(url(Storage::url('')), '', $product->variant_video);
                 $oldPath = str_replace('/storage/', '', $product->variant_video);
                 Storage::disk('public')->delete($oldPath);
             }
             $path = $request->file('variant_video')->store('products/videos', 'public');
-            // $data['variant_video'] = url(Storage::url($path));
-            $data['variant_video'] = Storage::url($path); // [PERBAIKAN]
+            $data['variant_video'] = Storage::url($path);
         }
 
         $product->update($data);
 
-        // [BARU] Bersihkan Cache!
         Cache::tags(['catalog'])->flush();
 
         return response()->json($product, 200);
@@ -715,4 +781,34 @@ class ProductController extends Controller
     //         ], 422);
     //     }
     // }
+
+    /**
+     * [BARU] FUNGSI HELPER UNTUK OPTIMASI GAMBAR
+     * Fungsi ini akan me-resize gambar dan mengonversinya ke WebP
+     */
+    private function optimizeAndSaveImage($file, $folder)
+    {
+        // 1. Inisialisasi Image Manager dengan driver GD
+        $manager = new ImageManager(new Driver());
+
+        // 2. Baca file yang diunggah
+        $image = $manager->read($file);
+
+        // 3. Scale Down: Maksimal lebar 1000px.
+        // Jika gambar asli 4000x3000, akan dikecilkan jadi 1000x750.
+        // Jika gambar asli 800x600, tidak akan di-upscale (tetap 800x600).
+        $image->scaleDown(width: 1000);
+
+        // 4. Encode ke format WebP dengan kualitas 80%
+        $encoded = $image->toWebp(80);
+
+        // 5. Buat nama file unik dengan ekstensi .webp
+        $filename = $folder . '/' . Str::random(40) . '.webp';
+
+        // 6. Simpan ke Local Storage (disk public)
+        Storage::disk('public')->put($filename, $encoded->toString());
+
+        // 7. Kembalikan path relatifnya
+        return '/storage/' . $filename;
+    }
 }
