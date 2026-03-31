@@ -309,7 +309,8 @@ class ProductController extends Controller
             'color' => 'nullable|array',             // <--- UBAH JADI ARRAY
             'color.*' => 'string|max:50',            // <--- VALIDASI ISI ARRAY
             // 'image' => 'required|image|max:2048', // Harus file gambar, maks 2MB
-            'image' => 'required|image',
+            // 'image' => 'required|image',
+            'image' => 'nullable|image',
             'variant_images' => 'nullable|array|max:5',
             // 'variant_images.*' => 'image|max:2048',
             'variant_images.*' => 'image',
