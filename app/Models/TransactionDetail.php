@@ -14,6 +14,7 @@ class TransactionDetail extends Model
         'product_id',
         'quantity',
         'price',
+        'color'
     ];
 
     /**

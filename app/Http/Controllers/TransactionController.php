@@ -343,12 +343,6 @@ class TransactionController extends Controller
                     'color' => $item->color, // <--- BARU: Simpan riwayat warna ke tabel transaksi
                 ]);
 
-                // [PERBAIKAN XENDIT] Tambahkan informasi warna di struk pembayaran Xendit
-                $productName = $product->name;
-                if (!empty($item->color)) {
-                    $productName .= ' - ' . $item->color;
-                }
-
                 // ... (Logika Potong FIFO Batch Anda tetap sama di sini) ...
                 $remainingQuantityToDeduct = $item->quantity;
                 $totalBatchQuantity = ProductStock::where('product_id', $product->id)->sum('quantity');
@@ -385,6 +379,12 @@ class TransactionController extends Controller
                     throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
                 }
                 $product->decrement('stock', $item->quantity);
+
+                // [PERBAIKAN XENDIT] Tambahkan informasi warna di struk pembayaran Xendit
+                $productName = $product->name;
+                if (!empty($item->color)) {
+                    $productName .= ' - ' . $item->color;
+                }
 
                 $xenditItems[] = [
                     'name' => $productName,

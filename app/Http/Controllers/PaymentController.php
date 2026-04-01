@@ -117,8 +117,17 @@ class PaymentController extends Controller
 
         $items = [];
         foreach ($transaction->details as $detail) {
+
+        // Ambil nama produk dasar
+            $productName = $detail->product->name;
+
+            // Tambahkan embel-embel warna jika ada di dalam detail transaksi
+            if (!empty($detail->color)) {
+                $productName .= ' - ' . $detail->color;
+            }
+            
             $items[] = [
-                'name' => $detail->product->name,
+                'name' => $productName,
                 'quantity' => $detail->quantity,
                 'price' => (int) $detail->price,
                 'category' => 'PHYSICAL_PRODUCT',
