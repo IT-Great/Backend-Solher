@@ -60,15 +60,28 @@ class CartController extends Controller
     {
         $request->validate([
             'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:1'
+            'quantity' => 'required|integer|min:1',
+            'color' => 'nullable|string|max:50' // <--- BARU
         ]);
 
         $product = Product::findOrFail($request->product_id);
         $user = $request->user();
 
         // Cari apakah produk sudah ada di keranjang user
+        // $cartItem = Cart::where('user_id', $user->id)
+        //     ->where('product_id', $product->id)
+        //     ->first();
+
+        // [PERBAIKAN KUNCI] Cari apakah produk DENGAN WARNA YANG SAMA sudah ada di keranjang
         $cartItem = Cart::where('user_id', $user->id)
             ->where('product_id', $product->id)
+            ->where(function($query) use ($request) {
+                if ($request->color) {
+                    $query->where('color', $request->color);
+                } else {
+                    $query->whereNull('color');
+                }
+            })
             ->first();
 
         $newQuantity = $cartItem ? $cartItem->quantity + $request->quantity : $request->quantity;
@@ -91,7 +104,8 @@ class CartController extends Controller
                 'user_id' => $user->id,
                 'product_id' => $product->id,
                 'quantity' => $request->quantity,
-                'gross_amount' => $request->quantity * $price
+                'gross_amount' => $request->quantity * $price,
+                'color' => $request->color // <--- BARU (Simpan warna)
             ]);
         }
 

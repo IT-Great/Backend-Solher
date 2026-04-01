@@ -340,7 +340,14 @@ class TransactionController extends Controller
                     'product_id' => $item->product_id,
                     'quantity' => $item->quantity,
                     'price' => $price,
+                    'color' => $item->color, // <--- BARU: Simpan riwayat warna ke tabel transaksi
                 ]);
+
+                // [PERBAIKAN XENDIT] Tambahkan informasi warna di struk pembayaran Xendit
+                $productName = $product->name;
+                if (!empty($item->color)) {
+                    $productName .= ' - ' . $item->color;
+                }
 
                 // ... (Logika Potong FIFO Batch Anda tetap sama di sini) ...
                 $remainingQuantityToDeduct = $item->quantity;
@@ -380,7 +387,7 @@ class TransactionController extends Controller
                 $product->decrement('stock', $item->quantity);
 
                 $xenditItems[] = [
-                    'name' => $product->name,
+                    'name' => $productName,
                     'quantity' => $item->quantity,
                     'price' => (int) $price,
                     'category' => 'PHYSICAL_PRODUCT',
