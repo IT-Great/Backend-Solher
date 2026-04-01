@@ -253,7 +253,7 @@ Route::post('/subscribe', [ContactController::class, 'subscribe']);
 Route::get('/guest/categories', [CategoryController::class, 'index']);
 Route::post('/biteship/callback', [TransactionController::class, 'biteshipCallback']);
 Route::post('/payments/callback', [PaymentController::class, 'callback']);
-Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
+// Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
 
 // Public Route (Pop-up Home)
 Route::post('/promo/claim', [App\Http\Controllers\PromoController::class, 'claim']);
@@ -297,6 +297,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/transactions/tracking/bulk', [TransactionController::class, 'bulkTrackOrders']);
 
     Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
+    Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
 
     Route::post('/promo/verify', [App\Http\Controllers\PromoController::class, 'verify']);
 });

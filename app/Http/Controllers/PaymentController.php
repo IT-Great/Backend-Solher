@@ -34,8 +34,13 @@ class PaymentController extends Controller
             'use_points' => 'nullable|integer|min:0',
         ]);
 
+        // $transaction = Transaction::with(['user', 'details.product', 'payment'])
+        //     ->findOrFail($request->transaction_id)->where('user_id', $request->user()->id);
+
+        // KODE BARU YANG BENAR:
         $transaction = Transaction::with(['user', 'details.product', 'payment'])
-            ->findOrFail($request->transaction_id)->where('user_id', $request->user()->id);
+            ->where('user_id', $request->user()->id)
+            ->findOrFail($request->transaction_id);
 
         if ($transaction->payment && $transaction->payment->status === 'pending' && ! empty($transaction->payment->checkout_url)) {
             return response()->json([
