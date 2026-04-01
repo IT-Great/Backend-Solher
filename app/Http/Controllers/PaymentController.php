@@ -125,7 +125,7 @@ class PaymentController extends Controller
             if (!empty($detail->color)) {
                 $productName .= ' - ' . $detail->color;
             }
-            
+
             $items[] = [
                 'name' => $productName,
                 'quantity' => $detail->quantity,
@@ -371,6 +371,14 @@ class PaymentController extends Controller
 
     public function getShippingRates(Request $request)
     {
+        // [PERBAIKAN PENTING] Pengaman ganda jika User tidak terdeteksi (Token expired/hilang)
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'message' => 'Unauthorized. Please login again.'
+            ], 401);
+        }
+
         $request->validate([
             'address_id' => 'required|exists:addresses,id',
             // [PERBAIKAN 1] Ganti total_quantity menjadi cart_ids array
@@ -391,7 +399,7 @@ class PaymentController extends Controller
 
             // [PERBAIKAN 2] Hitung Total Berat Aktual (Gram) dari Database secara aman
             // Pastikan Anda memuat relasi 'product'
-            $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $request->user()->id)->get();
+            $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
 
             $totalWeight = 0;
             foreach ($cartItems as $item) {
