@@ -65,7 +65,7 @@
         @foreach($products as $product)
             <div style="margin-bottom: 40px; padding-bottom: 30px; border-bottom: 1px solid #f1f1f1;">
 
-                <img src="{{ $product->image ?: config('app.url') . '/default-bag-icon.jpg' }}"
+                <img src="{{ $product->image ?: config('app.url') . '/default_bag_icon.jpg' }}"
                      alt="{{ $product->name }}"
                      style="width: 100%; max-width: 280px; height: 280px; object-fit: cover; border-radius: 10px; margin-bottom: 15px; background-color: #f5f5f5;">
 
