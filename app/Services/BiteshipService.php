@@ -135,8 +135,12 @@ class BiteshipService
         $payload = [
             'origin_postal_code' => config('services.biteship.origin_postal_code'),
             'destination_postal_code' => $address->postal_code,
-            'origin_latitude' => -7.25706,
-            'origin_longitude' => 112.74549,
+            // 'origin_latitude' => -7.25706,
+            // 'origin_longitude' => 112.74549,
+
+            'origin_latitude' => -7.25653,
+            'origin_longitude' => 112.74877,
+
             'destination_latitude' => floatval($address->latitude),
             'destination_longitude' => floatval($address->longitude),
             'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
@@ -182,12 +186,15 @@ class BiteshipService
         $payload = [
             'origin_contact_name' => 'Solher Store',
             'origin_contact_phone' => '08883888585',
-            'origin_address' => 'Jalan Kecilung N0. 8A, Kota Surabaya, Jawa Timur 60275, Indonesia',
+            // 'origin_address' => 'Jalan Kecilung N0. 8A, Kota Surabaya, Jawa Timur 60275, Indonesia',
+            'origin_address' => 'Jalan Wijaya Kusuma No.57, Kota Surabaya, Jawa Timur 60272, Indonesia',
             'origin_postal_code' => config('services.biteship.origin_postal_code'),
 
             'origin_coordinate' => [
-                'latitude' => -7.25706,
-                'longitude' => 112.74549,
+                // 'latitude' => -7.25706,
+                // 'longitude' => 112.74549,
+                'latitude' => -7.25653,
+                'longitude' => 112.74877,
             ],
 
             'destination_postal_code' => $transaction->address->postal_code,
