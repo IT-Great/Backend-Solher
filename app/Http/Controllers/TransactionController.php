@@ -248,6 +248,32 @@ class TransactionController extends Controller
             $promoDiscountAmount = 0;
             $appliedPromoCode = null;
 
+            // if (! empty($request->promo_code)) {
+            //     // Pastikan menggunakan $lockedUser->email untuk validasi
+            //     $promoClaim = PromoClaim::where('email', $lockedUser->email)
+            //         ->where('promo_code', strtoupper($request->promo_code))
+            //         ->lockForUpdate()
+            //         ->first();
+
+            //     if (! $promoClaim) {
+            //         throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+            //     }
+            //     if ($promoClaim->is_used) {
+            //         throw new \Exception('Kode Promo sudah pernah digunakan.');
+            //     }
+            //     if ($totalAmount < 50000) {
+            //         throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
+            //     }
+
+            //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+            //     $appliedPromoCode = $promoClaim->promo_code;
+
+            //     $promoClaim->update([
+            //         'is_used' => true,
+            //         'used_at' => now(),
+            //     ]);
+            // }
+
             if (! empty($request->promo_code)) {
                 // Pastikan menggunakan $lockedUser->email untuk validasi
                 $promoClaim = PromoClaim::where('email', $lockedUser->email)
@@ -261,8 +287,13 @@ class TransactionController extends Controller
                 if ($promoClaim->is_used) {
                     throw new \Exception('Kode Promo sudah pernah digunakan.');
                 }
-                if ($totalAmount < 50000) {
-                    throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
+
+                // ====================================================================
+                // [PERBAIKAN KRUSIAL] Validasi Minimum Belanja diubah jadi Rp 499.000
+                // Pesan error diubah ke Bahasa Inggris agar rapi di UI Frontend
+                // ====================================================================
+                if ($totalAmount < 499000) {
+                    throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
                 }
 
                 $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);

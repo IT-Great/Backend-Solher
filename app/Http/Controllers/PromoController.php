@@ -128,10 +128,53 @@ use Illuminate\Support\Str; // <--- [BARU] Wajib di-import
 class PromoController extends Controller
 {
     // Dipanggil dari HomePage (Pop-up)
+    // public function claim(Request $request)
+    // {
+    //     $request->validate(['email' => 'required|email']);
+    //     $discountValue = 25000;
+
+    //     // [PERBAIKAN] Cek berdasarkan email saja, bukan kode promo statis
+    //     $exists = PromoClaim::where('email', $request->email)->first();
+    //     if ($exists) {
+    //         return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
+    //     }
+
+    //     // ====================================================================
+    //     // [BARU] Generate Kode Promo Acak (Contoh: SOLHER-A9F8B2)
+    //     // ====================================================================
+    //     $code = 'SOLHER-'.strtoupper(Str::random(6));
+
+    //     // 1. Coba kirim email TERLEBIH DAHULU sebelum menyimpan ke database
+    //     try {
+    //         Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue));
+    //     } catch (\Exception $e) {
+    //         Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
+
+    //         return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
+    //     }
+
+    //     // 2. Jika email sukses terkirim, baru catat di database
+    //     PromoClaim::create([
+    //         'email' => $request->email,
+    //         'promo_code' => $code,
+    //         'discount_value' => $discountValue,
+    //     ]);
+
+    //     return response()->json([
+    //         'message' => 'Promo berhasil diklaim!',
+    //         'promo_code' => $code,
+    //     ]);
+    // }
+
+    // Dipanggil dari HomePage (Pop-up)
     public function claim(Request $request)
     {
         $request->validate(['email' => 'required|email']);
-        $discountValue = 25000;
+
+        // ====================================================================
+        // [PERBAIKAN KRUSIAL] Ubah nominal diskon sesuai janji di UI (250.000)
+        // ====================================================================
+        $discountValue = 250000;
 
         // [PERBAIKAN] Cek berdasarkan email saja, bukan kode promo statis
         $exists = PromoClaim::where('email', $request->email)->first();
@@ -139,14 +182,12 @@ class PromoController extends Controller
             return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
         }
 
-        // ====================================================================
-        // [BARU] Generate Kode Promo Acak (Contoh: SOLHER-A9F8B2)
-        // ====================================================================
+        // Generate Kode Promo Acak (Contoh: SOLHER-A9F8B2)
         $code = 'SOLHER-'.strtoupper(Str::random(6));
 
         // 1. Coba kirim email TERLEBIH DAHULU sebelum menyimpan ke database
         try {
-            Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue));
+            Mail::to($request->email)->send(new \App\Mail\PromoCodeMail($code, $discountValue));
         } catch (\Exception $e) {
             Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
 
