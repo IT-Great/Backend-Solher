@@ -632,6 +632,19 @@ class ProductController extends Controller
 
         // return response()->json($product, 200);
 
+        // =========================================================================
+        // [PERBAIKAN BUG] PEMBANTAI STRING KOSONG
+        // Paksa konversi string "" dari FormData menjadi NULL sejati milik SQL
+        // =========================================================================
+        $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length'];
+
+        foreach ($nullableFields as $field) {
+            if (!isset($data[$field]) || $data[$field] === "" || $data[$field] === "null") {
+                $data[$field] = null;
+            }
+        }
+        // =========================================================================
+
         // [PERBAIKAN] 1. Hapus & Ganti Gambar Utama
         if ($request->hasFile('image')) {
             if ($product->image) {
