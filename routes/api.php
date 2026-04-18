@@ -206,6 +206,7 @@
 //     });
 // });
 
+use App\Http\Controllers\ChatController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CoaController;
@@ -399,6 +400,13 @@ Route::middleware(['auth:sanctum', 'role:admin,accounting'])->prefix('admin')->g
     Route::put('invoices/{id}', [InvoiceController::class, 'updateInvoice']);
     Route::post('invoices/{id}/pay', [InvoiceController::class, 'processPayment']);
     Route::delete('invoices/{id}', [InvoiceController::class, 'deleteInvoice']);
+});
+
+// GRUP H: CHAT REALTIME (Admin & Customer)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
+    Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
+    Route::post('/chat/send', [ChatController::class, 'sendMessage']);
 });
 
 

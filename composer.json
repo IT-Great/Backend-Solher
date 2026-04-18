@@ -12,6 +12,7 @@
         "laravel/tinker": "^2.10.1",
         "league/flysystem-aws-s3-v3": "^3.0",
         "predis/predis": "^3.4",
+        "pusher/pusher-php-server": "^7.2",
         "xendit/xendit-php": "^7.0"
     },
     "require-dev": {
