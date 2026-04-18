@@ -232,10 +232,9 @@ use Illuminate\Support\Facades\Broadcast;
 |--------------------------------------------------------------------------
 | BROADCAST AUTH ROUTE (Khusus Laravel 11 & Vue SPA)
 |--------------------------------------------------------------------------
-| Baris ini akan otomatis membuat rute POST /api/broadcasting/auth
-| dan melindunginya menggunakan token Sanctum.
 */
-Broadcast::routes(['prefix' => 'api', 'middleware' => ['auth:sanctum']]); // <--- 2. TAMBAHKAN BARIS INI
+// [PERBAIKAN] Hapus prefix 'api' karena file ini sudah otomatis ber-prefix /api
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 // =========================================================================
 // PUBLIC ROUTES
@@ -414,7 +413,7 @@ Route::middleware(['auth:sanctum', 'role:admin,accounting'])->prefix('admin')->g
 
 // GRUP H: CHAT REALTIME (Admin & Customer)
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/chat/admins', [ChatController::class, 'gcetAdmins']);
+    Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
     Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
     Route::post('/chat/send', [ChatController::class, 'sendMessage']);
 });
