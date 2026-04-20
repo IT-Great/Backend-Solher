@@ -368,6 +368,8 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () 
     Route::put('/products/{id}/restore', [ProductController::class, 'restore']);
     Route::delete('/products/{id}/force', [ProductController::class, 'forceDelete']);
     Route::post('/admin/s3/presign', [S3UploadController::class, 'presign']);
+
+    Route::get('/admin/audit-logs', [\App\Http\Controllers\AuditLogController::class, 'index']);
 });
 
 // GRUP E: STOK & GUDANG (Admin & Gudang)

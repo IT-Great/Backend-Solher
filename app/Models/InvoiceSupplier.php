@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Model;
 
 class InvoiceSupplier extends Model
 {
+    use Auditable;
+
     protected $guarded = ['id'];
 
     protected $table = 'invoice_suppliers';
