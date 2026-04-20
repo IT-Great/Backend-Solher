@@ -416,6 +416,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
     Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
     Route::post('/chat/send', [ChatController::class, 'sendMessage']);
+    Route::post('/chat/read/{id}', [ChatController::class, 'markAsRead']);
+    Route::post('/chat/typing', [ChatController::class, 'typing']);
 });
 
 
