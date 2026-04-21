@@ -81,19 +81,63 @@ class ChatController extends Controller
         return response()->json($messages);
     }
 
+    // public function sendMessage(Request $request)
+    // {
+    //     $request->validate([
+    //         'receiver_id' => 'required|exists:users,id',
+    //         'message' => 'required|string'
+    //     ]);
+
+    //     $message = Message::create([
+    //         'sender_id' => auth()->id(),
+    //         'receiver_id' => $request->receiver_id,
+    //         'message' => $request->message
+    //     ]);
+
+    //     broadcast(new MessageSent($message))->toOthers();
+
+    //     return response()->json($message->load('sender', 'receiver'));
+    // }
+
     public function sendMessage(Request $request)
     {
+        // 1. Validasi: Boleh teks saja, boleh file saja, boleh dua-duanya.
         $request->validate([
             'receiver_id' => 'required|exists:users,id',
-            'message' => 'required|string'
+            'message' => 'nullable|string',
+            'attachment' => 'nullable|file|mimes:jpeg,png,jpg,webp,mp4,mov,avi|max:10240' // Maksimal 10MB
         ]);
 
+        if (!$request->message && !$request->hasFile('attachment')) {
+            return response()->json(['error' => 'Message or attachment is required'], 422);
+        }
+
+        $attachmentPath = null;
+        $attachmentType = null;
+
+        // 2. Logika Upload File
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+            $mimeType = $file->getMimeType();
+
+            // Deteksi apakah ini gambar atau video
+            $attachmentType = str_contains($mimeType, 'video') ? 'video' : 'image';
+
+            // Simpan ke storage/app/public/chat_attachments
+            // Pastikan Anda sudah menjalankan `php artisan storage:link` di server VPS!
+            $attachmentPath = $file->store('chat_attachments', 'public');
+        }
+
+        // 3. Simpan ke Database
         $message = Message::create([
             'sender_id' => auth()->id(),
             'receiver_id' => $request->receiver_id,
-            'message' => $request->message
+            'message' => $request->message,
+            'attachment' => $attachmentPath,
+            'attachment_type' => $attachmentType,
         ]);
 
+        // 4. Pancarkan (Broadcast)
         broadcast(new MessageSent($message))->toOthers();
 
         return response()->json($message->load('sender', 'receiver'));
