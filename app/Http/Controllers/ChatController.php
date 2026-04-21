@@ -62,9 +62,20 @@ use Illuminate\Http\Request;
 
 class ChatController extends Controller
 {
+    // public function getAdmins()
+    // {
+    //     $admins = User::where('usertype', '!=', 'user')->get();
+    //     return response()->json($admins);
+    // }
+
+    // Mengambil daftar admin (hanya Superadmin & Admin) untuk halaman customer
     public function getAdmins()
     {
-        $admins = User::where('usertype', '!=', 'user')->get();
+        // [PERBAIKAN] Gunakan whereIn untuk secara eksplisit memilih usertype yang diizinkan melayani chat
+        $admins = User::whereIn('usertype', ['admin', 'superadmin'])
+                      ->orderBy('usertype', 'desc') // Opsional: Superadmin bisa ditaruh di atas
+                      ->get();
+
         return response()->json($admins);
     }
 
