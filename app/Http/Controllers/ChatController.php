@@ -128,13 +128,19 @@ class ChatController extends Controller
             $attachmentPath = $file->store('chat_attachments', 'public');
         }
 
+        // [PERBAIKAN] Bersihkan nilai message. Jika kosong "", paksa menjadi null.
+        $cleanMessage = $request->message;
+        if (trim($cleanMessage) === '') {
+            $cleanMessage = null;
+        }
+
         // 3. Simpan ke Database
         $message = Message::create([
             'sender_id' => auth()->id(),
             'receiver_id' => $request->receiver_id,
-            'message' => $request->message,
-            'attachment' => $attachmentPath,
-            'attachment_type' => $attachmentType,
+            'message' => $cleanMessage,
+            'attachment' => $attachmentPath ?? null,
+            'attachment_type' => $attachmentType ?? null,
         ]);
 
         // 4. Pancarkan (Broadcast)
