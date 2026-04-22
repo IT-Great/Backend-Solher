@@ -10,6 +10,7 @@ use App\Models\ProductStock;
 use App\Models\PromoClaim;
 use App\Models\Transaction;
 use App\Models\TransactionDetail;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -234,7 +235,7 @@ class TransactionController extends Controller
             // Jika ada 2 request masuk bersamaan, request kedua akan disuruh antre
             // menunggu request pertama selesai memotong poin.
             // =========================================================================
-            $lockedUser = \App\Models\User::lockForUpdate()->find($user->id);
+            $lockedUser = User::lockForUpdate()->find($user->id);
 
             $totalAmount = 0;
             foreach ($cartItems as $item) {
@@ -413,8 +414,8 @@ class TransactionController extends Controller
 
                 // [PERBAIKAN XENDIT] Tambahkan informasi warna di struk pembayaran Xendit
                 $productName = $product->name;
-                if (!empty($item->color)) {
-                    $productName .= ' - ' . $item->color;
+                if (! empty($item->color)) {
+                    $productName .= ' - '.$item->color;
                 }
 
                 $xenditItems[] = [
@@ -553,7 +554,11 @@ class TransactionController extends Controller
             // =========================================================================
             Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
 
-            Cache::tags(['catalog'])->flush();
+            // Cache::tags(['catalog'])->flush();
+
+            foreach ($cartItems as $item) {
+                Cache::tags(['catalog'])->forget("products.detail.{$item->product_id}");
+            }
 
             return response()->json(['checkout_url' => $invoice['invoice_url']], 201);
 
@@ -566,24 +571,44 @@ class TransactionController extends Controller
         }
     }
 
+    // public function index(Request $request)
+    // {
+    //     // Eager load 'payment' untuk mendapatkan checkout_url
+    //     $transactions = Transaction::with(['details.product', 'payment', 'address'])
+    //         ->where('user_id', $request->user()->id)
+    //         ->latest()
+    //         ->get();
+
+    //     return response()->json($transactions);
+    // }
+
     public function index(Request $request)
     {
-        // Eager load 'payment' untuk mendapatkan checkout_url
         $transactions = Transaction::with(['details.product', 'payment', 'address'])
             ->where('user_id', $request->user()->id)
             ->latest()
-            ->get();
+            ->paginate(20); // User cukup lihat 20 transaksi per halaman
 
         return response()->json($transactions);
     }
 
     // Melihat semua transaksi (Sisi Admin)
+    // public function allTransactions()
+    // {
+    //     // Menambahkan relasi 'address' agar data penerima dan kodepos bisa dirender di Vue
+    //     $transactions = Transaction::with(['user', 'details.product', 'address'])
+    //         ->latest()
+    //         ->get();
+
+    //     return response()->json($transactions);
+    // }
+
     public function allTransactions()
     {
-        // Menambahkan relasi 'address' agar data penerima dan kodepos bisa dirender di Vue
+        // Hanya ambil 50 data per halaman. Sangat ringan untuk RAM server!
         $transactions = Transaction::with(['user', 'details.product', 'address'])
             ->latest()
-            ->get();
+            ->paginate(50);
 
         return response()->json($transactions);
     }
@@ -691,7 +716,11 @@ class TransactionController extends Controller
             }
         });
 
-        Cache::tags(['catalog'])->flush();
+        // Cache::tags(['catalog'])->flush();
+
+        foreach ($transaction->details as $detail) {
+            Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+        }
 
         return response()->json(['message' => 'Order cancelled successfully']);
     }
@@ -896,7 +925,11 @@ class TransactionController extends Controller
                 }
             });
 
-            Cache::tags(['catalog'])->flush();
+            // Cache::tags(['catalog'])->flush();
+
+            foreach ($transaction->details as $detail) {
+                Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+            }
 
             return response()->json([
                 'message' => 'Refund processed successfully. Funds returned automatically.',
@@ -913,7 +946,11 @@ class TransactionController extends Controller
                     }
                 });
 
-                Cache::tags(['catalog'])->flush();
+                // Cache::tags(['catalog'])->flush();
+
+                foreach ($transaction->details as $detail) {
+                    Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+                }
 
                 return response()->json([
                     'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
@@ -1113,6 +1150,40 @@ class TransactionController extends Controller
     }
 
     // Fungsi khusus Admin: Mengambil semua tracking tanpa filter user_id
+    // public function adminBulkTrackOrders(Request $request)
+    // {
+    //     $request->validate([
+    //         'transaction_ids' => 'required|array',
+    //         'transaction_ids.*' => 'integer|exists:transactions,id',
+    //     ]);
+
+    //     // HAPUS filter ->where('user_id') agar Admin bisa melihat semua pesanan
+    //     $transactions = Transaction::whereIn('id', $request->transaction_ids)
+    //         ->whereNotNull('biteship_order_id')
+    //         ->where('shipping_method', 'biteship')
+    //         ->get();
+
+    //     $trackingData = [];
+
+    //     foreach ($transactions as $transaction) {
+    //         try {
+    //             $response = Http::withHeaders([
+    //                 'Authorization' => config('services.biteship.api_key'),
+    //             ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+
+    //             if (isset($response['success']) && $response['success'] === true) {
+    //                 $trackingData[$transaction->id] = $response->json();
+    //             } else {
+    //                 $trackingData[$transaction->id] = ['status' => 'pending'];
+    //             }
+    //         } catch (\Exception $e) {
+    //             $trackingData[$transaction->id] = ['status' => 'error fetching data'];
+    //         }
+    //     }
+
+    //     return response()->json($trackingData);
+    // }
+
     public function adminBulkTrackOrders(Request $request)
     {
         $request->validate([
@@ -1120,27 +1191,39 @@ class TransactionController extends Controller
             'transaction_ids.*' => 'integer|exists:transactions,id',
         ]);
 
-        // HAPUS filter ->where('user_id') agar Admin bisa melihat semua pesanan
+        // Batasi maksimal 20 tracking sekaligus agar API Biteship tidak memblokir Anda (Rate Limiting)
+        if (count($request->transaction_ids) > 20) {
+            return response()->json(['message' => 'Maksimal tracking massal adalah 20 pesanan sekaligus.'], 422);
+        }
+
         $transactions = Transaction::whereIn('id', $request->transaction_ids)
             ->whereNotNull('biteship_order_id')
             ->where('shipping_method', 'biteship')
             ->get();
 
+        if ($transactions->isEmpty()) {
+            return response()->json([]);
+        }
+
+        // [PERBAIKAN KRITIS] Tembak API Biteship secara PARALEL (Bersamaan)
+        $responses = Http::pool(function (Pool $pool) use ($transactions) {
+            foreach ($transactions as $transaction) {
+                $pool->as($transaction->id)
+                     ->withHeaders(['Authorization' => config('services.biteship.api_key')])
+                     ->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+            }
+        });
+
         $trackingData = [];
 
+        // Rangkai hasil balasannya
         foreach ($transactions as $transaction) {
-            try {
-                $response = Http::withHeaders([
-                    'Authorization' => config('services.biteship.api_key'),
-                ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+            $response = $responses[$transaction->id] ?? null;
 
-                if (isset($response['success']) && $response['success'] === true) {
-                    $trackingData[$transaction->id] = $response->json();
-                } else {
-                    $trackingData[$transaction->id] = ['status' => 'pending'];
-                }
-            } catch (\Exception $e) {
-                $trackingData[$transaction->id] = ['status' => 'error fetching data'];
+            if ($response && $response->ok() && isset($response['success']) && $response['success'] === true) {
+                $trackingData[$transaction->id] = $response->json();
+            } else {
+                $trackingData[$transaction->id] = ['status' => 'pending/error'];
             }
         }
 

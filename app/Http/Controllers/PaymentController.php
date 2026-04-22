@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Address;
+use App\Models\Cart;
 use App\Models\Payment;
 use App\Models\Transaction;
 use App\Services\BiteshipService;
@@ -118,12 +119,12 @@ class PaymentController extends Controller
         $items = [];
         foreach ($transaction->details as $detail) {
 
-        // Ambil nama produk dasar
+            // Ambil nama produk dasar
             $productName = $detail->product->name;
 
             // Tambahkan embel-embel warna jika ada di dalam detail transaksi
-            if (!empty($detail->color)) {
-                $productName .= ' - ' . $detail->color;
+            if (! empty($detail->color)) {
+                $productName .= ' - '.$detail->color;
             }
 
             $items[] = [
@@ -137,7 +138,7 @@ class PaymentController extends Controller
         // [PERBAIKAN 1]: Tambahkan Promo Code ke Xendit Items
         if ($promoDiscount > 0) {
             $items[] = [
-                'name' => 'Promo Code: ' . ($transaction->promo_code ?? 'DISCOUNT'),
+                'name' => 'Promo Code: '.($transaction->promo_code ?? 'DISCOUNT'),
                 'quantity' => 1,
                 'price' => -(int) $promoDiscount,
                 'category' => 'DISCOUNT',
@@ -261,49 +262,79 @@ class PaymentController extends Controller
                     'payment_method' => $fullPaymentMethod,
                 ]);
 
-                if ($targetTransactionStatus === 'completed') {
-                    $this->checkAndAssignMembership($transaction->user);
-                    $transaction->user->refresh();
+                // if ($targetTransactionStatus === 'completed') {
+                //     $this->checkAndAssignMembership($transaction->user);
+                //     $transaction->user->refresh();
 
-                    if ($transaction->point > 0 && $transaction->user->is_membership) {
-                        $transaction->user->increment('point', $transaction->point);
-                    }
-                }
+                //     if ($transaction->point > 0 && $transaction->user->is_membership) {
+                //         $transaction->user->increment('point', $transaction->point);
+                //     }
+                // }
 
-                // --- EKSEKUSI PEMESANAN KURIR (HANYA SEKALI!) ---
+                // [PERBAIKAN] Jangan panggil Biteship di dalam transaksi yang sedang berjalan!
                 if ($transaction->shipping_method === 'biteship') {
-                    try {
-                        $biteship = new BiteshipService;
-                        $order = $biteship->createOrder($transaction);
+                    DB::afterCommit(function () use ($transaction) {
+                        // Blok ini hanya akan dieksekusi SETELAH transaksi database sukses disimpan dan LOCK dilepas.
+                        // Server database aman, web tidak akan nge-hang!
+                        try {
+                            $biteship = new BiteshipService;
+                            $order = $biteship->createOrder($transaction);
 
-                        if (isset($order['id'])) {
-                            $transaction->update([
-                                'biteship_order_id' => $order['id'],
-                                'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
-                                'shipping_status' => strtolower($order['status'] ?? 'pending'),
-                            ]);
-                        } else {
-                            $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
-                            $transaction->update([
-                                'tracking_number' => 'API ERR: '.substr($errorMsg, 0, 200),
-                                'shipping_status' => 'error',
-                            ]);
-                            \Log::error('Biteship Create Order Failed: '.json_encode($order));
+                            if (isset($order['id'])) {
+                                // Update tabel (tidak butuh lock lagi karena status sudah berubah)
+                                $transaction->update([
+                                    'biteship_order_id' => $order['id'],
+                                    'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
+                                    'shipping_status' => strtolower($order['status'] ?? 'pending'),
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            \Log::error('Biteship Exception: '.$e->getMessage());
                         }
-                    } catch (\Exception $e) {
-                        $transaction->update([
-                            'tracking_number' => 'SYS ERR: '.substr($e->getMessage(), 0, 200),
-                            'shipping_status' => 'error',
-                        ]);
-                        \Log::error('Biteship Exception: '.$e->getMessage());
-                    }
+                    });
                 } else {
+                    // Jika kurir internal/pickup
                     $transaction->update([
                         'tracking_number' => 'In-Store Pickup',
                         'shipping_status' => 'ready_for_pickup',
                     ]);
                 }
-            } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+
+                // --- EKSEKUSI PEMESANAN KURIR (HANYA SEKALI!) ---
+                // if ($transaction->shipping_method === 'biteship') {
+                //     try {
+                //         $biteship = new BiteshipService;
+                //         $order = $biteship->createOrder($transaction);
+
+                //         if (isset($order['id'])) {
+                //             $transaction->update([
+                //                 'biteship_order_id' => $order['id'],
+                //                 'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
+                //                 'shipping_status' => strtolower($order['status'] ?? 'pending'),
+                //             ]);
+                //         } else {
+                //             $errorMsg = $order['error'] ?? ($order['message'] ?? 'Unknown Biteship API Error');
+                //             $transaction->update([
+                //                 'tracking_number' => 'API ERR: '.substr($errorMsg, 0, 200),
+                //                 'shipping_status' => 'error',
+                //             ]);
+                //             \Log::error('Biteship Create Order Failed: '.json_encode($order));
+                //         }
+                //     } catch (\Exception $e) {
+                //         $transaction->update([
+                //             'tracking_number' => 'SYS ERR: '.substr($e->getMessage(), 0, 200),
+                //             'shipping_status' => 'error',
+                //         ]);
+                //         \Log::error('Biteship Exception: '.$e->getMessage());
+                //     }
+                // } else {
+                //     $transaction->update([
+                //         'tracking_number' => 'In-Store Pickup',
+                //         'shipping_status' => 'ready_for_pickup',
+                //     ]);
+                // }
+            }
+            elseif ($status === 'EXPIRED' || $status === 'FAILED') {
                 if ($transaction->status !== 'cancelled') {
                     $payment->update(['status' => $status]);
                     $transaction->update([
@@ -316,7 +347,7 @@ class PaymentController extends Controller
                     }
 
                     // [PERBAIKAN MUTLAK] Kembalikan stok barang yang gagal dibayar!
-                    $transactionController = app(\App\Http\Controllers\TransactionController::class);
+                    $transactionController = app(TransactionController::class);
                     foreach ($transaction->details as $detail) {
                         $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
                     }
@@ -373,9 +404,9 @@ class PaymentController extends Controller
     {
         // [PERBAIKAN PENTING] Pengaman ganda jika User tidak terdeteksi (Token expired/hilang)
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response()->json([
-                'message' => 'Unauthorized. Please login again.'
+                'message' => 'Unauthorized. Please login again.',
             ], 401);
         }
 
@@ -399,7 +430,7 @@ class PaymentController extends Controller
 
             // [PERBAIKAN 2] Hitung Total Berat Aktual (Gram) dari Database secara aman
             // Pastikan Anda memuat relasi 'product'
-            $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+            $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
 
             $totalWeight = 0;
             foreach ($cartItems as $item) {
@@ -411,7 +442,9 @@ class PaymentController extends Controller
             }
 
             // Cegah berat 0 jika ada error data (Minimal 1 gram)
-            if ($totalWeight <= 0) $totalWeight = 1000;
+            if ($totalWeight <= 0) {
+                $totalWeight = 1000;
+            }
 
             // Kirim total berat riil ke Biteship
             $rates = $biteship->getRates($address, $totalWeight);
