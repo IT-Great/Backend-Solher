@@ -189,7 +189,7 @@ class PaymentControllerTest extends TestCase
 
         // Tembak Webhook Callback
         // Asumsi Rute: /api/payment/callback
-        $response = $this->postJson('/api/payment/callback', [
+        $response = $this->postJson('/api/payments/callback', [
             'external_id' => 'PAY-TEST-CALLBACK',
             'status' => 'PAID',
             'payment_method' => 'EWALLET',
@@ -234,7 +234,7 @@ class PaymentControllerTest extends TestCase
         // Jika batal, poin harus kembali menjadi 150.
 
         // Tembak Webhook Callback EXPIRED
-        $response = $this->postJson('/api/payment/callback', [
+        $response = $this->postJson('/api/payments/callback', [
             'external_id' => 'PAY-TEST-EXPIRED',
             'status' => 'EXPIRED',
         ]);
