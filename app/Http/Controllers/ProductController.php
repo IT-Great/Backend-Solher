@@ -301,8 +301,8 @@ class ProductController extends Controller
             'code' => 'required|unique:products',
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
-            'price' => 'required|numeric',
-            'stock' => 'required|integer',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
             'weight' => 'required|integer|min:1',          // <--- BARU
             'length' => 'nullable|numeric|min:0',          // <--- BARU
             'width' => 'nullable|numeric|min:0',           // <--- BARU
@@ -358,6 +358,17 @@ class ProductController extends Controller
             //     // $data['variant_video'] = url(Storage::url($path));
             //     $data['variant_video'] = Storage::url($path); // [PERBAIKAN]
             // }
+
+            // =========================================================================
+            // [PERBAIKAN BUG] PEMBANTAI STRING KOSONG UNTUK FUNGSI STORE
+            // =========================================================================
+            $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length'];
+            foreach ($nullableFields as $field) {
+                if (!isset($data[$field]) || $data[$field] === "" || $data[$field] === "null") {
+                    $data[$field] = null;
+                }
+            }
+            // =========================================================================
 
             // [PERBAIKAN] 1. Upload & Optimasi Gambar Utama
             if ($request->hasFile('image')) {

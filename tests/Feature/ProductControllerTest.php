@@ -82,8 +82,13 @@ class ProductControllerTest extends TestCase
 
         $response->assertStatus($expectedStatus);
 
+        // if ($expectedStatus === 422) {
+        //     $response->assertJsonValidationErrors($expectedErrors);
+        // }
+
         if ($expectedStatus === 422) {
-            $response->assertJsonValidationErrors($expectedErrors);
+            // Karena respons JSON Controller kita berbentuk array datar
+            $response->assertJsonStructure($expectedErrors);
         }
     }
 
@@ -174,31 +179,59 @@ class ProductControllerTest extends TestCase
     /**
      * PENGUJIAN: Force Delete menghapus file fisik di server (Mencegah Hard Disk Penuh)
      */
+    // public function test_it_removes_physical_image_files_on_force_delete()
+    // {
+    //     $fakeImagePath = 'products/' . \Str::random(10) . '.webp';
+
+    //     // Buat file palsu di Storage
+    //     Storage::disk('public')->put($fakeImagePath, 'dummy content');
+
+    //     $product = Product::factory()->create([
+    //         'category_id' => $this->category->id,
+    //         'image' => '/storage/' . $fakeImagePath
+    //     ]);
+
+    //     // Pastikan file awalnya ada
+    //     Storage::disk('public')->assertExists($fakeImagePath);
+
+    //     // Tembak API Force Delete
+    //     $response = $this->actingAs($this->admin, 'sanctum')
+    //                      ->deleteJson("/api/products/{$product->id}/force");
+
+    //     $response->assertStatus(200);
+
+    //     // Pastikan Produk hilang dari database
+    //     $this->assertDatabaseMissing('products', ['id' => $product->id]);
+
+    //     // Pastikan File Fisik juga terhapus!
+    //     Storage::disk('public')->assertMissing($fakeImagePath);
+    // }
+
     public function test_it_removes_physical_image_files_on_force_delete()
     {
         $fakeImagePath = 'products/' . \Str::random(10) . '.webp';
 
-        // Buat file palsu di Storage
         Storage::disk('public')->put($fakeImagePath, 'dummy content');
 
-        $product = Product::factory()->create([
+        // [PERBAIKAN] Buat produk secara manual, bukan pakai factory
+        $product = Product::create([
+            'code' => 'DEL-001',
+            'name' => 'Produk Sampah',
             'category_id' => $this->category->id,
+            'price' => 10000,
+            'stock' => 1,
+            'weight' => 1000,
             'image' => '/storage/' . $fakeImagePath
         ]);
 
-        // Pastikan file awalnya ada
         Storage::disk('public')->assertExists($fakeImagePath);
 
-        // Tembak API Force Delete
         $response = $this->actingAs($this->admin, 'sanctum')
                          ->deleteJson("/api/products/{$product->id}/force");
 
         $response->assertStatus(200);
 
-        // Pastikan Produk hilang dari database
         $this->assertDatabaseMissing('products', ['id' => $product->id]);
-
-        // Pastikan File Fisik juga terhapus!
         Storage::disk('public')->assertMissing($fakeImagePath);
     }
 }
