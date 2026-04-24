@@ -71,7 +71,7 @@ class CartControllerTest extends TestCase
     public function test_it_can_add_new_item_to_cart()
     {
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson('/api/cart', [
+                         ->postJson('/api/carts', [
                              'product_id' => $this->productA->id,
                              'quantity' => 2,
                              'color' => 'Black'
@@ -105,7 +105,7 @@ class CartControllerTest extends TestCase
 
         // User tambah 3 barang lagi dengan warna hitam yang sama
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson('/api/cart', [
+                         ->postJson('/api/carts', [
                              'product_id' => $this->productA->id,
                              'quantity' => 3,
                              'color' => 'Black'
@@ -139,7 +139,7 @@ class CartControllerTest extends TestCase
 
         // User tambah barang yang sama tapi warna Brown
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson('/api/cart', [
+                         ->postJson('/api/carts', [
                              'product_id' => $this->productA->id,
                              'quantity' => 1,
                              'color' => 'Brown'
@@ -170,7 +170,7 @@ class CartControllerTest extends TestCase
     {
         // Stock produk B hanya 5. Kita coba minta 6.
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson('/api/cart', [
+                         ->postJson('/api/carts', [
                              'product_id' => $this->productB->id,
                              'quantity' => 6,
                          ]);
@@ -194,7 +194,7 @@ class CartControllerTest extends TestCase
 
         // Minta 3 lagi (Total 6. Padahal stock cuma 5).
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson('/api/cart', [
+                         ->postJson('/api/carts', [
                              'product_id' => $this->productB->id,
                              'quantity' => 3,
                          ]);
@@ -217,7 +217,7 @@ class CartControllerTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->putJson("/api/cart/{$cart->id}", [
+                         ->putJson("/api/carts/{$cart->id}", [
                              'quantity' => 4
                          ]);
 
@@ -244,7 +244,7 @@ class CartControllerTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->deleteJson("/api/cart/{$cart->id}");
+                         ->deleteJson("/api/carts/{$cart->id}");
 
         $response->assertStatus(200)
                  ->assertJson(['message' => 'Item removed']);
