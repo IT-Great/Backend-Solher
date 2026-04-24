@@ -11,6 +11,7 @@ use App\Models\PromoClaim;
 use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use App\Models\User;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -105,469 +106,478 @@ class TransactionController extends Controller
     // --- USER ACTIONS ---
     public function checkout(Request $request)
     {
-        // ... (Validasi request tetap sama) ...
-        $request->validate([
-            'address_id' => 'required',
-            'shipping_method' => 'required|in:free,biteship',
-            'use_points' => 'nullable|integer|min:0',
-            'cart_ids' => 'required|array',
-            'cart_ids.*' => 'exists:carts,id',
-            'shipping_cost' => 'nullable|numeric',
-            'courier_company' => 'nullable|string',
-            'courier_type' => 'nullable|string',
-            'delivery_type' => 'nullable|string',
-        ]);
-
-        $user = $request->user();
-        $cartItems = Cart::with('product')
-            ->where('user_id', $user->id)
-            ->whereIn('id', $request->cart_ids)
-            ->get();
-
-        if ($cartItems->isEmpty()) {
-            return response()->json(['message' => 'No items selected for checkout'], 400);
-        }
-
-        // // 1. LAKUKAN PROSES DATABASE DENGAN KILAT (TANPA API PIHAK KETIGA)
-        // $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
-        //     $totalAmount = 0;
-        //     foreach ($cartItems as $item) {
-        //         $currentPrice = $item->product->discount_price ?? $item->product->price;
-        //         $totalAmount += ($currentPrice * $item->quantity);
-        //     }
-
-        //     // =========================================================================
-        //     // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
-        //     // =========================================================================
-        //     $promoDiscountAmount = 0;
-        //     $appliedPromoCode = null;
-
-        //     if (! empty($request->promo_code)) {
-        //         // Kunci (Lock) baris promo claim agar tidak bisa di-klik ganda bersamaan
-        //         $promoClaim = PromoClaim::where('email', $user->email)
-        //             ->where('promo_code', strtoupper($request->promo_code))
-        //             ->lockForUpdate()
-        //             ->first();
-
-        //         if (! $promoClaim) {
-        //             throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
-        //         }
-        //         if ($promoClaim->is_used) {
-        //             throw new \Exception('Kode Promo sudah pernah digunakan.');
-        //         }
-        //         if ($totalAmount < 50000) { // Syarat batas minimal belanja
-        //             throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
-        //         }
-
-        //         $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
-        //         $appliedPromoCode = $promoClaim->promo_code;
-
-        //         // Tandai promo sudah digunakan
-        //         $promoClaim->update([
-        //             'is_used' => true,
-        //             'used_at' => now(),
-        //         ]);
-        //     }
-
-        //     // Total harga setelah promo dipotong
-        //     $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
-
-        //     // =========================================================================
-        //     // 2. POTONG POIN DARI SISA HARGA SETELAH PROMO (Mencegah Tagihan Minus)
-        //     // =========================================================================
-        //     $orderId = 'SOL-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
-
-        //     // $earnedPoints = 0;
-        //     // if ($user->is_membership) {
-        //     //     $earnedPoints = floor($totalAmount / 100000);
-        //     // }
-
-        //     $earnedPoints = $user->is_membership ? floor($totalAmount / 100000) : 0;
-
-        //     $pointsUsed = 0;
-        //     $pointDiscountAmount = 0;
-        //     if ($request->use_points > 0 && $user->is_membership) {
-        //         $pointsUsed = min($request->use_points, $user->point);
-        //         // $pointDiscountAmount = min($pointsUsed * 1000, $totalAmount);
-        //         // if ($pointsUsed > 0) {
-        //         //     $user->decrement('point', $pointsUsed);
-        //         // }
-
-        //         // Poin maksimal yang bisa dipakai = Sisa harga setelah promo
-        //         $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
-        //         $pointDiscountAmount = $maxUsableDiscount;
-
-        //         // Konversi kembali ke poin riil yang terpakai
-        //         $actualPointsDeducted = floor($maxUsableDiscount / 1000);
-        //         $pointsUsed = $actualPointsDeducted;
-
-        //         if ($pointsUsed > 0) {
-        //             $user->decrement('point', $pointsUsed);
-        //         }
-        //     }
-
-        //     $totalQuantity = $cartItems->sum('quantity') ?: 1;
-        //     $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
-        //     $totalShippingCost = $baseShippingRate * $totalQuantity;
-
-        //     $transaction = Transaction::create([
-        //         'user_id' => $user->id,
-        //         'address_id' => $request->address_id,
-        //         'shipping_method' => $request->shipping_method,
-        //         'shipping_cost' => $totalShippingCost,
-        //         'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
-        //         'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
-        //         'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
-        //         'order_id' => $orderId,
-        //         'total_amount' => $totalAmount,
-        //         'status' => 'pending',
-        //         'point' => $earnedPoints,
-        //         'points_used' => $pointsUsed,
-        //         'promo_code' => $appliedPromoCode,
-        //         'promo_discount' => $promoDiscountAmount,
-        //     ]);
-
-        // 1. LAKUKAN PROSES DATABASE DENGAN KILAT (TANPA API PIHAK KETIGA)
-        $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
-
-            // =========================================================================
-            // [PERBAIKAN KRITIS]: Kunci data User spesifik ini selama proses checkout.
-            // Jika ada 2 request masuk bersamaan, request kedua akan disuruh antre
-            // menunggu request pertama selesai memotong poin.
-            // =========================================================================
-            $lockedUser = User::lockForUpdate()->find($user->id);
-
-            $totalAmount = 0;
-            foreach ($cartItems as $item) {
-                $currentPrice = $item->product->discount_price ?? $item->product->price;
-                $totalAmount += ($currentPrice * $item->quantity);
-            }
-
-            // =========================================================================
-            // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
-            // =========================================================================
-            $promoDiscountAmount = 0;
-            $appliedPromoCode = null;
-
-            // if (! empty($request->promo_code)) {
-            //     // Pastikan menggunakan $lockedUser->email untuk validasi
-            //     $promoClaim = PromoClaim::where('email', $lockedUser->email)
-            //         ->where('promo_code', strtoupper($request->promo_code))
-            //         ->lockForUpdate()
-            //         ->first();
-
-            //     if (! $promoClaim) {
-            //         throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
-            //     }
-            //     if ($promoClaim->is_used) {
-            //         throw new \Exception('Kode Promo sudah pernah digunakan.');
-            //     }
-            //     if ($totalAmount < 50000) {
-            //         throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
-            //     }
-
-            //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
-            //     $appliedPromoCode = $promoClaim->promo_code;
-
-            //     $promoClaim->update([
-            //         'is_used' => true,
-            //         'used_at' => now(),
-            //     ]);
-            // }
-
-            if (! empty($request->promo_code)) {
-                // Pastikan menggunakan $lockedUser->email untuk validasi
-                $promoClaim = PromoClaim::where('email', $lockedUser->email)
-                    ->where('promo_code', strtoupper($request->promo_code))
-                    ->lockForUpdate()
-                    ->first();
-
-                if (! $promoClaim) {
-                    throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
-                }
-                if ($promoClaim->is_used) {
-                    throw new \Exception('Kode Promo sudah pernah digunakan.');
-                }
-
-                // ====================================================================
-                // [PERBAIKAN KRUSIAL] Validasi Minimum Belanja diubah jadi Rp 499.000
-                // Pesan error diubah ke Bahasa Inggris agar rapi di UI Frontend
-                // ====================================================================
-                if ($totalAmount < 499000) {
-                    throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
-                }
-
-                $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
-                $appliedPromoCode = $promoClaim->promo_code;
-
-                $promoClaim->update([
-                    'is_used' => true,
-                    'used_at' => now(),
-                ]);
-            }
-
-            $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
-
-            // =========================================================================
-            // 2. POTONG POIN DARI SISA HARGA SETELAH PROMO (Mencegah Tagihan Minus)
-            // =========================================================================
-            $orderId = 'SOL-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
-
-            // Gunakan $lockedUser, bukan $user dari luar transaksi
-            $earnedPoints = $lockedUser->is_membership ? floor($totalAmount / 100000) : 0;
-
-            $pointsUsed = 0;
-            $pointDiscountAmount = 0;
-
-            if ($request->use_points > 0 && $lockedUser->is_membership) {
-                // Karena kita menggunakan $lockedUser->point, angkanya dijamin 100% akurat dan terhindar dari double-spending
-                $pointsUsed = min($request->use_points, $lockedUser->point);
-
-                $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
-                $pointDiscountAmount = $maxUsableDiscount;
-
-                $actualPointsDeducted = floor($maxUsableDiscount / 1000);
-                $pointsUsed = $actualPointsDeducted;
-
-                if ($pointsUsed > 0) {
-                    // Potong poin dari instance yang sudah dilock
-                    $lockedUser->decrement('point', $pointsUsed);
-                }
-            }
-
-            $totalQuantity = $cartItems->sum('quantity') ?: 1;
-            $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
-            $totalShippingCost = $baseShippingRate * $totalQuantity;
-
-            // Saat membuat transaksi, gunakan $lockedUser->id
-            $transaction = Transaction::create([
-                'user_id' => $lockedUser->id,
-                'address_id' => $request->address_id,
-                // ... (Sisa variabel di array create() ini tetap sama seperti kode Anda) ...
-                'shipping_method' => $request->shipping_method,
-                'shipping_cost' => $totalShippingCost,
-                'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
-                'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
-                'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
-                'order_id' => $orderId,
-                'total_amount' => $totalAmount,
-                'status' => 'pending',
-                'point' => $earnedPoints,
-                'points_used' => $pointsUsed,
-                'promo_code' => $appliedPromoCode,
-                'promo_discount' => $promoDiscountAmount,
+        try { // <--- Bungkus dengan Try
+            // ... (Validasi request tetap sama) ...
+            $request->validate([
+                'address_id' => 'required',
+                'shipping_method' => 'required|in:free,biteship',
+                'use_points' => 'nullable|integer|min:0',
+                'cart_ids' => 'required|array',
+                'cart_ids.*' => 'exists:carts,id',
+                'shipping_cost' => 'nullable|numeric',
+                'courier_company' => 'nullable|string',
+                'courier_type' => 'nullable|string',
+                'delivery_type' => 'nullable|string',
             ]);
 
-            $xenditItems = [];
-            foreach ($cartItems as $item) {
-                $product = Product::lockForUpdate()->find($item->product_id);
-                if ($product->stock < $item->quantity) {
-                    throw new \Exception("Stock {$product->name} insufficient");
+            $user = $request->user();
+            $cartItems = Cart::with('product')
+                ->where('user_id', $user->id)
+                ->whereIn('id', $request->cart_ids)
+                ->get();
+
+            if ($cartItems->isEmpty()) {
+                return response()->json(['message' => 'No items selected for checkout'], 400);
+            }
+
+            // // 1. LAKUKAN PROSES DATABASE DENGAN KILAT (TANPA API PIHAK KETIGA)
+            // $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
+            //     $totalAmount = 0;
+            //     foreach ($cartItems as $item) {
+            //         $currentPrice = $item->product->discount_price ?? $item->product->price;
+            //         $totalAmount += ($currentPrice * $item->quantity);
+            //     }
+
+            //     // =========================================================================
+            //     // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
+            //     // =========================================================================
+            //     $promoDiscountAmount = 0;
+            //     $appliedPromoCode = null;
+
+            //     if (! empty($request->promo_code)) {
+            //         // Kunci (Lock) baris promo claim agar tidak bisa di-klik ganda bersamaan
+            //         $promoClaim = PromoClaim::where('email', $user->email)
+            //             ->where('promo_code', strtoupper($request->promo_code))
+            //             ->lockForUpdate()
+            //             ->first();
+
+            //         if (! $promoClaim) {
+            //             throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+            //         }
+            //         if ($promoClaim->is_used) {
+            //             throw new \Exception('Kode Promo sudah pernah digunakan.');
+            //         }
+            //         if ($totalAmount < 50000) { // Syarat batas minimal belanja
+            //             throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
+            //         }
+
+            //         $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+            //         $appliedPromoCode = $promoClaim->promo_code;
+
+            //         // Tandai promo sudah digunakan
+            //         $promoClaim->update([
+            //             'is_used' => true,
+            //             'used_at' => now(),
+            //         ]);
+            //     }
+
+            //     // Total harga setelah promo dipotong
+            //     $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
+
+            //     // =========================================================================
+            //     // 2. POTONG POIN DARI SISA HARGA SETELAH PROMO (Mencegah Tagihan Minus)
+            //     // =========================================================================
+            //     $orderId = 'SOL-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
+
+            //     // $earnedPoints = 0;
+            //     // if ($user->is_membership) {
+            //     //     $earnedPoints = floor($totalAmount / 100000);
+            //     // }
+
+            //     $earnedPoints = $user->is_membership ? floor($totalAmount / 100000) : 0;
+
+            //     $pointsUsed = 0;
+            //     $pointDiscountAmount = 0;
+            //     if ($request->use_points > 0 && $user->is_membership) {
+            //         $pointsUsed = min($request->use_points, $user->point);
+            //         // $pointDiscountAmount = min($pointsUsed * 1000, $totalAmount);
+            //         // if ($pointsUsed > 0) {
+            //         //     $user->decrement('point', $pointsUsed);
+            //         // }
+
+            //         // Poin maksimal yang bisa dipakai = Sisa harga setelah promo
+            //         $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
+            //         $pointDiscountAmount = $maxUsableDiscount;
+
+            //         // Konversi kembali ke poin riil yang terpakai
+            //         $actualPointsDeducted = floor($maxUsableDiscount / 1000);
+            //         $pointsUsed = $actualPointsDeducted;
+
+            //         if ($pointsUsed > 0) {
+            //             $user->decrement('point', $pointsUsed);
+            //         }
+            //     }
+
+            //     $totalQuantity = $cartItems->sum('quantity') ?: 1;
+            //     $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+            //     $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+            //     $transaction = Transaction::create([
+            //         'user_id' => $user->id,
+            //         'address_id' => $request->address_id,
+            //         'shipping_method' => $request->shipping_method,
+            //         'shipping_cost' => $totalShippingCost,
+            //         'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
+            //         'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
+            //         'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+            //         'order_id' => $orderId,
+            //         'total_amount' => $totalAmount,
+            //         'status' => 'pending',
+            //         'point' => $earnedPoints,
+            //         'points_used' => $pointsUsed,
+            //         'promo_code' => $appliedPromoCode,
+            //         'promo_discount' => $promoDiscountAmount,
+            //     ]);
+
+            // 1. LAKUKAN PROSES DATABASE DENGAN KILAT (TANPA API PIHAK KETIGA)
+            $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
+
+                // =========================================================================
+                // [PERBAIKAN KRITIS]: Kunci data User spesifik ini selama proses checkout.
+                // Jika ada 2 request masuk bersamaan, request kedua akan disuruh antre
+                // menunggu request pertama selesai memotong poin.
+                // =========================================================================
+                $lockedUser = User::lockForUpdate()->find($user->id);
+
+                $totalAmount = 0;
+                foreach ($cartItems as $item) {
+                    $currentPrice = $item->product->discount_price ?? $item->product->price;
+                    $totalAmount += ($currentPrice * $item->quantity);
                 }
 
-                $price = $item->product->discount_price ?? $item->product->price;
+                // =========================================================================
+                // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
+                // =========================================================================
+                $promoDiscountAmount = 0;
+                $appliedPromoCode = null;
 
-                TransactionDetail::create([
-                    'transaction_id' => $transaction->id,
-                    'product_id' => $item->product_id,
-                    'quantity' => $item->quantity,
-                    'price' => $price,
-                    'color' => $item->color, // <--- BARU: Simpan riwayat warna ke tabel transaksi
-                ]);
+                // if (! empty($request->promo_code)) {
+                //     // Pastikan menggunakan $lockedUser->email untuk validasi
+                //     $promoClaim = PromoClaim::where('email', $lockedUser->email)
+                //         ->where('promo_code', strtoupper($request->promo_code))
+                //         ->lockForUpdate()
+                //         ->first();
 
-                // ... (Logika Potong FIFO Batch Anda tetap sama di sini) ...
-                $remainingQuantityToDeduct = $item->quantity;
-                $totalBatchQuantity = ProductStock::where('product_id', $product->id)->sum('quantity');
-                $legacyStock = $product->stock - $totalBatchQuantity;
+                //     if (! $promoClaim) {
+                //         throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+                //     }
+                //     if ($promoClaim->is_used) {
+                //         throw new \Exception('Kode Promo sudah pernah digunakan.');
+                //     }
+                //     if ($totalAmount < 50000) {
+                //         throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
+                //     }
 
-                if ($legacyStock > 0) {
-                    $takeFromLegacy = min($remainingQuantityToDeduct, $legacyStock);
-                    ProductStock::create([
-                        'product_id' => $product->id,
-                        'batch_code' => 'SYS-LEGACY-'.now()->format('YmdHis').'-'.strtoupper(Str::random(4)),
-                        'quantity' => 0,
-                        'initial_quantity' => $takeFromLegacy,
+                //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+                //     $appliedPromoCode = $promoClaim->promo_code;
+
+                //     $promoClaim->update([
+                //         'is_used' => true,
+                //         'used_at' => now(),
+                //     ]);
+                // }
+
+                if (! empty($request->promo_code)) {
+                    // Pastikan menggunakan $lockedUser->email untuk validasi
+                    $promoClaim = PromoClaim::where('email', $lockedUser->email)
+                        ->where('promo_code', strtoupper($request->promo_code))
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $promoClaim) {
+                        throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+                    }
+                    if ($promoClaim->is_used) {
+                        throw new \Exception('Kode Promo sudah pernah digunakan.');
+                    }
+
+                    // ====================================================================
+                    // [PERBAIKAN KRUSIAL] Validasi Minimum Belanja diubah jadi Rp 499.000
+                    // Pesan error diubah ke Bahasa Inggris agar rapi di UI Frontend
+                    // ====================================================================
+                    if ($totalAmount < 499000) {
+                        throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
+                    }
+
+                    $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+                    $appliedPromoCode = $promoClaim->promo_code;
+
+                    $promoClaim->update([
+                        'is_used' => true,
+                        'used_at' => now(),
                     ]);
-                    $remainingQuantityToDeduct -= $takeFromLegacy;
                 }
 
-                if ($remainingQuantityToDeduct > 0) {
-                    $activeBatches = ProductStock::where('product_id', $product->id)->where('quantity', '>', 0)->orderBy('created_at', 'asc')->lockForUpdate()->get();
-                    foreach ($activeBatches as $batch) {
-                        if ($remainingQuantityToDeduct <= 0) {
-                            break;
-                        }
-                        if ($batch->quantity >= $remainingQuantityToDeduct) {
-                            $batch->decrement('quantity', $remainingQuantityToDeduct);
-                            $remainingQuantityToDeduct = 0;
-                        } else {
-                            $remainingQuantityToDeduct -= $batch->quantity;
-                            $batch->update(['quantity' => 0]);
-                        }
+                $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
+
+                // =========================================================================
+                // 2. POTONG POIN DARI SISA HARGA SETELAH PROMO (Mencegah Tagihan Minus)
+                // =========================================================================
+                $orderId = 'SOL-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
+
+                // Gunakan $lockedUser, bukan $user dari luar transaksi
+                $earnedPoints = $lockedUser->is_membership ? floor($totalAmount / 100000) : 0;
+
+                $pointsUsed = 0;
+                $pointDiscountAmount = 0;
+
+                if ($request->use_points > 0 && $lockedUser->is_membership) {
+                    // Karena kita menggunakan $lockedUser->point, angkanya dijamin 100% akurat dan terhindar dari double-spending
+                    $pointsUsed = min($request->use_points, $lockedUser->point);
+
+                    $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
+                    $pointDiscountAmount = $maxUsableDiscount;
+
+                    $actualPointsDeducted = floor($maxUsableDiscount / 1000);
+                    $pointsUsed = $actualPointsDeducted;
+
+                    if ($pointsUsed > 0) {
+                        // Potong poin dari instance yang sudah dilock
+                        $lockedUser->decrement('point', $pointsUsed);
                     }
                 }
 
-                if ($remainingQuantityToDeduct > 0) {
-                    throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+                $totalQuantity = $cartItems->sum('quantity') ?: 1;
+                $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+                $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+                // Saat membuat transaksi, gunakan $lockedUser->id
+                $transaction = Transaction::create([
+                    'user_id' => $lockedUser->id,
+                    'address_id' => $request->address_id,
+                    // ... (Sisa variabel di array create() ini tetap sama seperti kode Anda) ...
+                    'shipping_method' => $request->shipping_method,
+                    'shipping_cost' => $totalShippingCost,
+                    'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
+                    'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
+                    'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+                    'order_id' => $orderId,
+                    'total_amount' => $totalAmount,
+                    'status' => 'pending',
+                    'point' => $earnedPoints,
+                    'points_used' => $pointsUsed,
+                    'promo_code' => $appliedPromoCode,
+                    'promo_discount' => $promoDiscountAmount,
+                ]);
+
+                $xenditItems = [];
+                foreach ($cartItems as $item) {
+                    $product = Product::lockForUpdate()->find($item->product_id);
+                    if ($product->stock < $item->quantity) {
+                        throw new \Exception("Stock {$product->name} insufficient");
+                    }
+
+                    $price = $item->product->discount_price ?? $item->product->price;
+
+                    TransactionDetail::create([
+                        'transaction_id' => $transaction->id,
+                        'product_id' => $item->product_id,
+                        'quantity' => $item->quantity,
+                        'price' => $price,
+                        'color' => $item->color, // <--- BARU: Simpan riwayat warna ke tabel transaksi
+                    ]);
+
+                    // ... (Logika Potong FIFO Batch Anda tetap sama di sini) ...
+                    $remainingQuantityToDeduct = $item->quantity;
+                    $totalBatchQuantity = ProductStock::where('product_id', $product->id)->sum('quantity');
+                    $legacyStock = $product->stock - $totalBatchQuantity;
+
+                    if ($legacyStock > 0) {
+                        $takeFromLegacy = min($remainingQuantityToDeduct, $legacyStock);
+                        ProductStock::create([
+                            'product_id' => $product->id,
+                            'batch_code' => 'SYS-LEGACY-'.now()->format('YmdHis').'-'.strtoupper(Str::random(4)),
+                            'quantity' => 0,
+                            'initial_quantity' => $takeFromLegacy,
+                        ]);
+                        $remainingQuantityToDeduct -= $takeFromLegacy;
+                    }
+
+                    if ($remainingQuantityToDeduct > 0) {
+                        $activeBatches = ProductStock::where('product_id', $product->id)->where('quantity', '>', 0)->orderBy('created_at', 'asc')->lockForUpdate()->get();
+                        foreach ($activeBatches as $batch) {
+                            if ($remainingQuantityToDeduct <= 0) {
+                                break;
+                            }
+                            if ($batch->quantity >= $remainingQuantityToDeduct) {
+                                $batch->decrement('quantity', $remainingQuantityToDeduct);
+                                $remainingQuantityToDeduct = 0;
+                            } else {
+                                $remainingQuantityToDeduct -= $batch->quantity;
+                                $batch->update(['quantity' => 0]);
+                            }
+                        }
+                    }
+
+                    if ($remainingQuantityToDeduct > 0) {
+                        throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+                    }
+                    $product->decrement('stock', $item->quantity);
+
+                    // [PERBAIKAN XENDIT] Tambahkan informasi warna di struk pembayaran Xendit
+                    $productName = $product->name;
+                    if (! empty($item->color)) {
+                        $productName .= ' - '.$item->color;
+                    }
+
+                    $xenditItems[] = [
+                        'name' => $productName,
+                        'quantity' => $item->quantity,
+                        'price' => (int) $price,
+                        'category' => 'PHYSICAL_PRODUCT',
+                    ];
                 }
-                $product->decrement('stock', $item->quantity);
 
-                // [PERBAIKAN XENDIT] Tambahkan informasi warna di struk pembayaran Xendit
-                $productName = $product->name;
-                if (! empty($item->color)) {
-                    $productName .= ' - '.$item->color;
+                // Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
+
+                return [
+                    'transaction' => $transaction,
+                    'xenditItems' => $xenditItems,
+                    'totalAmount' => $totalAmount,
+                    'totalShippingCost' => $totalShippingCost,
+                    'pointDiscountAmount' => $pointDiscountAmount,
+                    'pointsUsed' => $pointsUsed,
+                    'totalQuantity' => $totalQuantity,
+                    'promoCode' => $appliedPromoCode,
+                    'promoDiscountAmount' => $promoDiscountAmount,
+                ];
+            }); // <-- DB TRANSACTION SELESAI & LOCK DILEPAS DI SINI!
+
+            // 2. PANGGIL API PIHAK KETIGA DENGAN AMAN DI LUAR TRANSAKSI
+            try {
+                // $externalId = 'PAY-'.$transactionData['transaction']->order_id;
+
+                // if ($transactionData['pointDiscountAmount'] > 0) {
+                //     $transactionData['xenditItems'][] = [
+                //         'name' => 'Loyalty Point Discount ('.$transactionData['pointsUsed'].' Pts)',
+                //         'quantity' => 1,
+                //         'price' => -(int) $transactionData['pointDiscountAmount'],
+                //         'category' => 'DISCOUNT',
+                //     ];
+                // }
+
+                // if ($transactionData['totalShippingCost'] > 0) {
+                //     $baseShippingRate = $transactionData['totalShippingCost'] / $transactionData['totalQuantity'];
+                //     $transactionData['xenditItems'][] = [
+                //         'name' => 'Shipping Cost ('.$request->courier_company.')',
+                //         'quantity' => (int) $transactionData['totalQuantity'],
+                //         'price' => (int) $baseShippingRate,
+                //         'category' => 'SHIPPING_FEE',
+                //     ];
+                // }
+
+                // $finalAmount = (int) $transactionData['totalAmount'] + $transactionData['totalShippingCost'] - $transactionData['pointDiscountAmount'];
+
+                // $invoiceRequest = new CreateInvoiceRequest([
+                //     'external_id' => $externalId,
+                //     'payer_email' => $user->email,
+                //     'amount' => $finalAmount,
+                //     'description' => 'Payment for Order '.$transactionData['transaction']->order_id,
+                //     'items' => $transactionData['xenditItems'],
+                //     'success_redirect_url' => config('app.frontend_url').'/payment-success?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id,
+                //     'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
+                // ]);
+
+                $externalId = 'PAY-'.$transactionData['transaction']->order_id;
+
+                // [PERBAIKAN 1]: Masukkan Item Diskon Promo ke Xendit
+                if (isset($transactionData['promoDiscountAmount']) && $transactionData['promoDiscountAmount'] > 0) {
+                    $transactionData['xenditItems'][] = [
+                        'name' => 'Promo Code: '.$transactionData['promoCode'],
+                        'quantity' => 1,
+                        'price' => -(int) $transactionData['promoDiscountAmount'], // Harus Minus
+                        'category' => 'DISCOUNT',
+                    ];
                 }
 
-                $xenditItems[] = [
-                    'name' => $productName,
-                    'quantity' => $item->quantity,
-                    'price' => (int) $price,
-                    'category' => 'PHYSICAL_PRODUCT',
-                ];
+                if ($transactionData['pointDiscountAmount'] > 0) {
+                    $transactionData['xenditItems'][] = [
+                        'name' => 'Loyalty Point Discount ('.$transactionData['pointsUsed'].' Pts)',
+                        'quantity' => 1,
+                        'price' => -(int) $transactionData['pointDiscountAmount'],
+                        'category' => 'DISCOUNT',
+                    ];
+                }
+
+                if ($transactionData['totalShippingCost'] > 0) {
+                    $baseShippingRate = $transactionData['totalShippingCost'] / $transactionData['totalQuantity'];
+                    $transactionData['xenditItems'][] = [
+                        'name' => 'Shipping Cost ('.$request->courier_company.')',
+                        'quantity' => (int) $transactionData['totalQuantity'],
+                        'price' => (int) $baseShippingRate,
+                        'category' => 'SHIPPING_FEE',
+                    ];
+                }
+
+                // [PERBAIKAN 2]: Kurangi Promo Discount dari Final Amount Xendit
+                $finalAmount = (int) $transactionData['totalAmount']
+                             + $transactionData['totalShippingCost']
+                             - $transactionData['pointDiscountAmount']
+                             - ($transactionData['promoDiscountAmount'] ?? 0); // Kurangi Promo di sini!
+
+                // ================================================================
+                // [BARU] LOG AUDIT HARGA SEBELUM TERKIRIM KE XENDIT
+                // Cek file log di: storage/logs/laravel.log
+                // ================================================================
+                Log::info('XENDIT INVOICE CALCULATION', [
+                    'order_id' => $transactionData['transaction']->order_id,
+                    'subtotal_barang' => $transactionData['totalAmount'],
+                    'ongkos_kirim' => $transactionData['totalShippingCost'],
+                    'diskon_poin' => $transactionData['pointDiscountAmount'],
+                    'diskon_promo' => $transactionData['promoDiscountAmount'] ?? 0,
+                    'GRAND_TOTAL_FINAL' => $finalAmount,
+                    'xendit_items_count' => count($transactionData['xenditItems']),
+                ]);
+
+                $invoiceRequest = new CreateInvoiceRequest([
+                    'external_id' => $externalId,
+                    'payer_email' => $user->email,
+                    'amount' => $finalAmount,
+                    'description' => 'Payment for Order '.$transactionData['transaction']->order_id,
+                    'items' => $transactionData['xenditItems'],
+                    'success_redirect_url' => config('app.frontend_url').'/payment-success?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id,
+                    'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
+                ]);
+
+                $api = new InvoiceApi;
+                $invoice = $api->createInvoice($invoiceRequest);
+
+                Payment::create([
+                    'transaction_id' => $transactionData['transaction']->id,
+                    'external_id' => $externalId,
+                    'checkout_url' => $invoice['invoice_url'],
+                    'amount' => $transactionData['transaction']->total_amount,
+                    'status' => 'pending',
+                ]);
+
+                // =========================================================================
+                // [PERBAIKAN KRITIS]: HAPUS KERANJANG DI SINI!
+                // Eksekusi hanya jika Xendit BERHASIL membuat invoice tanpa melempar Exception.
+                // =========================================================================
+                Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
+
+                // Cache::tags(['catalog'])->flush();
+
+                foreach ($cartItems as $item) {
+                    Cache::tags(['catalog'])->forget("products.detail.{$item->product_id}");
+                }
+
+                return response()->json(['checkout_url' => $invoice['invoice_url']], 201);
+
+            } catch (\Exception $e) {
+                // Jika Xendit Gagal, Batalkan Transaksi dan kembalikan stok secara manual
+                Log::error('Xendit Invoice Creation Failed: '.$e->getMessage());
+                app(TransactionController::class)->cancelOrder($request, $transactionData['transaction']->id);
+
+                return response()->json(['message' => 'Payment gateway error. Please try again.'], 500);
             }
-
-            // Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
-
-            return [
-                'transaction' => $transaction,
-                'xenditItems' => $xenditItems,
-                'totalAmount' => $totalAmount,
-                'totalShippingCost' => $totalShippingCost,
-                'pointDiscountAmount' => $pointDiscountAmount,
-                'pointsUsed' => $pointsUsed,
-                'totalQuantity' => $totalQuantity,
-                'promoCode' => $appliedPromoCode,
-                'promoDiscountAmount' => $promoDiscountAmount,
-            ];
-        }); // <-- DB TRANSACTION SELESAI & LOCK DILEPAS DI SINI!
-
-        // 2. PANGGIL API PIHAK KETIGA DENGAN AMAN DI LUAR TRANSAKSI
-        try {
-            // $externalId = 'PAY-'.$transactionData['transaction']->order_id;
-
-            // if ($transactionData['pointDiscountAmount'] > 0) {
-            //     $transactionData['xenditItems'][] = [
-            //         'name' => 'Loyalty Point Discount ('.$transactionData['pointsUsed'].' Pts)',
-            //         'quantity' => 1,
-            //         'price' => -(int) $transactionData['pointDiscountAmount'],
-            //         'category' => 'DISCOUNT',
-            //     ];
-            // }
-
-            // if ($transactionData['totalShippingCost'] > 0) {
-            //     $baseShippingRate = $transactionData['totalShippingCost'] / $transactionData['totalQuantity'];
-            //     $transactionData['xenditItems'][] = [
-            //         'name' => 'Shipping Cost ('.$request->courier_company.')',
-            //         'quantity' => (int) $transactionData['totalQuantity'],
-            //         'price' => (int) $baseShippingRate,
-            //         'category' => 'SHIPPING_FEE',
-            //     ];
-            // }
-
-            // $finalAmount = (int) $transactionData['totalAmount'] + $transactionData['totalShippingCost'] - $transactionData['pointDiscountAmount'];
-
-            // $invoiceRequest = new CreateInvoiceRequest([
-            //     'external_id' => $externalId,
-            //     'payer_email' => $user->email,
-            //     'amount' => $finalAmount,
-            //     'description' => 'Payment for Order '.$transactionData['transaction']->order_id,
-            //     'items' => $transactionData['xenditItems'],
-            //     'success_redirect_url' => config('app.frontend_url').'/payment-success?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id,
-            //     'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
-            // ]);
-
-            $externalId = 'PAY-'.$transactionData['transaction']->order_id;
-
-            // [PERBAIKAN 1]: Masukkan Item Diskon Promo ke Xendit
-            if (isset($transactionData['promoDiscountAmount']) && $transactionData['promoDiscountAmount'] > 0) {
-                $transactionData['xenditItems'][] = [
-                    'name' => 'Promo Code: '.$transactionData['promoCode'],
-                    'quantity' => 1,
-                    'price' => -(int) $transactionData['promoDiscountAmount'], // Harus Minus
-                    'category' => 'DISCOUNT',
-                ];
-            }
-
-            if ($transactionData['pointDiscountAmount'] > 0) {
-                $transactionData['xenditItems'][] = [
-                    'name' => 'Loyalty Point Discount ('.$transactionData['pointsUsed'].' Pts)',
-                    'quantity' => 1,
-                    'price' => -(int) $transactionData['pointDiscountAmount'],
-                    'category' => 'DISCOUNT',
-                ];
-            }
-
-            if ($transactionData['totalShippingCost'] > 0) {
-                $baseShippingRate = $transactionData['totalShippingCost'] / $transactionData['totalQuantity'];
-                $transactionData['xenditItems'][] = [
-                    'name' => 'Shipping Cost ('.$request->courier_company.')',
-                    'quantity' => (int) $transactionData['totalQuantity'],
-                    'price' => (int) $baseShippingRate,
-                    'category' => 'SHIPPING_FEE',
-                ];
-            }
-
-            // [PERBAIKAN 2]: Kurangi Promo Discount dari Final Amount Xendit
-            $finalAmount = (int) $transactionData['totalAmount']
-                         + $transactionData['totalShippingCost']
-                         - $transactionData['pointDiscountAmount']
-                         - ($transactionData['promoDiscountAmount'] ?? 0); // Kurangi Promo di sini!
-
-            // ================================================================
-            // [BARU] LOG AUDIT HARGA SEBELUM TERKIRIM KE XENDIT
-            // Cek file log di: storage/logs/laravel.log
-            // ================================================================
-            Log::info('XENDIT INVOICE CALCULATION', [
-                'order_id' => $transactionData['transaction']->order_id,
-                'subtotal_barang' => $transactionData['totalAmount'],
-                'ongkos_kirim' => $transactionData['totalShippingCost'],
-                'diskon_poin' => $transactionData['pointDiscountAmount'],
-                'diskon_promo' => $transactionData['promoDiscountAmount'] ?? 0,
-                'GRAND_TOTAL_FINAL' => $finalAmount,
-                'xendit_items_count' => count($transactionData['xenditItems']),
-            ]);
-
-            $invoiceRequest = new CreateInvoiceRequest([
-                'external_id' => $externalId,
-                'payer_email' => $user->email,
-                'amount' => $finalAmount,
-                'description' => 'Payment for Order '.$transactionData['transaction']->order_id,
-                'items' => $transactionData['xenditItems'],
-                'success_redirect_url' => config('app.frontend_url').'/payment-success?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id,
-                'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
-            ]);
-
-            $api = new InvoiceApi;
-            $invoice = $api->createInvoice($invoiceRequest);
-
-            Payment::create([
-                'transaction_id' => $transactionData['transaction']->id,
-                'external_id' => $externalId,
-                'checkout_url' => $invoice['invoice_url'],
-                'amount' => $transactionData['transaction']->total_amount,
-                'status' => 'pending',
-            ]);
-
-            // =========================================================================
-            // [PERBAIKAN KRITIS]: HAPUS KERANJANG DI SINI!
-            // Eksekusi hanya jika Xendit BERHASIL membuat invoice tanpa melempar Exception.
-            // =========================================================================
-            Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
-
-            // Cache::tags(['catalog'])->flush();
-
-            foreach ($cartItems as $item) {
-                Cache::tags(['catalog'])->forget("products.detail.{$item->product_id}");
-            }
-
-            return response()->json(['checkout_url' => $invoice['invoice_url']], 201);
-
         } catch (\Exception $e) {
-            // Jika Xendit Gagal, Batalkan Transaksi dan kembalikan stok secara manual
-            Log::error('Xendit Invoice Creation Failed: '.$e->getMessage());
-            app(TransactionController::class)->cancelOrder($request, $transactionData['transaction']->id);
+            // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
+            Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-            return response()->json(['message' => 'Payment gateway error. Please try again.'], 500);
+            return response()->json(['message' => 'Internal Server Error: '.$e->getMessage()], 500);
         }
     }
 
@@ -1209,8 +1219,8 @@ class TransactionController extends Controller
         $responses = Http::pool(function (Pool $pool) use ($transactions) {
             foreach ($transactions as $transaction) {
                 $pool->as($transaction->id)
-                     ->withHeaders(['Authorization' => config('services.biteship.api_key')])
-                     ->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+                    ->withHeaders(['Authorization' => config('services.biteship.api_key')])
+                    ->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
             }
         });
 
