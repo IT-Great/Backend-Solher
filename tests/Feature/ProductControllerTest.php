@@ -78,7 +78,7 @@ class ProductControllerTest extends TestCase
         ], $payloadOverrides);
 
         $response = $this->actingAs($this->admin, 'sanctum')
-                         ->postJson('/api/admin/products', $payload);
+                         ->postJson('/api/products', $payload);
 
         $response->assertStatus($expectedStatus);
 
@@ -125,7 +125,7 @@ class ProductControllerTest extends TestCase
         ];
 
         $response = $this->actingAs($this->admin, 'sanctum')
-                         ->postJson('/api/admin/products', $payload);
+                         ->postJson('/api/products', $payload);
 
         $response->assertStatus(201);
 
@@ -158,7 +158,7 @@ class ProductControllerTest extends TestCase
         $this->assertTrue(Cache::tags(['catalog'])->has('dummy_key'));
 
         // 2. Lakukan transaksi Create Product
-        $this->actingAs($this->admin, 'sanctum')->postJson('/api/admin/products', [
+        $this->actingAs($this->admin, 'sanctum')->postJson('/api/products', [
             'code' => 'CACHE-001',
             'name' => 'Cache Test',
             'category_id' => $this->category->id,
@@ -191,7 +191,7 @@ class ProductControllerTest extends TestCase
 
         // Tembak API Force Delete
         $response = $this->actingAs($this->admin, 'sanctum')
-                         ->deleteJson("/api/admin/products/{$product->id}/force");
+                         ->deleteJson("/api/products/{$product->id}/force");
 
         $response->assertStatus(200);
 
