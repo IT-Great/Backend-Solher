@@ -149,7 +149,8 @@ class ProductControllerTest extends TestCase
         $this->assertStringContainsString('.webp', $product->image);
 
         // Ekstrak nama file dari URL untuk dicek di Storage lokal
-        $filename = str_replace('/storage/', '', $product->image);
+        // $filename = str_replace('/storage/', '', $product->image);
+        $filename = str_replace('/storage/', '', parse_url($product->image, PHP_URL_PATH));
         Storage::disk('public')->assertExists($filename);
     }
 

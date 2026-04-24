@@ -656,13 +656,49 @@ class ProductController extends Controller
         }
         // =========================================================================
 
+        // // [PERBAIKAN] 1. Hapus & Ganti Gambar Utama
+        // if ($request->hasFile('image')) {
+        //     if ($product->image) {
+        //         $oldPath = str_replace('/storage/', '', $product->image);
+        //         Storage::disk('public')->delete($oldPath);
+        //     }
+        //     // Gunakan fungsi helper untuk kompresi
+        //     $data['image'] = $this->optimizeAndSaveImage($request->file('image'), 'products');
+        // }
+
+        // // [PERBAIKAN] 2. Hapus & Ganti Varian
+        // if ($request->hasFile('variant_images')) {
+        //     if ($product->variant_images) {
+        //         foreach ($product->variant_images as $oldImgUrl) {
+        //             $oldPath = str_replace('/storage/', '', $oldImgUrl);
+        //             Storage::disk('public')->delete($oldPath);
+        //         }
+        //     }
+        //     $variantImagesUrls = [];
+        //     foreach ($request->file('variant_images') as $file) {
+        //         // Gunakan fungsi helper untuk kompresi
+        //         $variantImagesUrls[] = $this->optimizeAndSaveImage($file, 'products/variants');
+        //     }
+        //     $data['variant_images'] = $variantImagesUrls;
+        // }
+
+        // // 3. Hapus & Ganti Video (TETAP MENGGUNAKAN CARA LAMA)
+        // if ($request->hasFile('variant_video')) {
+        //     if ($product->variant_video) {
+        //         $oldPath = str_replace('/storage/', '', $product->variant_video);
+        //         Storage::disk('public')->delete($oldPath);
+        //     }
+        //     $path = $request->file('variant_video')->store('products/videos', 'public');
+        //     $data['variant_video'] = Storage::url($path);
+        // }
+
         // [PERBAIKAN] 1. Hapus & Ganti Gambar Utama
         if ($request->hasFile('image')) {
             if ($product->image) {
-                $oldPath = str_replace('/storage/', '', $product->image);
+                // Ekstrak PATH-nya saja menggunakan parse_url
+                $oldPath = str_replace('/storage/', '', parse_url($product->image, PHP_URL_PATH));
                 Storage::disk('public')->delete($oldPath);
             }
-            // Gunakan fungsi helper untuk kompresi
             $data['image'] = $this->optimizeAndSaveImage($request->file('image'), 'products');
         }
 
@@ -670,22 +706,23 @@ class ProductController extends Controller
         if ($request->hasFile('variant_images')) {
             if ($product->variant_images) {
                 foreach ($product->variant_images as $oldImgUrl) {
-                    $oldPath = str_replace('/storage/', '', $oldImgUrl);
+                    // Ekstrak PATH-nya saja menggunakan parse_url
+                    $oldPath = str_replace('/storage/', '', parse_url($oldImgUrl, PHP_URL_PATH));
                     Storage::disk('public')->delete($oldPath);
                 }
             }
             $variantImagesUrls = [];
             foreach ($request->file('variant_images') as $file) {
-                // Gunakan fungsi helper untuk kompresi
                 $variantImagesUrls[] = $this->optimizeAndSaveImage($file, 'products/variants');
             }
             $data['variant_images'] = $variantImagesUrls;
         }
 
-        // 3. Hapus & Ganti Video (TETAP MENGGUNAKAN CARA LAMA)
+        // 3. Hapus & Ganti Video
         if ($request->hasFile('variant_video')) {
             if ($product->variant_video) {
-                $oldPath = str_replace('/storage/', '', $product->variant_video);
+                // Ekstrak PATH-nya saja menggunakan parse_url
+                $oldPath = str_replace('/storage/', '', parse_url($product->variant_video, PHP_URL_PATH));
                 Storage::disk('public')->delete($oldPath);
             }
             $path = $request->file('variant_video')->store('products/videos', 'public');
@@ -759,8 +796,14 @@ class ProductController extends Controller
         //     Storage::disk('public')->delete($path);
         // }
 
+        // if ($product->image) {
+        //     $oldPath = str_replace('/storage/', '', $product->image);
+        //     Storage::disk('public')->delete($oldPath);
+        // }
+
         if ($product->image) {
-            $oldPath = str_replace('/storage/', '', $product->image);
+            // Ekstrak PATH-nya saja menggunakan parse_url
+            $oldPath = str_replace('/storage/', '', parse_url($product->image, PHP_URL_PATH));
             Storage::disk('public')->delete($oldPath);
         }
 
