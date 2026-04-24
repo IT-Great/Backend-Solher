@@ -20,6 +20,19 @@ class ProductControllerTest extends TestCase
     protected $admin;
     protected $category;
 
+    // protected function setUp(): void
+    // {
+    //     parent::setUp();
+
+    //     // 1. Isolasi Storage & Cache agar tidak mengotori Production
+    //     Storage::fake('public');
+    //     Cache::flush();
+
+    //     // 2. Siapkan Data Dasar
+    //     $this->admin = User::factory()->create(['usertype' => 'superadmin']);
+    //     $this->category = Category::factory()->create();
+    // }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -28,9 +41,25 @@ class ProductControllerTest extends TestCase
         Storage::fake('public');
         Cache::flush();
 
-        // 2. Siapkan Data Dasar
-        $this->admin = User::factory()->create(['usertype' => 'superadmin']);
-        $this->category = Category::factory()->create();
+        // 2. Siapkan Data Dasar secara Manual (Tanpa Factory)
+
+        // Buat User Superadmin
+        $this->admin = User::create([
+            'first_name' => 'Admin',
+            'last_name' => 'Test',
+            'email' => 'admin_test_' . \Str::random(5) . '@solher.com', // Email acak agar tidak bentrok
+            'password' => bcrypt('password123'),
+            'usertype' => 'superadmin',
+            'is_membership' => false,
+            'point' => 0,
+        ]);
+
+        // Buat Kategori
+        $this->category = Category::create([
+            'category_code' => 'CAT-' . \Str::random(5),
+            'category_name' => 'Test Category',
+            'meta' => ['description' => 'Ini kategori tes'],
+        ]);
     }
 
     /**
