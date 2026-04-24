@@ -146,7 +146,7 @@ class AuthControllerTest extends TestCase
         // 3. Eksekusi API Update Image
         // Asumsi rute: /api/profile/image
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson('/api/profile/image', [
+                         ->postJson('/api/user/update-image', [
                              'image' => $newFakeImage
                          ]);
 
@@ -168,7 +168,7 @@ class AuthControllerTest extends TestCase
     {
         // A. Gagal karena password lama salah
         $responseFail = $this->actingAs($this->user, 'sanctum')
-                             ->postJson('/api/profile/password', [
+                             ->postJson('/api/user/update-password', [
                                  'old_password' => 'wrongpassword',
                                  'password' => 'newpassword123',
                                  'password_confirmation' => 'newpassword123',
@@ -179,7 +179,7 @@ class AuthControllerTest extends TestCase
 
         // B. Sukses karena password lama benar
         $responseSuccess = $this->actingAs($this->user, 'sanctum')
-                              ->postJson('/api/profile/password', [
+                              ->postJson('/api/user/update-password', [
                                   'old_password' => 'password123',
                                   'password' => 'newpassword123',
                                   'password_confirmation' => 'newpassword123',
@@ -198,7 +198,7 @@ class AuthControllerTest extends TestCase
     public function test_forgot_password_generates_otp_and_sends_email()
     {
         // Eksekusi permintaan OTP
-        $response = $this->postJson('/api/password/forgot', [
+        $response = $this->postJson('/api/forgot-password/send-code', [
             'email' => $this->user->email
         ]);
 
