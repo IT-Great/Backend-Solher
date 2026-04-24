@@ -53,11 +53,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
-use App\Models\Message;
-use App\Events\MessageSent;
 use App\Events\MessageRead;
+use App\Events\MessageSent;
 use App\Events\UserTyping;
+use App\Models\Message;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class ChatController extends Controller
@@ -73,8 +73,13 @@ class ChatController extends Controller
     {
         // [PERBAIKAN] Gunakan whereIn untuk secara eksplisit memilih usertype yang diizinkan melayani chat
         $admins = User::whereIn('usertype', ['admin', 'superadmin'])
-                      ->orderBy('usertype', 'desc') // Opsional: Superadmin bisa ditaruh di atas
-                      ->get();
+            ->orderBy('usertype', 'desc') // Opsional: Superadmin bisa ditaruh di atas
+            ->withCount(['messages as unread_count' => function ($query) {
+                // Hitung pesan yang dikirim oleh admin ini, ditujukan ke user yang sedang login, dan belum dibaca
+                $query->where('is_read', false)
+                    ->where('receiver_id', auth()->id());
+            }])
+            ->get();
 
         return response()->json($admins);
     }
@@ -116,10 +121,10 @@ class ChatController extends Controller
         $request->validate([
             'receiver_id' => 'required|exists:users,id',
             'message' => 'nullable|string',
-            'attachment' => 'nullable|file|mimes:jpeg,png,jpg,webp,mp4,mov,avi|max:10240' // Maksimal 10MB
+            'attachment' => 'nullable|file|mimes:jpeg,png,jpg,webp,mp4,mov,avi|max:10240', // Maksimal 10MB
         ]);
 
-        if (!$request->message && !$request->hasFile('attachment')) {
+        if (! $request->message && ! $request->hasFile('attachment')) {
             return response()->json(['error' => 'Message or attachment is required'], 422);
         }
 
@@ -167,9 +172,9 @@ class ChatController extends Controller
 
         // Update semua pesan dari lawan bicara yang belum dibaca
         Message::where('sender_id', $senderId)
-               ->where('receiver_id', $myId)
-               ->where('is_read', false)
-               ->update(['is_read' => true]);
+            ->where('receiver_id', $myId)
+            ->where('is_read', false)
+            ->update(['is_read' => true]);
 
         // Beri tahu lawan bicara bahwa pesannya sudah kita baca
         broadcast(new MessageRead($myId, $senderId))->toOthers();
