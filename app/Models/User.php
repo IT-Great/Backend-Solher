@@ -27,9 +27,9 @@ class User extends Authenticatable
         'phone',
         'password',
         'usertype',
-        'is_membership', 
+        'is_membership',
         'point',
-        'is_subscribed' 
+        'is_subscribed'
     ];
 
     /**
@@ -58,5 +58,10 @@ class User extends Authenticatable
     public function addresses(): HasMany
     {
         return $this->hasMany(Address::class);
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(\App\Models\Message::class, 'sender_id');
     }
 }
