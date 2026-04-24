@@ -11,6 +11,7 @@ use App\Models\PromoClaim;
 use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use App\Models\User;
+use App\Services\BiteshipService;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -571,7 +572,11 @@ class TransactionController extends Controller
 
                 return response()->json(['message' => 'Payment gateway error. Please try again.'], 500);
             }
-        } catch (\Exception $e) {
+        // } catch (\Exception $e) {
+        //     // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
+        //     Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
+        
+        } catch (\Throwable $e) { // <--- UBAH \Exception MENJADI \Throwable
             // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
             Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
