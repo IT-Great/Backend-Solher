@@ -206,7 +206,7 @@ class TransactionControllerTest extends TestCase
         // AKSI: Tembak Endpoint Confirm Complete
         // Asumsi rute standar di api.php: Route::post('/transactions/{id}/complete', [TxController::class, 'confirmComplete']);
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson("/api/transactions/{$transaction->id}/complete");
+                         ->postJson("/api/transactions/{$transaction->id}/confirm");
 
         $response->assertStatus(200);
 
@@ -242,7 +242,7 @@ class TransactionControllerTest extends TestCase
 
         // AKSI
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson("/api/transactions/{$transaction->id}/refund", [
+                         ->postJson("/api/transactions/{$transaction->id}/refund-request", [
                              'reason' => 'Barang sobek di bagian tali',
                              'proof_file' => $fakeVideo
                          ]);
