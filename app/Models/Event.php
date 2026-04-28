@@ -17,4 +17,9 @@ class Event extends Model
         'season',
         'status',
     ];
+
+    // Tambahkan ini agar string otomatis jadi array
+    protected $casts = [
+        'images' => 'array',
+    ];
 }

@@ -5,42 +5,24 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+// Pastikan Intervention Image sudah di-install via Composer
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
 
 class EventController extends Controller
 {
-    // =====================================================================
-    // SISI USER / PUBLIK
-    // =====================================================================
-
-    /**
-     * Menampilkan semua event yang berstatus 'published' untuk halaman User
-     */
     public function indexPublic()
     {
-        // Hanya tarik yang 'published', urutkan dari tanggal event paling baru
-        $events = Event::where('status', 'published')
-                       ->orderBy('event_date', 'desc')
-                       ->get();
-
+        $events = Event::where('status', 'published')->orderBy('event_date', 'desc')->get();
         return response()->json($events);
     }
 
-    // =====================================================================
-    // SISI ADMIN (CMS)
-    // =====================================================================
-
-    /**
-     * Menampilkan SEMUA event (termasuk draft) di tabel Admin
-     */
     public function index()
     {
         $events = Event::orderBy('event_date', 'desc')->get();
         return response()->json($events);
     }
 
-    /**
-     * Menyimpan event baru ke database
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -49,28 +31,36 @@ class EventController extends Controller
             'event_date' => 'required|date',
             'season'     => 'nullable|string|max:255',
             'status'     => 'required|in:published,draft',
-            'image'      => 'required|image|mimes:jpeg,png,jpg,webp|max:5120', // Maks 5MB
+            'images'     => 'required|array', // Harus array
+            'images.*'   => 'image|mimes:jpeg,png,jpg,webp|max:8192', // Maks 8MB per gambar
         ]);
 
-        $data = $request->except('image');
+        $data = $request->except('images');
+        $imagePaths = [];
 
-        // Logika Upload Gambar
-        if ($request->hasFile('image')) {
-            // Simpan gambar ke storage/app/public/events
-            $data['image'] = $request->file('image')->store('events', 'public');
+        // Logika Auto-Kompresi Multi-Image
+        if ($request->hasFile('images')) {
+            $manager = new ImageManager(new Driver());
+
+            foreach ($request->file('images') as $file) {
+                $filename = uniqid() . '_' . time() . '.webp'; // Paksa jadi WebP agar ringan
+
+                // Baca gambar dan kompres
+                $img = $manager->read($file);
+                $img->scaleDown(width: 1080); // Kecilkan jika lebarnya > 1080px
+                $encoded = $img->toWebp(75);  // Kualitas 75%
+
+                Storage::disk('public')->put('events/' . $filename, (string) $encoded);
+                $imagePaths[] = 'events/' . $filename;
+            }
         }
 
+        $data['images'] = $imagePaths; // Akan otomatis jadi JSON karena model casting
         $event = Event::create($data);
 
-        return response()->json([
-            'message' => 'Event created successfully',
-            'data' => $event
-        ], 201);
+        return response()->json(['message' => 'Event created successfully', 'data' => $event], 201);
     }
 
-    /**
-     * Memperbarui data event yang sudah ada
-     */
     public function update(Request $request, $id)
     {
         $event = Event::findOrFail($id);
@@ -81,45 +71,57 @@ class EventController extends Controller
             'event_date' => 'required|date',
             'season'     => 'nullable|string|max:255',
             'status'     => 'required|in:published,draft',
-            // Gambar menjadi opsional saat update (kalau tidak upload, pakai yang lama)
-            'image'      => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
+            'images'     => 'nullable|array',
+            'images.*'   => 'image|mimes:jpeg,png,jpg,webp|max:8192',
         ]);
 
-        $data = $request->except('image');
+        $data = $request->except('images');
 
-        // Jika Admin mengupload gambar baru
-        if ($request->hasFile('image')) {
-            // 1. Hapus gambar lama dari server agar tidak memenuhi harddisk
-            if ($event->image && Storage::disk('public')->exists($event->image)) {
-                Storage::disk('public')->delete($event->image);
+        // Jika mengupload gambar baru, kita ganti yang lama
+        if ($request->hasFile('images')) {
+            // Hapus gambar lama dari Harddisk
+            if ($event->images && is_array($event->images)) {
+                foreach ($event->images as $oldPath) {
+                    if (Storage::disk('public')->exists($oldPath)) {
+                        Storage::disk('public')->delete($oldPath);
+                    }
+                }
             }
 
-            // 2. Simpan gambar baru
-            $data['image'] = $request->file('image')->store('events', 'public');
+            // Kompres & Simpan yang baru
+            $imagePaths = [];
+            $manager = new ImageManager(new Driver());
+
+            foreach ($request->file('images') as $file) {
+                $filename = uniqid() . '_' . time() . '.webp';
+                $img = $manager->read($file);
+                $img->scaleDown(width: 1080);
+                $encoded = $img->toWebp(75);
+
+                Storage::disk('public')->put('events/' . $filename, (string) $encoded);
+                $imagePaths[] = 'events/' . $filename;
+            }
+            $data['images'] = $imagePaths;
         }
 
         $event->update($data);
-
-        return response()->json([
-            'message' => 'Event updated successfully',
-            'data' => $event
-        ]);
+        return response()->json(['message' => 'Event updated successfully', 'data' => $event]);
     }
 
-    /**
-     * Menghapus event beserta gambar fisiknya dari server
-     */
     public function destroy($id)
     {
         $event = Event::findOrFail($id);
 
-        // Hapus file gambar fisik dari folder storage
-        if ($event->image && Storage::disk('public')->exists($event->image)) {
-            Storage::disk('public')->delete($event->image);
+        // Hapus fisik gambar-gambar
+        if ($event->images && is_array($event->images)) {
+            foreach ($event->images as $path) {
+                if (Storage::disk('public')->exists($path)) {
+                    Storage::disk('public')->delete($path);
+                }
+            }
         }
 
         $event->delete();
-
         return response()->json(['message' => 'Event deleted successfully']);
     }
 }
