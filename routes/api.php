@@ -207,6 +207,7 @@
 // });
 
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\EventController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CoaController;
@@ -268,6 +269,8 @@ Route::post('/payments/callback', [PaymentController::class, 'callback']);
 // Public Route (Pop-up Home)
 Route::post('/promo/claim', [App\Http\Controllers\PromoController::class, 'claim']);
 
+// ROUTE UNTUK USER BIASA (Bebas diakses tanpa login)
+Route::get('/events', [EventController::class, 'indexPublic']);
 
 // =========================================================================
 // PROTECTED ROUTES: GLOBAL LOGGED IN USERS (Semua User)
@@ -370,6 +373,13 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () 
     Route::post('/admin/s3/presign', [S3UploadController::class, 'presign']);
 
     Route::get('/admin/audit-logs', [\App\Http\Controllers\AuditLogController::class, 'index']);
+
+    // CRUD Event
+    Route::get('/admin/events', [EventController::class, 'index']);
+    Route::post('/admin/events', [EventController::class, 'store']);
+    // Ingat: Laravel butuh _method=PUT dari FormData untuk update file, jadi routenya tetap POST/PUT sesuai setup Vue Anda
+    Route::put('/admin/events/{id}', [EventController::class, 'update']);
+    Route::delete('/admin/events/{id}', [EventController::class, 'destroy']);
 });
 
 // GRUP E: STOK & GUDANG (Admin & Gudang)
