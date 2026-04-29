@@ -292,26 +292,55 @@ class DashboardController extends Controller
             }
         }
 
+        // if (empty($results)) {
+        //     // Jika kosong, pakai fallback data historis
+        //     $fallback = $this->fetchPopularProductsData();
+        //     $formattedFallback = [];
+
+        //     // Format ulang fallback agar sesuai struktur list C4.5 di Vue
+        //     foreach($fallback as $item) {
+        //         // Cari detail produknya untuk mengambil gambar
+        //         $prod = Product::where('name', $item['name'])->first();
+        //         $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+        //         $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
+
+        //         $formattedFallback[] = [
+        //             'id' => random_int(1000, 9999), // Dummy ID
+        //             'name' => $item['name'],
+        //             'image' => $img,
+        //             'reasons' => 'Based purely on historical top sales (Fallback Mode).',
+        //             'label' => 'Historical Best',
+        //             'color' => 'text-blue-600',
+        //             'score' => 99
+        //         ];
+        //     }
+        //     return $formattedFallback;
+        // }
+
         if (empty($results)) {
             // Jika kosong, pakai fallback data historis
             $fallback = $this->fetchPopularProductsData();
             $formattedFallback = [];
 
-            // Format ulang fallback agar sesuai struktur list C4.5 di Vue
-            foreach($fallback as $item) {
-                // Cari detail produknya untuk mengambil gambar
+            foreach($fallback as $index => $item) {
+                // Cari detail produknya untuk mengambil gambar dan ID asli
                 $prod = Product::where('name', $item['name'])->first();
                 $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
                 $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
 
+                // [PERBAIKAN] Buat persentase skor menurun berdasarkan peringkat
+                // Juara 1: 96%, Juara 2: 89%, Juara 3: 84%, dst.
+                $dynamicScore = 96 - ($index * random_int(5, 8));
+
                 $formattedFallback[] = [
-                    'id' => random_int(1000, 9999), // Dummy ID
+                    'id' => $prod ? $prod->id : random_int(1000, 9999),
                     'name' => $item['name'],
                     'image' => $img,
-                    'reasons' => 'Based purely on historical top sales (Fallback Mode).',
+                    // Menampilkan angka historis yang sesungguhnya agar masuk akal
+                    'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
                     'label' => 'Historical Best',
                     'color' => 'text-blue-600',
-                    'score' => 99
+                    'score' => max(60, $dynamicScore) // Cegah skor di bawah 60%
                 ];
             }
             return $formattedFallback;
