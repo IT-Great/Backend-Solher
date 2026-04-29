@@ -228,4 +228,14 @@ class ContactController extends Controller
 
         return response()->json(['message' => 'Subscription successful! Welcome to our newsletter.']);
     }
+
+    // [BARU] Fungsi Admin untuk mengambil jumlah pesan yang belum dibaca
+    public function getUnreadCount()
+    {
+        $count = Contact::where('is_read', false)->count();
+
+        return response()->json([
+            'unread_count' => $count
+        ]);
+    }
 }
