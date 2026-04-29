@@ -354,9 +354,9 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
 
     Route::get('/admin/messages', [ContactController::class, 'getInboundMessages']);
+    Route::get('/admin/messages/unread-count', [ContactController::class, 'getUnreadCount']);
     Route::get('/admin/messages/{id}', [ContactController::class, 'showAdminMessage']);
     Route::post('/admin/messages/{id}/respond', [ContactController::class, 'respondMessage']);
-    Route::get('/admin/messages/unread-count', [ContactController::class, 'getUnreadCount']);
 
     Route::get('/admin/subscribers', function () {
         return response()->json(\App\Models\Subscriber::latest()->get());
