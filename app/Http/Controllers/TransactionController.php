@@ -608,25 +608,25 @@ class TransactionController extends Controller
     // }
 
     // Melihat semua transaksi (Sisi Admin)
-    // public function allTransactions()
-    // {
-    //     // Menambahkan relasi 'address' agar data penerima dan kodepos bisa dirender di Vue
-    //     $transactions = Transaction::with(['user', 'details.product', 'address'])
-    //         ->latest()
-    //         ->get();
-
-    //     return response()->json($transactions);
-    // }
-
     public function allTransactions()
     {
-        // Hanya ambil 50 data per halaman. Sangat ringan untuk RAM server!
+        // Menambahkan relasi 'address' agar data penerima dan kodepos bisa dirender di Vue
         $transactions = Transaction::with(['user', 'details.product', 'address'])
             ->latest()
-            ->paginate(50);
+            ->get();
 
         return response()->json($transactions);
     }
+
+    // public function allTransactions()
+    // {
+    //     // Hanya ambil 50 data per halaman. Sangat ringan untuk RAM server!
+    //     $transactions = Transaction::with(['user', 'details.product', 'address'])
+    //         ->latest()
+    //         ->paginate(50);
+
+    //     return response()->json($transactions);
+    // }
 
     public function cancelOrder(Request $request, $id)
     {
