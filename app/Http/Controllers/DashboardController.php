@@ -203,6 +203,157 @@ class DashboardController extends Controller
     //     return array_slice($results, 0, 100);
     // }
 
+    // private function fetchPredictedBestsellersData(C45Service $c45Service)
+    // {
+    //     // 1. AMBIL SEMUA PRODUK UNTUK DATA TRAINING & PREDIKSI
+    //     $products = Product::with('category')
+    //         ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
+    //         ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
+    //         ->leftJoin('transactions', function ($join) {
+    //             $join->on('transaction_details.transaction_id', '=', 'transactions.id')
+    //                 ->where('transactions.status', '=', 'completed');
+    //         })
+    //         ->where('products.status', 'active')
+    //         ->groupBy(
+    //             'products.id', 'products.category_id', 'products.code', 'products.name',
+    //             'products.image', 'products.variant_images', 'products.variant_video',
+    //             'products.price', 'products.discount_price', 'products.stock',
+    //             'products.weight', 'products.length', 'products.width', 'products.height',
+    //             'products.material', 'products.strap_length', 'products.color',
+    //             'products.description', 'products.design', 'products.status',
+    //             'products.is_notified', 'products.created_at', 'products.updated_at'
+    //         )
+    //         ->get();
+
+    //     if ($products->isEmpty()) {
+    //         return [];
+    //     }
+
+    //     // Hitung batas "Laris" (Bestseller).
+    //     $avgSold = $products->avg('total_sold') ?: 1;
+    //     $avgPrice = $products->avg('price') ?: 100000;
+
+    //     // 2. DISKRETISASI DATA
+    //     $dataset = [];
+    //     $predictData = [];
+
+    //     foreach ($products as $p) {
+    //         $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
+    //         $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
+    //         $hasDiscount = $p->discount_price ? 'Yes' : 'No';
+    //         $categoryName = $p->category->name ?? 'Unknown';
+
+    //         $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
+
+    //         $features = [
+    //             'category' => $categoryName,
+    //             'price_level' => $priceCategory,
+    //             'is_discounted' => $hasDiscount,
+    //             'stock_status' => $stockCategory,
+    //             'label' => $label
+    //         ];
+
+    //         $dataset[] = $features;
+    //         $predictData[$p->id] = [
+    //             'product' => $p,
+    //             'features' => $features
+    //         ];
+    //     }
+
+    //     // 3. PROSES PEMBELAJARAN MESIN (TRAINING)
+    //     $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
+    //     $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
+
+    //     // 4. PROSES PREDIKSI & PENYUSUNAN RESPONSE UNTUK VUE
+    //     $results = [];
+
+    //     foreach ($predictData as $id => $data) {
+    //         $product = $data['product'];
+    //         $features = $data['features'];
+
+    //         $prediction = $c45Service->predict($decisionTree, $features);
+    //         $statusLabel = $prediction['label'];
+    //         $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
+
+    //         if ($statusLabel === 'Laris') {
+    //             // [PERBAIKAN] Pastikan path image digabung dengan APP_URL
+    //             $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    //             $imageUrl = $product->image ? $baseUrlFixed . '/storage/' . $product->image : '';
+
+    //             $results[] = [
+    //                 'id' => $product->id,
+    //                 'name' => $product->name,
+    //                 'image' => $imageUrl, // Path gambar yang sudah utuh
+    //                 'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
+    //                 'label' => 'High Potential (C4.5)',
+    //                 'color' => 'text-green-600',
+    //                 'score' => random_int(75, 100) // Nilai persentase (score)
+    //             ];
+    //         }
+    //     }
+
+    //     // if (empty($results)) {
+    //     //     // Jika kosong, pakai fallback data historis
+    //     //     $fallback = $this->fetchPopularProductsData();
+    //     //     $formattedFallback = [];
+
+    //     //     // Format ulang fallback agar sesuai struktur list C4.5 di Vue
+    //     //     foreach($fallback as $item) {
+    //     //         // Cari detail produknya untuk mengambil gambar
+    //     //         $prod = Product::where('name', $item['name'])->first();
+    //     //         $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    //     //         $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
+
+    //     //         $formattedFallback[] = [
+    //     //             'id' => random_int(1000, 9999), // Dummy ID
+    //     //             'name' => $item['name'],
+    //     //             'image' => $img,
+    //     //             'reasons' => 'Based purely on historical top sales (Fallback Mode).',
+    //     //             'label' => 'Historical Best',
+    //     //             'color' => 'text-blue-600',
+    //     //             'score' => 99
+    //     //         ];
+    //     //     }
+    //     //     return $formattedFallback;
+    //     // }
+
+    //     if (empty($results)) {
+    //         // Jika kosong, pakai fallback data historis
+    //         $fallback = $this->fetchPopularProductsData();
+    //         $formattedFallback = [];
+
+    //         foreach($fallback as $index => $item) {
+    //             // Cari detail produknya untuk mengambil gambar dan ID asli
+    //             $prod = Product::where('name', $item['name'])->first();
+    //             $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    //             $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
+
+    //             // [PERBAIKAN] Buat persentase skor menurun berdasarkan peringkat
+    //             // Juara 1: 96%, Juara 2: 89%, Juara 3: 84%, dst.
+    //             $dynamicScore = 96 - ($index * random_int(5, 8));
+
+    //             $formattedFallback[] = [
+    //                 'id' => $prod ? $prod->id : random_int(1000, 9999),
+    //                 'name' => $item['name'],
+    //                 'image' => $img,
+    //                 // Menampilkan angka historis yang sesungguhnya agar masuk akal
+    //                 'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
+    //                 'label' => 'Historical Best',
+    //                 'color' => 'text-blue-600',
+    //                 'score' => max(60, $dynamicScore) // Cegah skor di bawah 60%
+    //             ];
+    //         }
+    //         return $formattedFallback;
+    //     }
+
+    //     // Urutkan berdasarkan score terbesar
+    //     usort($results, function ($a, $b) {
+    //         return $b['score'] <=> $a['score'];
+    //     });
+
+    //     return array_slice($results, 0, 10);
+    // }
+
     private function fetchPredictedBestsellersData(C45Service $c45Service)
     {
         // 1. AMBIL SEMUA PRODUK UNTUK DATA TRAINING & PREDIKSI
@@ -267,6 +418,18 @@ class DashboardController extends Controller
         // 4. PROSES PREDIKSI & PENYUSUNAN RESPONSE UNTUK VUE
         $results = [];
 
+        // [PERBAIKAN] Helper function internal untuk membersihkan URL Gambar
+        $formatImageUrl = function($imagePath) {
+            if (!$imagePath) return '';
+            // Jika sudah ada http, langsung kembalikan aslinya
+            if (str_starts_with($imagePath, 'http')) {
+                return $imagePath;
+            }
+            // Jika belum ada, baru kita pasangkan base url-nya
+            $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+            return $baseUrlFixed . '/storage/' . $imagePath;
+        };
+
         foreach ($predictData as $id => $data) {
             $product = $data['product'];
             $features = $data['features'];
@@ -276,46 +439,17 @@ class DashboardController extends Controller
             $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
 
             if ($statusLabel === 'Laris') {
-                // [PERBAIKAN] Pastikan path image digabung dengan APP_URL
-                $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-                $imageUrl = $product->image ? $baseUrlFixed . '/storage/' . $product->image : '';
-
                 $results[] = [
                     'id' => $product->id,
                     'name' => $product->name,
-                    'image' => $imageUrl, // Path gambar yang sudah utuh
+                    'image' => $formatImageUrl($product->image), // Panggil fungsi pembersih URL
                     'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
                     'label' => 'High Potential (C4.5)',
                     'color' => 'text-green-600',
-                    'score' => random_int(75, 100) // Nilai persentase (score)
+                    'score' => random_int(75, 100)
                 ];
             }
         }
-
-        // if (empty($results)) {
-        //     // Jika kosong, pakai fallback data historis
-        //     $fallback = $this->fetchPopularProductsData();
-        //     $formattedFallback = [];
-
-        //     // Format ulang fallback agar sesuai struktur list C4.5 di Vue
-        //     foreach($fallback as $item) {
-        //         // Cari detail produknya untuk mengambil gambar
-        //         $prod = Product::where('name', $item['name'])->first();
-        //         $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-        //         $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
-
-        //         $formattedFallback[] = [
-        //             'id' => random_int(1000, 9999), // Dummy ID
-        //             'name' => $item['name'],
-        //             'image' => $img,
-        //             'reasons' => 'Based purely on historical top sales (Fallback Mode).',
-        //             'label' => 'Historical Best',
-        //             'color' => 'text-blue-600',
-        //             'score' => 99
-        //         ];
-        //     }
-        //     return $formattedFallback;
-        // }
 
         if (empty($results)) {
             // Jika kosong, pakai fallback data historis
@@ -323,24 +457,17 @@ class DashboardController extends Controller
             $formattedFallback = [];
 
             foreach($fallback as $index => $item) {
-                // Cari detail produknya untuk mengambil gambar dan ID asli
                 $prod = Product::where('name', $item['name'])->first();
-                $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-                $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
-
-                // [PERBAIKAN] Buat persentase skor menurun berdasarkan peringkat
-                // Juara 1: 96%, Juara 2: 89%, Juara 3: 84%, dst.
                 $dynamicScore = 96 - ($index * random_int(5, 8));
 
                 $formattedFallback[] = [
                     'id' => $prod ? $prod->id : random_int(1000, 9999),
                     'name' => $item['name'],
-                    'image' => $img,
-                    // Menampilkan angka historis yang sesungguhnya agar masuk akal
+                    'image' => $prod ? $formatImageUrl($prod->image) : '', // Panggil fungsi pembersih URL
                     'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
                     'label' => 'Historical Best',
                     'color' => 'text-blue-600',
-                    'score' => max(60, $dynamicScore) // Cegah skor di bawah 60%
+                    'score' => max(60, $dynamicScore)
                 ];
             }
             return $formattedFallback;
