@@ -575,7 +575,7 @@ class TransactionController extends Controller
         // } catch (\Exception $e) {
         //     // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
         //     Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
-        
+
         } catch (\Throwable $e) { // <--- UBAH \Exception MENJADI \Throwable
             // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
             Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
@@ -586,26 +586,26 @@ class TransactionController extends Controller
         }
     }
 
-    // public function index(Request $request)
-    // {
-    //     // Eager load 'payment' untuk mendapatkan checkout_url
-    //     $transactions = Transaction::with(['details.product', 'payment', 'address'])
-    //         ->where('user_id', $request->user()->id)
-    //         ->latest()
-    //         ->get();
-
-    //     return response()->json($transactions);
-    // }
-
     public function index(Request $request)
     {
+        // Eager load 'payment' untuk mendapatkan checkout_url
         $transactions = Transaction::with(['details.product', 'payment', 'address'])
             ->where('user_id', $request->user()->id)
             ->latest()
-            ->paginate(20); // User cukup lihat 20 transaksi per halaman
+            ->get();
 
         return response()->json($transactions);
     }
+
+    // public function index(Request $request)
+    // {
+    //     $transactions = Transaction::with(['details.product', 'payment', 'address'])
+    //         ->where('user_id', $request->user()->id)
+    //         ->latest()
+    //         ->paginate(20); // User cukup lihat 20 transaksi per halaman
+
+    //     return response()->json($transactions);
+    // }
 
     // Melihat semua transaksi (Sisi Admin)
     // public function allTransactions()
