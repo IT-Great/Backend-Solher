@@ -377,6 +377,7 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () 
 
     // CRUD Event
     Route::get('/admin/events', [EventController::class, 'index']);
+    Route::get('/admin/events/{id}', [EventController::class, 'show']);
     Route::post('/admin/events', [EventController::class, 'store']);
     // Ingat: Laravel butuh _method=PUT dari FormData untuk update file, jadi routenya tetap POST/PUT sesuai setup Vue Anda
     Route::put('/admin/events/{id}', [EventController::class, 'update']);
