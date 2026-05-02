@@ -136,11 +136,23 @@ class AuthController extends Controller
             'remoteip' => $request->ip()
         ]);
 
-        if (!$captchaResponse->json('success')) {
+        $captchaResult = $captchaResponse->json();
+
+        // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
+        if (!$captchaResult['success'] || $captchaResult['score'] < 0.5) {
+            // Opsional: Log aktivitas bot jika diperlukan
+            // Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
+
             return response()->json([
-                'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
+                'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
             ], 422);
         }
+
+        // if (!$captchaResponse->json('success')) {
+        //     return response()->json([
+        //         'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
+        //     ], 422);
+        // }
 
         $user = User::where('email', $request->email)->first();
 
@@ -250,11 +262,23 @@ class AuthController extends Controller
             'remoteip' => $request->ip()
         ]);
 
-        if (!$captchaResponse->json('success')) {
+        $captchaResult = $captchaResponse->json();
+
+        // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
+        if (!$captchaResult['success'] || $captchaResult['score'] < 0.5) {
+            // Opsional: Log aktivitas bot jika diperlukan
+            // Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
+
             return response()->json([
-                'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
+                'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
             ], 422);
         }
+
+        // if (!$captchaResponse->json('success')) {
+        //     return response()->json([
+        //         'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
+        //     ], 422);
+        // }
 
         $user = User::where('email', $request->email)
             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
