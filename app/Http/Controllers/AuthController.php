@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Http;
 
 class AuthController extends Controller
 {
@@ -83,15 +84,62 @@ class AuthController extends Controller
         ], 201);
     }
 
+    // public function login(Request $request)
+    // {
+    //     $validator = Validator::make($request->all(), [
+    //         'email'    => 'required|email',
+    //         'password' => 'required',
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json($validator->errors(), 422);
+    //     }
+
+    //     $user = User::where('email', $request->email)->first();
+
+    //     if (
+    //         !$user ||
+    //         !Hash::check($request->password, $user->password) ||
+    //         $user->usertype !== 'user'
+    //     ) {
+    //         return response()->json([
+    //             'message' => 'Email atau Password salah.'
+    //         ], 401);
+    //     }
+
+    //     $token = $user->createToken('auth_token')->plainTextToken;
+
+    //     return response()->json([
+    //         'message'      => 'Login Berhasil',
+    //         'access_token' => $token,
+    //         'token_type'   => 'Bearer',
+    //         'user'         => $user
+    //     ], 200);
+    // }
+
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email'    => 'required|email',
-            'password' => 'required',
+            'email'         => 'required|email',
+            'password'      => 'required',
+            'captcha_token' => 'required|string', // [BARU] Validasi token captcha
         ]);
 
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
+        }
+
+        // [BARU] Verifikasi CAPTCHA ke Google
+        $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+            'secret'   => env('RECAPTCHA_SECRET_KEY'),
+            'response' => $request->captcha_token,
+            'remoteip' => $request->ip()
+        ]);
+
+        if (!$captchaResponse->json('success')) {
+            return response()->json([
+                'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
+            ], 422);
         }
 
         $user = User::where('email', $request->email)->first();
@@ -151,18 +199,63 @@ class AuthController extends Controller
     //     ], 200);
     // }
 
+    // public function adminLogin(Request $request)
+    // {
+    //     $validator = Validator::make($request->all(), [
+    //         'email'    => 'required|email',
+    //         'password' => 'required',
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json($validator->errors(), 422);
+    //     }
+
+    //     // [PERBAIKAN] Izinkan semua role selain 'user' biasa untuk login di portal Admin
+    //     $user = User::where('email', $request->email)
+    //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
+    //         ->first();
+
+    //     if (!$user || !Hash::check($request->password, $user->password)) {
+    //         return response()->json([
+    //             'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.'
+    //         ], 401);
+    //     }
+
+    //     $token = $user->createToken('admin_token')->plainTextToken;
+
+    //     return response()->json([
+    //         'message'      => 'Login Berhasil',
+    //         'access_token' => $token,
+    //         'token_type'   => 'Bearer',
+    //         'user'         => $user
+    //     ], 200);
+    // }
+
     public function adminLogin(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email'    => 'required|email',
-            'password' => 'required',
+            'email'         => 'required|email',
+            'password'      => 'required',
+            'captcha_token' => 'required|string', // [BARU] Validasi token captcha
         ]);
 
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        // [PERBAIKAN] Izinkan semua role selain 'user' biasa untuk login di portal Admin
+        // [BARU] Verifikasi CAPTCHA ke Google
+        $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+            'secret'   => env('RECAPTCHA_SECRET_KEY'),
+            'response' => $request->captcha_token,
+            'remoteip' => $request->ip()
+        ]);
+
+        if (!$captchaResponse->json('success')) {
+            return response()->json([
+                'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
+            ], 422);
+        }
+
         $user = User::where('email', $request->email)
             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
             ->first();
