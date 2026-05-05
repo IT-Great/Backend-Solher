@@ -29,7 +29,7 @@
 
         <p>Yuk, selesaikan pesananmu sekarang sebelum kehabisan!</p>
 
-        <a href="https://domain-solher-anda.com/cart" class="btn">Kembali ke Keranjang</a>
+        <a href="https://solher.co.id/cart" class="btn">Kembali ke Keranjang</a>
 
         <p style="margin-top: 30px; font-size: 12px; color: #888;">
             Tim Solher

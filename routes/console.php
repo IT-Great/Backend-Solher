@@ -12,4 +12,7 @@ Artisan::command('inspire', function () {
 Schedule::command('emails:send-batched-alerts')->everyTwoHours();
 
 // Jalankan perintah ini setiap hari pada jam 10 pagi
-Schedule::command('carts:abandoned-reminder')->dailyAt('10:00');
+Schedule::command('carts:abandoned-reminder')
+    ->timezone('Asia/Jakarta')
+    ->dailyAt('10:00')
+    ->appendOutputTo(storage_path('logs/cart-reminder.log'));
