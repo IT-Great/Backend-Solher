@@ -64,4 +64,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(\App\Models\Message::class, 'sender_id');
     }
+
+    /**
+     * Relasi: Satu User memiliki banyak isi Keranjang (Carts)
+     */
+    public function carts()
+    {
+        return $this->hasMany(Cart::class);
+    }
 }
