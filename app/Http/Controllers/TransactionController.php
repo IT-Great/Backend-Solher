@@ -131,105 +131,6 @@ class TransactionController extends Controller
                 return response()->json(['message' => 'No items selected for checkout'], 400);
             }
 
-            // // 1. LAKUKAN PROSES DATABASE DENGAN KILAT (TANPA API PIHAK KETIGA)
-            // $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
-            //     $totalAmount = 0;
-            //     foreach ($cartItems as $item) {
-            //         $currentPrice = $item->product->discount_price ?? $item->product->price;
-            //         $totalAmount += ($currentPrice * $item->quantity);
-            //     }
-
-            //     // =========================================================================
-            //     // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
-            //     // =========================================================================
-            //     $promoDiscountAmount = 0;
-            //     $appliedPromoCode = null;
-
-            //     if (! empty($request->promo_code)) {
-            //         // Kunci (Lock) baris promo claim agar tidak bisa di-klik ganda bersamaan
-            //         $promoClaim = PromoClaim::where('email', $user->email)
-            //             ->where('promo_code', strtoupper($request->promo_code))
-            //             ->lockForUpdate()
-            //             ->first();
-
-            //         if (! $promoClaim) {
-            //             throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
-            //         }
-            //         if ($promoClaim->is_used) {
-            //             throw new \Exception('Kode Promo sudah pernah digunakan.');
-            //         }
-            //         if ($totalAmount < 50000) { // Syarat batas minimal belanja
-            //             throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
-            //         }
-
-            //         $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
-            //         $appliedPromoCode = $promoClaim->promo_code;
-
-            //         // Tandai promo sudah digunakan
-            //         $promoClaim->update([
-            //             'is_used' => true,
-            //             'used_at' => now(),
-            //         ]);
-            //     }
-
-            //     // Total harga setelah promo dipotong
-            //     $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
-
-            //     // =========================================================================
-            //     // 2. POTONG POIN DARI SISA HARGA SETELAH PROMO (Mencegah Tagihan Minus)
-            //     // =========================================================================
-            //     $orderId = 'SOL-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
-
-            //     // $earnedPoints = 0;
-            //     // if ($user->is_membership) {
-            //     //     $earnedPoints = floor($totalAmount / 100000);
-            //     // }
-
-            //     $earnedPoints = $user->is_membership ? floor($totalAmount / 100000) : 0;
-
-            //     $pointsUsed = 0;
-            //     $pointDiscountAmount = 0;
-            //     if ($request->use_points > 0 && $user->is_membership) {
-            //         $pointsUsed = min($request->use_points, $user->point);
-            //         // $pointDiscountAmount = min($pointsUsed * 1000, $totalAmount);
-            //         // if ($pointsUsed > 0) {
-            //         //     $user->decrement('point', $pointsUsed);
-            //         // }
-
-            //         // Poin maksimal yang bisa dipakai = Sisa harga setelah promo
-            //         $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
-            //         $pointDiscountAmount = $maxUsableDiscount;
-
-            //         // Konversi kembali ke poin riil yang terpakai
-            //         $actualPointsDeducted = floor($maxUsableDiscount / 1000);
-            //         $pointsUsed = $actualPointsDeducted;
-
-            //         if ($pointsUsed > 0) {
-            //             $user->decrement('point', $pointsUsed);
-            //         }
-            //     }
-
-            //     $totalQuantity = $cartItems->sum('quantity') ?: 1;
-            //     $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
-            //     $totalShippingCost = $baseShippingRate * $totalQuantity;
-
-            //     $transaction = Transaction::create([
-            //         'user_id' => $user->id,
-            //         'address_id' => $request->address_id,
-            //         'shipping_method' => $request->shipping_method,
-            //         'shipping_cost' => $totalShippingCost,
-            //         'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
-            //         'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
-            //         'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
-            //         'order_id' => $orderId,
-            //         'total_amount' => $totalAmount,
-            //         'status' => 'pending',
-            //         'point' => $earnedPoints,
-            //         'points_used' => $pointsUsed,
-            //         'promo_code' => $appliedPromoCode,
-            //         'promo_discount' => $promoDiscountAmount,
-            //     ]);
-
             // 1. LAKUKAN PROSES DATABASE DENGAN KILAT (TANPA API PIHAK KETIGA)
             $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
 
@@ -739,22 +640,6 @@ class TransactionController extends Controller
 
         return response()->json(['message' => 'Order cancelled successfully']);
     }
-
-    // public function confirmComplete(Request $request, $id)
-    // {
-    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
-
-    //     if ($transaction->status !== 'processing') {
-    //         return response()->json(['message' => 'Order cannot be completed yet.'], 400);
-    //     }
-
-    //     $transaction->update(['status' => 'completed']);
-
-    //     // [PERBAIKAN] Cek syarat membership setelah admin komplit manual
-    //     $this->checkAndAssignMembership($transaction->user);
-
-    //     return response()->json(['message' => 'Order completed!']);
-    // }
 
     public function confirmComplete(Request $request, $id)
     {

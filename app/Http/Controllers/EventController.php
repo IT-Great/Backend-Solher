@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-// Pastikan Intervention Image sudah di-install via Composer
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
 

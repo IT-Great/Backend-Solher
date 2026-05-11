@@ -17,32 +17,6 @@ use Illuminate\Support\Facades\Http;
 
 class AuthController extends Controller
 {
-    // public function register(Request $request)
-    // {
-    //     $validator = Validator::make($request->all(), [
-    //         'first_name' => 'required|string|max:255',
-    //         'last_name'  => 'required|string|max:255',
-    //         'email'      => 'required|string|email|max:255|unique:users',
-    //         'password'   => 'required|string|min:8',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     $user = User::create([
-    //         'first_name' => $request->first_name,
-    //         'last_name'  => $request->last_name,
-    //         'email'      => $request->email,
-    //         'password'   => Hash::make($request->password),
-    //     ]);
-
-    //     return response()->json([
-    //         'message' => 'User berhasil didaftarkan',
-    //         'user'    => $user
-    //     ], 201);
-    // }
-
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -84,39 +58,6 @@ class AuthController extends Controller
         ], 201);
     }
 
-    // public function login(Request $request)
-    // {
-    //     $validator = Validator::make($request->all(), [
-    //         'email'    => 'required|email',
-    //         'password' => 'required',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     $user = User::where('email', $request->email)->first();
-
-    //     if (
-    //         !$user ||
-    //         !Hash::check($request->password, $user->password) ||
-    //         $user->usertype !== 'user'
-    //     ) {
-    //         return response()->json([
-    //             'message' => 'Email atau Password salah.'
-    //         ], 401);
-    //     }
-
-    //     $token = $user->createToken('auth_token')->plainTextToken;
-
-    //     return response()->json([
-    //         'message'      => 'Login Berhasil',
-    //         'access_token' => $token,
-    //         'token_type'   => 'Bearer',
-    //         'user'         => $user
-    //     ], 200);
-    // }
-
     public function login(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -141,18 +82,12 @@ class AuthController extends Controller
         // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
         if (!$captchaResult['success'] || $captchaResult['score'] < 0.5) {
             // Opsional: Log aktivitas bot jika diperlukan
-            // Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
+            Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
 
             return response()->json([
                 'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
             ], 422);
         }
-
-        // if (!$captchaResponse->json('success')) {
-        //     return response()->json([
-        //         'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
-        //     ], 422);
-        // }
 
         $user = User::where('email', $request->email)->first();
 
@@ -176,79 +111,12 @@ class AuthController extends Controller
         ], 200);
     }
 
-    // public function adminLogin(Request $request)
-    // {
-    //     $validator = Validator::make($request->all(), [
-    //         'email'    => 'required|email',
-    //         'password' => 'required',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     // $user = User::where('email', $request->email)
-    //     //     ->where('usertype', 'admin') // Filter khusus admin
-    //     //     ->first();
-
-    //     $user = User::where('email', $request->email)
-    //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
-    //         ->first();
-
-    //     if (!$user || !Hash::check($request->password, $user->password)) {
-    //         return response()->json([
-    //             'message' => 'Akses ditolak. Email/Password salah atau Anda bukan Admin.'
-    //         ], 401);
-    //     }
-
-    //     $token = $user->createToken('admin_token')->plainTextToken;
-
-    //     return response()->json([
-    //         'message'      => 'Admin Login Berhasil',
-    //         'access_token' => $token,
-    //         'token_type'   => 'Bearer',
-    //         'user'         => $user
-    //     ], 200);
-    // }
-
-    // public function adminLogin(Request $request)
-    // {
-    //     $validator = Validator::make($request->all(), [
-    //         'email'    => 'required|email',
-    //         'password' => 'required',
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     // [PERBAIKAN] Izinkan semua role selain 'user' biasa untuk login di portal Admin
-    //     $user = User::where('email', $request->email)
-    //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
-    //         ->first();
-
-    //     if (!$user || !Hash::check($request->password, $user->password)) {
-    //         return response()->json([
-    //             'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.'
-    //         ], 401);
-    //     }
-
-    //     $token = $user->createToken('admin_token')->plainTextToken;
-
-    //     return response()->json([
-    //         'message'      => 'Login Berhasil',
-    //         'access_token' => $token,
-    //         'token_type'   => 'Bearer',
-    //         'user'         => $user
-    //     ], 200);
-    // }
-
     public function adminLogin(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'email'         => 'required|email',
             'password'      => 'required',
-            'captcha_token' => 'required|string', // [BARU] Validasi token captcha
+            'captcha_token' => 'required|string',
         ]);
 
         if ($validator->fails()) {
@@ -317,69 +185,6 @@ class AuthController extends Controller
 
         return response()->json(['message' => 'Info profil diperbarui', 'user' => $user]);
     }
-
-    // public function updateImage(Request $request)
-    // {
-    //     Log::info('Update profile image started', [
-    //         'user_id' => $request->user()->id
-    //     ]);
-
-    //     $request->validate([
-    //         'image' => 'required|image|mimes:jpeg,png,jpg|max:2048'
-    //     ]);
-
-    //     $user = $request->user();
-
-    //     try {
-    //         // Jika ada foto lama
-    //         if ($user->profile_image) {
-    //             $oldPath = 'profiles/' . basename($user->profile_image);
-
-    //             Log::info('Deleting old profile image', [
-    //                 'user_id' => $user->id,
-    //                 'old_path' => $oldPath
-    //             ]);
-
-    //             Storage::disk('s3')->delete($oldPath);
-    //         }
-
-    //         // Upload foto baru
-    //         $path = $request->file('image')->store('profiles', [
-    //             'disk' => 's3',
-    //             'visibility' => 'public'
-    //         ]);
-
-    //         Log::info('New profile image uploaded', [
-    //             'user_id' => $user->id,
-    //             'new_path' => $path
-    //         ]);
-
-    //         $user->profile_image = Storage::disk('s3')->url($path);
-    //         $user->save();
-
-    //         $user = $user->fresh();
-
-    //         Log::info('Profile image updated successfully', [
-    //             'user_id' => $user->id,
-    //             'profile_image_url' => $user->profile_image
-    //         ]);
-
-    //         return response()->json([
-    //             'message' => 'Foto profil diperbarui',
-    //             'user' => $user
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         Log::error('Failed to update profile image', [
-    //             'user_id' => $user->id ?? null,
-    //             'error_message' => $e->getMessage(),
-    //             'trace' => $e->getTraceAsString()
-    //         ]);
-
-    //         return response()->json([
-    //             'message' => 'Gagal memperbarui foto profil'
-    //         ], 500);
-    //     }
-    // }
 
     public function updateImage(Request $request)
     {
@@ -480,28 +285,6 @@ class AuthController extends Controller
         return response()->json($user, 200);
     }
 
-    // public function updateAdminProfileInfo(Request $request)
-    // {
-    //     $admin = $request->user();
-
-    //     $validator = Validator::make($request->all(), [
-    //         'first_name' => 'required|string|max:255',
-    //         'last_name'  => 'required|string|max:255',
-    //         'email'      => 'required|string|email|max:255|unique:users,email,' . $admin->id,
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     $admin->update($request->only('first_name', 'last_name', 'email'));
-
-    //     return response()->json([
-    //         'message' => 'Admin profile updated successfully',
-    //         'admin'   => $admin
-    //     ]);
-    // }
-
     public function updateAdminProfileInfo(Request $request)
     {
         $admin = $request->user();
@@ -525,40 +308,6 @@ class AuthController extends Controller
             'admin'   => $admin
         ]);
     }
-
-    // public function updateAdminImage(Request $request)
-    // {
-    //     $request->validate([
-    //         'image' => 'required|image|mimes:jpeg,png,jpg'
-    //     ]);
-
-    //     $admin = $request->user();
-
-    //     try {
-
-    //         if ($admin->profile_image) {
-    //             $oldPath = 'profiles/' . basename($admin->profile_image);
-    //             Storage::disk('s3')->delete($oldPath);
-    //         }
-
-    //         $path = $request->file('image')->store('profiles', [
-    //             'disk' => 's3',
-    //             'visibility' => 'public'
-    //         ]);
-
-    //         $admin->profile_image = Storage::disk('s3')->url($path);
-    //         $admin->save();
-
-    //         return response()->json([
-    //             'message' => 'Admin photo updated',
-    //             'admin'   => $admin->fresh()
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         return response()->json([
-    //             'message' => 'Failed to update admin photo'
-    //         ], 500);
-    //     }
-    // }
 
     public function updateAdminImage(Request $request)
     {
@@ -724,39 +473,6 @@ class AuthController extends Controller
     // ====================================================================
     // FUNGSI FORGOT PASSWORD KHUSUS ADMIN
     // ====================================================================
-
-    // public function adminSendResetCode(Request $request)
-    // {
-    //     $request->validate(['email' => 'required|email']);
-
-    //     // [PENTING] Pastikan email ini milik ADMIN, bukan user biasa
-    //     $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
-
-    //     if (!$admin) {
-    //         return response()->json(['message' => 'Admin email address not found or unauthorized.'], 404);
-    //     }
-
-    //     DB::table('password_reset_codes')->where('email', $request->email)->delete();
-
-    //     $code = sprintf("%06d", mt_rand(1, 999999));
-
-    //     DB::table('password_reset_codes')->insert([
-    //         'email' => $request->email,
-    //         'code' => Hash::make($code),
-    //         'expires_at' => Carbon::now()->addMinutes(15),
-    //         'created_at' => Carbon::now()
-    //     ]);
-
-    //     try {
-    //         // Kita menggunakan Mailer yang sama seperti User, karena desainnya universal
-    //         Mail::to($request->email)->send(new \App\Mail\ResetPasswordCodeMail($code));
-    //         return response()->json(['message' => 'Admin verification code sent to your email.']);
-    //     } catch (\Exception $e) {
-    //         Log::error('Failed to send admin reset code: ' . $e->getMessage());
-    //         return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
-    //     }
-    // }
-
     public function adminSendResetCode(Request $request)
     {
         $request->validate(['email' => 'required|email']);
@@ -790,34 +506,6 @@ class AuthController extends Controller
         }
     }
 
-    // public function adminVerifyResetCode(Request $request)
-    // {
-    //     $request->validate([
-    //         'email' => 'required|email',
-    //         'code' => 'required|digits:6'
-    //     ]);
-
-    //     $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
-    //     if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
-
-    //     $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
-
-    //     if (!$resetData) {
-    //         return response()->json(['message' => 'Invalid or expired verification code.'], 400);
-    //     }
-
-    //     if (Carbon::now()->greaterThan($resetData->expires_at)) {
-    //         DB::table('password_reset_codes')->where('email', $request->email)->delete();
-    //         return response()->json(['message' => 'Verification code has expired.'], 400);
-    //     }
-
-    //     if (!Hash::check($request->code, $resetData->code)) {
-    //         return response()->json(['message' => 'Incorrect verification code.'], 400);
-    //     }
-
-    //     return response()->json(['message' => 'Code verified successfully.']);
-    // }
-
     public function adminVerifyResetCode(Request $request)
     {
         $request->validate([
@@ -848,31 +536,6 @@ class AuthController extends Controller
 
         return response()->json(['message' => 'Kode berhasil diverifikasi.']);
     }
-
-    // public function adminResetPassword(Request $request)
-    // {
-    //     $request->validate([
-    //         'email' => 'required|email',
-    //         'code' => 'required|digits:6',
-    //         'password' => 'required|string|min:8|confirmed'
-    //     ]);
-
-    //     $admin = User::where('email', $request->email)->where('usertype', 'admin')->first();
-    //     if (!$admin) return response()->json(['message' => 'Unauthorized action.'], 403);
-
-    //     $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
-
-    //     if (!$resetData || !Hash::check($request->code, $resetData->code) || Carbon::now()->greaterThan($resetData->expires_at)) {
-    //         return response()->json(['message' => 'Invalid session or code expired.'], 400);
-    //     }
-
-    //     $admin->password = Hash::make($request->password);
-    //     $admin->save();
-
-    //     DB::table('password_reset_codes')->where('email', $request->email)->delete();
-
-    //     return response()->json(['message' => 'Admin password has been successfully reset.']);
-    // }
 
     public function adminResetPassword(Request $request)
     {

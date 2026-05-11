@@ -14,6 +14,7 @@ return [
     // [PERBAIKAN KUNCI] Masukkan URL Frontend Anda di sini (TIDAK BOLEH ADA GARIS MIRING '/' DI AKHIR)
     'allowed_origins' => [
         'https://solher.co.id',
+        'https://www.solher.co.id',
         'http://localhost:5173', // Opsional: Tambahkan ini jika Anda juga mengetesnya secara lokal dengan Vue/Vite
     ],
 

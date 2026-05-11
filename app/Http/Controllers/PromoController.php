@@ -123,7 +123,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str; // <--- [BARU] Wajib di-import
+use Illuminate\Support\Str;
 
 class PromoController extends Controller
 {
