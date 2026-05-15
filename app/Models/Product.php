@@ -36,6 +36,7 @@ class Product extends Model
     protected $casts = [
         'variant_images' => 'array',
         'color' => 'array',            // <--- BARU: Casting ke Array
+        'strap_length' => 'array',
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
     ];

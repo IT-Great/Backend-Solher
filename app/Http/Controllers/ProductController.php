@@ -308,7 +308,9 @@ class ProductController extends Controller
             'width' => 'nullable|numeric|min:0',           // <--- BARU
             'height' => 'nullable|numeric|min:0',          // <--- BARU
             'material' => 'nullable|string|max:255',       // <--- BARU
-            'strap_length' => 'nullable|string|max:255', // <--- BARU DITAMBAHKAN
+            // 'strap_length' => 'nullable|string|max:255', // <--- BARU DITAMBAHKAN
+            'strap_length'   => 'nullable|array',            // <--- UBAH JADI ARRAY
+            'strap_length.*' => 'string|max:255',            // <--- VALIDASI ISI ARRAY
             // 'color' => 'nullable|string|max:50',  // <--- BARU
             'color' => 'nullable|array',             // <--- UBAH JADI ARRAY
             'color.*' => 'string|max:50',            // <--- VALIDASI ISI ARRAY
@@ -362,7 +364,8 @@ class ProductController extends Controller
             // =========================================================================
             // [PERBAIKAN BUG] PEMBANTAI STRING KOSONG UNTUK FUNGSI STORE
             // =========================================================================
-            $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length'];
+            // $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length'];
+            $nullableFields = ['discount_price', 'length', 'width', 'height', 'material'];
             foreach ($nullableFields as $field) {
                 if (!isset($data[$field]) || $data[$field] === "" || $data[$field] === "null") {
                     $data[$field] = null;
