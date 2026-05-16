@@ -115,13 +115,28 @@ class ProductController extends Controller
     //     }])->findOrFail($id), 200);
     // }
 
-    public function show($id)
+    // public function show($id)
+    // {
+    //     // Cache per produk berdasarkan ID-nya
+    //     $product = Cache::tags(['catalog'])->remember("products.detail.{$id}", 86400, function () use ($id) {
+    //         return Product::with(['category', 'stocks' => function ($q) {
+    //             $q->orderBy('created_at', 'asc');
+    //         }])->findOrFail($id);
+    //     });
+
+    //     return response()->json($product, 200);
+    // }
+
+    // [PERBAIKAN] Ubah $id menjadi $identifier agar bisa mencari via Slug atau ID
+    public function show($identifier)
     {
-        // Cache per produk berdasarkan ID-nya
-        $product = Cache::tags(['catalog'])->remember("products.detail.{$id}", 86400, function () use ($id) {
+        $product = Cache::tags(['catalog'])->remember("products.detail.{$identifier}", 86400, function () use ($identifier) {
             return Product::with(['category', 'stocks' => function ($q) {
                 $q->orderBy('created_at', 'asc');
-            }])->findOrFail($id);
+            }])
+            ->where('slug', $identifier)
+            ->orWhere('id', $identifier) // Backward compatibility untuk data lama
+            ->firstOrFail();
         });
 
         return response()->json($product, 200);
@@ -331,6 +346,9 @@ class ProductController extends Controller
         DB::beginTransaction();
         try {
             $data = $request->except(['variant_images', 'variant_video', 'image']);
+
+            // [BARU] Generate Slug Otomatis dari Nama Produk
+            $data['slug'] = \Illuminate\Support\Str::slug($request->name);
 
             // // 2. Upload Gambar Utama ke Local Storage
             // if ($request->hasFile('image')) {
@@ -593,6 +611,9 @@ class ProductController extends Controller
         }
 
         $data = $request->except(['variant_images', 'variant_video', 'image', 'stock', '_method']);
+
+        // [BARU] Update Slug jika Nama Produk diubah
+        $data['slug'] = \Illuminate\Support\Str::slug($request->name);
 
         // // 1. Hapus & Ganti Gambar Utama Jika Ada Upload Baru
         // if ($request->hasFile('image')) {
