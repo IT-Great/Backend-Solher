@@ -8,15 +8,14 @@ use App\Models\ProductStock;
 use App\Models\Subscriber;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Cache;
-use Str;
-
+use Intervention\Image\Drivers\Gd\Driver;
 // [BARU] Import class Intervention Image v3
 use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\Gd\Driver;
+use Str;
 
 class ProductController extends Controller
 {
@@ -62,7 +61,7 @@ class ProductController extends Controller
                 ->withSum(['transactionDetails' => function ($query) {
                     // Opsional: Anda bisa membatasi hanya transaksi yang statusnya 'completed'
                     $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
-                          ->whereIn('transactions.status', ['completed']);
+                        ->whereIn('transactions.status', ['completed']);
                 }], 'quantity')
                 ->where('status', 'active')
                 ->latest()
@@ -74,6 +73,7 @@ class ProductController extends Controller
             // Jika kosong (belum ada penjualan), set ke 0
             $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
             unset($product->transaction_details_sum_quantity); // Buang nama aslinya
+
             return $product;
         });
 
@@ -128,16 +128,34 @@ class ProductController extends Controller
     // }
 
     // [PERBAIKAN] Ubah $id menjadi $identifier agar bisa mencari via Slug atau ID
+    // public function show($identifier)
+    // {
+    //     $product = Cache::tags(['catalog'])->remember("products.detail.{$identifier}", 86400, function () use ($identifier) {
+    //         return Product::with(['category', 'stocks' => function ($q) {
+    //             $q->orderBy('created_at', 'asc');
+    //         }])
+    //         ->where('slug', $identifier)
+    //         ->orWhere('id', $identifier) // Backward compatibility untuk data lama
+    //         ->firstOrFail();
+    //     });
+
+    //     return response()->json($product, 200);
+    // }
+
     public function show($identifier)
     {
         $product = Cache::tags(['catalog'])->remember("products.detail.{$identifier}", 86400, function () use ($identifier) {
             return Product::with(['category', 'stocks' => function ($q) {
                 $q->orderBy('created_at', 'asc');
             }])
-            ->where('slug', $identifier)
-            ->orWhere('id', $identifier) // Backward compatibility untuk data lama
-            ->firstOrFail();
+                ->where('slug', $identifier)
+                ->orWhere('id', $identifier)
+                ->firstOrFail();
         });
+
+        // [BARU] Selipkan data mentah agar form Edit Admin tetap memunculkan harga diskonnya
+        // meskipun diskonnya sedang tidak aktif/kedaluwarsa.
+        $product->setAttribute('raw_discount_price', $product->getRawOriginal('discount_price'));
 
         return response()->json($product, 200);
     }
@@ -324,7 +342,7 @@ class ProductController extends Controller
             'height' => 'nullable|numeric|min:0',          // <--- BARU
             'material' => 'nullable|string|max:255',       // <--- BARU
             // 'strap_length' => 'nullable|string|max:255', // <--- BARU DITAMBAHKAN
-            'strap_length'   => 'nullable|array',            // <--- UBAH JADI ARRAY
+            'strap_length' => 'nullable|array',            // <--- UBAH JADI ARRAY
             'strap_length.*' => 'string|max:255',            // <--- VALIDASI ISI ARRAY
             // 'color' => 'nullable|string|max:50',  // <--- BARU
             'color' => 'nullable|array',             // <--- UBAH JADI ARRAY
@@ -337,6 +355,8 @@ class ProductController extends Controller
             'variant_images.*' => 'image',
             // 'variant_video' => 'nullable|mimes:mp4,mov,avi|max:5120',
             'variant_video' => 'nullable|mimes:mp4,mov,avi',
+            'discount_start_date' => 'nullable|date',
+            'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
         ]);
 
         if ($validator->fails()) {
@@ -383,9 +403,10 @@ class ProductController extends Controller
             // [PERBAIKAN BUG] PEMBANTAI STRING KOSONG UNTUK FUNGSI STORE
             // =========================================================================
             // $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length'];
-            $nullableFields = ['discount_price', 'length', 'width', 'height', 'material'];
+            // $nullableFields = ['discount_price', 'length', 'width', 'height', 'material'];
+            $nullableFields = ['discount_price', 'discount_start_date', 'discount_end_date', 'length', 'width', 'height', 'material', 'strap_length'];
             foreach ($nullableFields as $field) {
-                if (!isset($data[$field]) || $data[$field] === "" || $data[$field] === "null") {
+                if (! isset($data[$field]) || $data[$field] === '' || $data[$field] === 'null') {
                     $data[$field] = null;
                 }
             }
@@ -674,7 +695,7 @@ class ProductController extends Controller
         $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length'];
 
         foreach ($nullableFields as $field) {
-            if (!isset($data[$field]) || $data[$field] === "" || $data[$field] === "null") {
+            if (! isset($data[$field]) || $data[$field] === '' || $data[$field] === 'null') {
                 $data[$field] = null;
             }
         }
@@ -840,7 +861,7 @@ class ProductController extends Controller
             // 3. Kembalikan respon sukses
             return response()->json(['message' => 'Product deleted permanently'], 200);
 
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi'], 422);
         }
     }
@@ -880,7 +901,7 @@ class ProductController extends Controller
     private function optimizeAndSaveImage($file, $folder)
     {
         // 1. Inisialisasi Image Manager dengan driver GD
-        $manager = new ImageManager(new Driver());
+        $manager = new ImageManager(new Driver);
 
         // 2. Baca file yang diunggah
         $image = $manager->read($file);
@@ -894,12 +915,12 @@ class ProductController extends Controller
         $encoded = $image->toWebp(80);
 
         // 5. Buat nama file unik dengan ekstensi .webp
-        $filename = $folder . '/' . Str::random(40) . '.webp';
+        $filename = $folder.'/'.Str::random(40).'.webp';
 
         // 6. Simpan ke Local Storage (disk public)
         Storage::disk('public')->put($filename, $encoded->toString());
 
         // 7. Kembalikan path relatifnya
-        return '/storage/' . $filename;
+        return '/storage/'.$filename;
     }
 }

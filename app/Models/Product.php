@@ -3,9 +3,9 @@
 namespace App\Models;
 
 use App\Traits\Auditable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Product extends Model
 {
@@ -21,6 +21,8 @@ class Product extends Model
         'variant_video',
         'price',
         'discount_price',
+        'discount_start_date', // <--- BARU
+        'discount_end_date',   // <--- BARU
         'stock',
         'weight',
         'length',
@@ -40,6 +42,8 @@ class Product extends Model
         'strap_length' => 'array',
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
+        'discount_start_date' => 'datetime', // <--- BARU
+        'discount_end_date' => 'datetime',   // <--- BARU
     ];
 
     public function category()
@@ -202,7 +206,9 @@ class Product extends Model
     public function getImageAttribute($value)
     {
         // 1. Jika kosong sama sekali, kembalikan null
-        if (empty($value) || $value === 'null') return null;
+        if (empty($value) || $value === 'null') {
+            return null;
+        }
 
         // 2. Tangani kasus terburuk: Duplikasi URL (http://ip/https://domain...)
         if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $value, $matches)) {
@@ -215,23 +221,30 @@ class Product extends Model
         }
 
         // 4. Jika path relatif biasa
-        $pathOnly = str_starts_with($value, '/') ? $value : '/' . $value;
+        $pathOnly = str_starts_with($value, '/') ? $value : '/'.$value;
+
         return url($pathOnly);
     }
 
     public function getVariantImagesAttribute($value)
     {
         // 1. Pengecekan Aman Pertama: Jika kosong langsung kembalikan array kosong
-        if (empty($value) || $value === 'null') return [];
+        if (empty($value) || $value === 'null') {
+            return [];
+        }
 
         // 2. Lakukan konversi dengan aman
         $images = is_array($value) ? $value : json_decode($value, true);
 
         // 3. Pengecekan Aman Kedua: Pastikan variabel $images benar-benar array
-        if (!is_array($images)) return [];
+        if (! is_array($images)) {
+            return [];
+        }
 
-        return array_map(function($img) {
-            if (empty($img)) return null;
+        return array_map(function ($img) {
+            if (empty($img)) {
+                return null;
+            }
 
             // Handle duplikasi URL
             if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $img, $matches)) {
@@ -244,7 +257,8 @@ class Product extends Model
             }
 
             // Path relatif
-            $pathOnly = str_starts_with($img, '/') ? $img : '/' . $img;
+            $pathOnly = str_starts_with($img, '/') ? $img : '/'.$img;
+
             return url($pathOnly);
         }, $images);
     }
@@ -252,7 +266,9 @@ class Product extends Model
     public function getVariantVideoAttribute($value)
     {
         // 1. Pengecekan Aman: Jika kosong langsung kembalikan null
-        if (empty($value) || $value === 'null') return null;
+        if (empty($value) || $value === 'null') {
+            return null;
+        }
 
         // Handle duplikasi URL
         if (preg_match('/^(http[s]?:\/\/[^\/]+)\/(http[s]?:\/\/.*)$/', $value, $matches)) {
@@ -265,7 +281,29 @@ class Product extends Model
         }
 
         // Path relatif
-        $pathOnly = str_starts_with($value, '/') ? $value : '/' . $value;
+        $pathOnly = str_starts_with($value, '/') ? $value : '/'.$value;
+
         return url($pathOnly);
+    }
+
+    public function getDiscountPriceAttribute($value)
+    {
+        if (is_null($value)) {
+            return null;
+        }
+
+        $now = now();
+        $start = $this->discount_start_date;
+        $end = $this->discount_end_date;
+
+        if ($start && $end) {
+            return $now->between($start, $end) ? $value : null;
+        } elseif ($start) {
+            return $now->greaterThanOrEqualTo($start) ? $value : null;
+        } elseif ($end) {
+            return $now->lessThanOrEqualTo($end) ? $value : null;
+        }
+
+        return $value;
     }
 }
