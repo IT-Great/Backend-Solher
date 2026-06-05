@@ -28,6 +28,7 @@ class User extends Authenticatable
         'password',
         'usertype',
         'is_membership',
+        'has_used_member_voucher',
         'point',
         'is_subscribed'
     ];
