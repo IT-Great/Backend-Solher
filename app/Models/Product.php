@@ -286,24 +286,24 @@ class Product extends Model
         return url($pathOnly);
     }
 
-    public function getDiscountPriceAttribute($value)
-    {
-        if (is_null($value)) {
-            return null;
-        }
+    // public function getDiscountPriceAttribute($value)
+    // {
+    //     if (is_null($value)) {
+    //         return null;
+    //     }
 
-        $now = now();
-        $start = $this->discount_start_date;
-        $end = $this->discount_end_date;
+    //     $now = now();
+    //     $start = $this->discount_start_date;
+    //     $end = $this->discount_end_date;
 
-        if ($start && $end) {
-            return $now->between($start, $end) ? $value : null;
-        } elseif ($start) {
-            return $now->greaterThanOrEqualTo($start) ? $value : null;
-        } elseif ($end) {
-            return $now->lessThanOrEqualTo($end) ? $value : null;
-        }
+    //     if ($start && $end) {
+    //         return $now->between($start, $end) ? $value : null;
+    //     } elseif ($start) {
+    //         return $now->greaterThanOrEqualTo($start) ? $value : null;
+    //     } elseif ($end) {
+    //         return $now->lessThanOrEqualTo($end) ? $value : null;
+    //     }
 
-        return $value;
-    }
+    //     return $value;
+    // }
 }
