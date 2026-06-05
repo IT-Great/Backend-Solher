@@ -233,6 +233,85 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use App\Mail\PromoCodeMail;
+// use App\Models\PromoClaim;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\Auth;
+// use Illuminate\Support\Facades\Log;
+// use Illuminate\Support\Facades\Mail;
+// use Illuminate\Support\Str;
+// use Carbon\Carbon; // [BARU] Pastikan import Carbon
+
+// class PromoController extends Controller
+// {
+//     public function claim(Request $request)
+//     {
+//         $request->validate(['email' => 'required|email']);
+//         $discountValue = 250000;
+
+//         $exists = PromoClaim::where('email', $request->email)->first();
+//         if ($exists) {
+//             return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
+//         }
+
+//         $code = 'SOLHER-'.strtoupper(Str::random(6));
+
+//         // [BARU] Set waktu expired 24 jam dari sekarang
+//         $expiresAt = now()->addHours(24);
+
+//         try {
+//             // [PERBAIKAN] Kirimkan juga data $expiresAt ke Mail
+//             Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
+//         } catch (\Exception $e) {
+//             Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
+//             return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
+//         }
+
+//         PromoClaim::create([
+//             'email' => $request->email,
+//             'promo_code' => $code,
+//             'discount_value' => $discountValue,
+//             'expires_at' => $expiresAt, // [BARU] Simpan ke DB
+//         ]);
+
+//         return response()->json([
+//             'message' => 'Promo berhasil diklaim!',
+//             'promo_code' => $code,
+//         ]);
+//     }
+
+//     public function verify(Request $request)
+//     {
+//         $request->validate(['promo_code' => 'required|string']);
+//         $user = Auth::user();
+
+//         $claim = PromoClaim::where('email', $user->email)
+//             ->where('promo_code', strtoupper($request->promo_code))
+//             ->first();
+
+//         if (! $claim) {
+//             return response()->json(['message' => 'Invalid promo code for this email address.'], 404);
+//         }
+
+//         // [BARU] Validasi B: Cek apakah sudah lewat dari 24 jam
+//         if (now()->greaterThan($claim->expires_at)) {
+//             return response()->json(['message' => 'This promo code has expired.'], 400);
+//         }
+
+//         // Validasi C: Cek apakah sudah pernah diredeem
+//         if ($claim->is_used) {
+//             return response()->json(['message' => 'This promo code has already been used.'], 400);
+//         }
+
+//         return response()->json([
+//             'message' => 'Promo applied successfully!',
+//             'discount_value' => $claim->discount_value,
+//         ]);
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use App\Mail\PromoCodeMail;
@@ -242,7 +321,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
-use Carbon\Carbon; // [BARU] Pastikan import Carbon
+use Carbon\Carbon;
 
 class PromoController extends Controller
 {
@@ -258,11 +337,10 @@ class PromoController extends Controller
 
         $code = 'SOLHER-'.strtoupper(Str::random(6));
 
-        // [BARU] Set waktu expired 24 jam dari sekarang
+        // Set waktu expired 24 jam dari sekarang
         $expiresAt = now()->addHours(24);
 
         try {
-            // [PERBAIKAN] Kirimkan juga data $expiresAt ke Mail
             Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
         } catch (\Exception $e) {
             Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
@@ -273,7 +351,7 @@ class PromoController extends Controller
             'email' => $request->email,
             'promo_code' => $code,
             'discount_value' => $discountValue,
-            'expires_at' => $expiresAt, // [BARU] Simpan ke DB
+            'expires_at' => $expiresAt,
         ]);
 
         return response()->json([
@@ -287,15 +365,43 @@ class PromoController extends Controller
         $request->validate(['promo_code' => 'required|string']);
         $user = Auth::user();
 
+        // Standarisasi kapitalisasi dan hapus spasi agar akurat
+        $code = strtoupper(trim($request->promo_code));
+
+        // =========================================================================
+        // [LOGIKA BARU] OPSI C: VIP MEMBER VOUCHER UNIVERSAL
+        // =========================================================================
+        if ($code === 'SOLHERMEMBER') {
+
+            // 1. Validasi Status Member
+            if (!$user->is_membership) {
+                return response()->json(['message' => 'Voucher ini eksklusif hanya untuk VIP Member.'], 400);
+            }
+
+            // 2. Validasi Kuota (Satu Kali Seumur Hidup per Akun)
+            if ($user->has_used_member_voucher) {
+                return response()->json(['message' => 'Anda sudah pernah menggunakan voucher VIP ini sebelumnya.'], 400);
+            }
+
+            // Jika lolos, kirimkan nilai diskon mutlak (500rb) ke Frontend
+            return response()->json([
+                'message' => 'VIP Member Voucher applied!',
+                'discount_value' => 500000,
+            ], 200);
+        }
+
+        // =========================================================================
+        // [LOGIKA LAMA] PROMO KLAIM EMAIL (NEWSLETTER)
+        // =========================================================================
         $claim = PromoClaim::where('email', $user->email)
-            ->where('promo_code', strtoupper($request->promo_code))
+            ->where('promo_code', $code)
             ->first();
 
         if (! $claim) {
             return response()->json(['message' => 'Invalid promo code for this email address.'], 404);
         }
 
-        // [BARU] Validasi B: Cek apakah sudah lewat dari 24 jam
+        // Validasi B: Cek apakah sudah lewat dari 24 jam
         if (now()->greaterThan($claim->expires_at)) {
             return response()->json(['message' => 'This promo code has expired.'], 400);
         }
@@ -308,6 +414,6 @@ class PromoController extends Controller
         return response()->json([
             'message' => 'Promo applied successfully!',
             'discount_value' => $claim->discount_value,
-        ]);
+        ], 200);
     }
 }

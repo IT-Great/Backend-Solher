@@ -147,11 +147,37 @@ class TransactionController extends Controller
                     $totalAmount += ($currentPrice * $item->quantity);
                 }
 
-                // =========================================================================
-                // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
-                // =========================================================================
-                $promoDiscountAmount = 0;
-                $appliedPromoCode = null;
+                // // =========================================================================
+                // // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
+                // // =========================================================================
+                // $promoDiscountAmount = 0;
+                // $appliedPromoCode = null;
+
+                // // if (! empty($request->promo_code)) {
+                // //     // Pastikan menggunakan $lockedUser->email untuk validasi
+                // //     $promoClaim = PromoClaim::where('email', $lockedUser->email)
+                // //         ->where('promo_code', strtoupper($request->promo_code))
+                // //         ->lockForUpdate()
+                // //         ->first();
+
+                // //     if (! $promoClaim) {
+                // //         throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+                // //     }
+                // //     if ($promoClaim->is_used) {
+                // //         throw new \Exception('Kode Promo sudah pernah digunakan.');
+                // //     }
+                // //     if ($totalAmount < 50000) {
+                // //         throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
+                // //     }
+
+                // //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+                // //     $appliedPromoCode = $promoClaim->promo_code;
+
+                // //     $promoClaim->update([
+                // //         'is_used' => true,
+                // //         'used_at' => now(),
+                // //     ]);
+                // // }
 
                 // if (! empty($request->promo_code)) {
                 //     // Pastikan menggunakan $lockedUser->email untuk validasi
@@ -166,8 +192,13 @@ class TransactionController extends Controller
                 //     if ($promoClaim->is_used) {
                 //         throw new \Exception('Kode Promo sudah pernah digunakan.');
                 //     }
-                //     if ($totalAmount < 50000) {
-                //         throw new \Exception('Minimum belanja untuk memakai promo ini adalah Rp 50.000');
+
+                //     // ====================================================================
+                //     // [PERBAIKAN KRUSIAL] Validasi Minimum Belanja diubah jadi Rp 499.000
+                //     // Pesan error diubah ke Bahasa Inggris agar rapi di UI Frontend
+                //     // ====================================================================
+                //     if ($totalAmount < 499000) {
+                //         throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
                 //     }
 
                 //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
@@ -179,35 +210,68 @@ class TransactionController extends Controller
                 //     ]);
                 // }
 
+                // $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
+
+                // =========================================================================
+                // [LOGIKA BARU] 1. POTONG PROMO CODE TERLEBIH DAHULU (ZERO-FLOOR)
+                // =========================================================================
+                $promoDiscountAmount = 0;
+                $appliedPromoCode = null;
+
                 if (! empty($request->promo_code)) {
-                    // Pastikan menggunakan $lockedUser->email untuk validasi
-                    $promoClaim = PromoClaim::where('email', $lockedUser->email)
-                        ->where('promo_code', strtoupper($request->promo_code))
-                        ->lockForUpdate()
-                        ->first();
+                    $promoCode = strtoupper(trim($request->promo_code));
 
-                    if (! $promoClaim) {
-                        throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+                    // --- [OPSI C] LOGIKA KHUSUS KODE UNIVERSAL (SOLHERMEMBER) ---
+                    if ($promoCode === 'SOLHERMEMBER') {
+                        // 1. Validasi Status Member
+                        if (!$lockedUser->is_membership) {
+                            throw new \Exception('Voucher ini eksklusif hanya untuk pengguna dengan status VIP Member.');
+                        }
+
+                        // 2. Validasi Limit Penggunaan (Satu Kali Seumur Hidup)
+                        if ($lockedUser->has_used_member_voucher) {
+                            throw new \Exception('Anda sudah pernah menggunakan voucher member VIP ini sebelumnya.');
+                        }
+
+                        // 3. Validasi Minimum Belanja (Rp 1.000.000)
+                        if ($totalAmount < 1000000) {
+                            throw new \Exception('Minimum purchase to use VIP Member Voucher is Rp 1.000.000');
+                        }
+
+                        // Jika lolos semua, berikan diskon 500rb
+                        $promoDiscountAmount = 500000;
+                        $appliedPromoCode = 'SOLHERMEMBER';
+
+                        // Tandai bahwa user sudah memakai voucher ini agar tidak bisa dipakai lagi besok!
+                        $lockedUser->update([
+                            'has_used_member_voucher' => true
+                        ]);
                     }
-                    if ($promoClaim->is_used) {
-                        throw new \Exception('Kode Promo sudah pernah digunakan.');
+                    // --- LOGIKA KODE PROMO LAMA (JIKA ADA) ---
+                    else {
+                        $promoClaim = PromoClaim::where('email', $lockedUser->email)
+                            ->where('promo_code', $promoCode)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if (! $promoClaim) {
+                            throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+                        }
+                        if ($promoClaim->is_used) {
+                            throw new \Exception('Kode Promo sudah pernah digunakan.');
+                        }
+                        if ($totalAmount < 499000) {
+                            throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
+                        }
+
+                        $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+                        $appliedPromoCode = $promoClaim->promo_code;
+
+                        $promoClaim->update([
+                            'is_used' => true,
+                            'used_at' => now(),
+                        ]);
                     }
-
-                    // ====================================================================
-                    // [PERBAIKAN KRUSIAL] Validasi Minimum Belanja diubah jadi Rp 499.000
-                    // Pesan error diubah ke Bahasa Inggris agar rapi di UI Frontend
-                    // ====================================================================
-                    if ($totalAmount < 499000) {
-                        throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
-                    }
-
-                    $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
-                    $appliedPromoCode = $promoClaim->promo_code;
-
-                    $promoClaim->update([
-                        'is_used' => true,
-                        'used_at' => now(),
-                    ]);
                 }
 
                 $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
@@ -615,10 +679,23 @@ class TransactionController extends Controller
                 }
 
                 // [BARU] KEMBALIKAN PROMO CODE JIKA TRANSAKSI BATAL
+                // if ($lockedTransaction->promo_code) {
+                //     PromoClaim::where('email', $lockedTransaction->user->email)
+                //         ->where('promo_code', $lockedTransaction->promo_code)
+                //         ->update(['is_used' => false, 'used_at' => null]);
+                // }
+
                 if ($lockedTransaction->promo_code) {
-                    PromoClaim::where('email', $lockedTransaction->user->email)
-                        ->where('promo_code', $lockedTransaction->promo_code)
-                        ->update(['is_used' => false, 'used_at' => null]);
+
+                    if ($lockedTransaction->promo_code === 'SOLHERMEMBER') {
+                        // Kembalikan hak pakai voucher member
+                        $lockedTransaction->user->update(['has_used_member_voucher' => false]);
+                    } else {
+                        // Kembalikan kode promo biasa
+                        PromoClaim::where('email', $lockedTransaction->user->email)
+                            ->where('promo_code', $lockedTransaction->promo_code)
+                            ->update(['is_used' => false, 'used_at' => null]);
+                    }
                 }
 
                 if ($lockedTransaction->payment) {
