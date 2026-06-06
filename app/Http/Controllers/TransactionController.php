@@ -259,13 +259,13 @@ class TransactionController extends Controller
                         if ($promoClaim->is_used) {
                             throw new \Exception('Kode Promo sudah pernah digunakan.');
                         }
-                        // if ($totalAmount < 499000) {
-                        //     throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
-                        // }
-
-                        if ($totalAmount < 1899000) {
-                            throw new \Exception('Minimum purchase to use this promo is Rp 1.899.000');
+                        if ($totalAmount < 499000) {
+                            throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
                         }
+
+                        // if ($totalAmount < 1899000) {
+                        //     throw new \Exception('Minimum purchase to use this promo is Rp 1.899.000');
+                        // }
 
                         $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
                         $appliedPromoCode = $promoClaim->promo_code;
