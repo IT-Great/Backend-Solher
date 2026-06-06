@@ -11,7 +11,6 @@ use App\Models\PromoClaim;
 use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use App\Models\User;
-use App\Services\BiteshipService;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -224,7 +223,7 @@ class TransactionController extends Controller
                     // --- [OPSI C] LOGIKA KHUSUS KODE UNIVERSAL (SOLHERMEMBER) ---
                     if ($promoCode === 'SOLHERMEMBER') {
                         // 1. Validasi Status Member
-                        if (!$lockedUser->is_membership) {
+                        if (! $lockedUser->is_membership) {
                             throw new \Exception('Voucher ini eksklusif hanya untuk pengguna dengan status VIP Member.');
                         }
 
@@ -244,7 +243,7 @@ class TransactionController extends Controller
 
                         // Tandai bahwa user sudah memakai voucher ini agar tidak bisa dipakai lagi besok!
                         $lockedUser->update([
-                            'has_used_member_voucher' => true
+                            'has_used_member_voucher' => true,
                         ]);
                     }
                     // --- LOGIKA KODE PROMO LAMA (JIKA ADA) ---
@@ -260,8 +259,12 @@ class TransactionController extends Controller
                         if ($promoClaim->is_used) {
                             throw new \Exception('Kode Promo sudah pernah digunakan.');
                         }
-                        if ($totalAmount < 499000) {
-                            throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
+                        // if ($totalAmount < 499000) {
+                        //     throw new \Exception('Minimum purchase to use this promo is Rp 499.000');
+                        // }
+
+                        if ($totalAmount < 1899000) {
+                            throw new \Exception('Minimum purchase to use this promo is Rp 1.899.000');
                         }
 
                         $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
@@ -537,9 +540,9 @@ class TransactionController extends Controller
 
                 return response()->json(['message' => 'Payment gateway error. Please try again.'], 500);
             }
-        // } catch (\Exception $e) {
-        //     // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
-        //     Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
+            // } catch (\Exception $e) {
+            //     // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
+            //     Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
 
         } catch (\Throwable $e) { // <--- UBAH \Exception MENJADI \Throwable
             // Ini akan memaksa error muncul di laravel.log jika terjadi kegagalan
