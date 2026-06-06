@@ -327,41 +327,41 @@ class PromoController extends Controller
 {
     public function claim(Request $request)
     {
-    //     $request->validate(['email' => 'required|email']);
-    //     $discountValue = 250000;
+        $request->validate(['email' => 'required|email']);
+        $discountValue = 250000;
 
-    //     $exists = PromoClaim::where('email', $request->email)->first();
-    //     if ($exists) {
-    //         return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
-    //     }
+        $exists = PromoClaim::where('email', $request->email)->first();
+        if ($exists) {
+            return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
+        }
 
-    //     $code = 'SOLHER-'.strtoupper(Str::random(6));
+        $code = 'SOLHER-'.strtoupper(Str::random(6));
 
-    //     // Set waktu expired 24 jam dari sekarang
-    //     $expiresAt = now()->addHours(24);
+        // Set waktu expired 24 jam dari sekarang
+        $expiresAt = now()->addHours(24);
 
-    //     try {
-    //         Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
-    //     } catch (\Exception $e) {
-    //         Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
-    //         return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
-    //     }
+        try {
+            Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
+        } catch (\Exception $e) {
+            Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
+            return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
+        }
 
-    //     PromoClaim::create([
-    //         'email' => $request->email,
-    //         'promo_code' => $code,
-    //         'discount_value' => $discountValue,
-    //         'expires_at' => $expiresAt,
-    //     ]);
+        PromoClaim::create([
+            'email' => $request->email,
+            'promo_code' => $code,
+            'discount_value' => $discountValue,
+            'expires_at' => $expiresAt,
+        ]);
 
-    //     return response()->json([
-    //         'message' => 'Promo berhasil diklaim!',
-    //         'promo_code' => $code,
-    //     ]);
-    // }
+        return response()->json([
+            'message' => 'Promo berhasil diklaim!',
+            'promo_code' => $code,
+        ]);
+    }
 
-    // public function verify(Request $request)
-    // {
+    public function verify(Request $request)
+    {
     //     $request->validate(['promo_code' => 'required|string']);
     //     $user = Auth::user();
 
