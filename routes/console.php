@@ -16,3 +16,9 @@ Schedule::command('carts:abandoned-reminder')
     ->timezone('Asia/Jakarta')
     ->dailyAt('10:00')
     ->appendOutputTo(storage_path('logs/cart-reminder.log'));
+
+// Update kurs mata uang 2 kali sehari (misal: 00:00 dan 12:00)
+Schedule::command('currency:update-rates')
+    ->timezone('Asia/Jakarta')
+    ->twiceDaily(0, 12)
+    ->appendOutputTo(storage_path('logs/currency-update.log'));

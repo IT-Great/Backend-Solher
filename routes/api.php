@@ -21,7 +21,9 @@ use App\Http\Controllers\CategoryCoaController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\ProductStockController;
 use App\Http\Controllers\TransferReceivePaymentController;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Cache;
 
 /*
 |--------------------------------------------------------------------------
@@ -226,6 +228,26 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/send', [ChatController::class, 'sendMessage']);
     Route::post('/chat/read/{id}', [ChatController::class, 'markAsRead']);
     Route::post('/chat/typing', [ChatController::class, 'typing']);
+});
+
+Route::get('/exchange-rates', function () {
+    // Cek apakah data kurs sudah ada di Cache
+    if (!Cache::has('exchange_rates')) {
+        // Jika kosong (mungkin cron belum jalan), paksa jalankan command sekarang juga
+        Artisan::call('currency:update-rates');
+    }
+
+    // Ambil data dari cache. Berikan nilai default IDR = 1 sebagai lapisan keamanan terakhir
+    $rates = Cache::get('exchange_rates', ['IDR' => 1]);
+
+    return response()->json([
+        'status' => 'success',
+        'base' => 'IDR',
+        'data' => [
+            'rates' => $rates,
+            'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString()
+        ]
+    ], 200);
 });
 
 
