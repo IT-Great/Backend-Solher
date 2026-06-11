@@ -32,7 +32,9 @@ class Product extends Model
         'color',
         'strap_length',  // <--- BARU DITAMBAHKAN
         'description',
+        'description_en', // [BARU]
         'design',
+        'design_en',      // [BARU]
         'status',
     ];
 
