@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ResetPasswordCodeMail;
 use App\Models\Subscriber;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -9,7 +10,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AuthControllerTest extends TestCase
@@ -18,6 +18,7 @@ class AuthControllerTest extends TestCase
     use DatabaseTransactions;
 
     protected $user;
+
     protected $admin;
 
     protected function setUp(): void
@@ -32,7 +33,7 @@ class AuthControllerTest extends TestCase
         $this->user = User::create([
             'first_name' => 'Regular',
             'last_name' => 'Customer',
-            'email' => 'customer_auth_' . \Str::random(5) . '@solher.com',
+            'email' => 'customer_auth_'.\Str::random(5).'@solher.com',
             'password' => bcrypt('password123'),
             'usertype' => 'user',
             'is_membership' => false,
@@ -43,7 +44,7 @@ class AuthControllerTest extends TestCase
         $this->admin = User::create([
             'first_name' => 'Super',
             'last_name' => 'Admin',
-            'email' => 'admin_auth_' . \Str::random(5) . '@solher.com',
+            'email' => 'admin_auth_'.\Str::random(5).'@solher.com',
             'password' => bcrypt('adminpass123'),
             'usertype' => 'superadmin',
             'is_membership' => false,
@@ -56,7 +57,7 @@ class AuthControllerTest extends TestCase
      */
     public function test_registration_auto_links_with_existing_subscriber()
     {
-        $testEmail = 'new_customer_' . \Str::random(5) . '@test.com';
+        $testEmail = 'new_customer_'.\Str::random(5).'@test.com';
 
         // Skenario: User ini sebelumnya sudah langganan newsletter (guest)
         $subscriber = Subscriber::create([
@@ -74,7 +75,7 @@ class AuthControllerTest extends TestCase
         ]);
 
         $response->assertStatus(201)
-                 ->assertJsonFragment(['message' => 'User berhasil didaftarkan']);
+            ->assertJsonFragment(['message' => 'User berhasil didaftarkan']);
 
         // Verifikasi: User baru harus memiliki is_subscribed = 1
         $this->assertDatabaseHas('users', [
@@ -96,24 +97,29 @@ class AuthControllerTest extends TestCase
         $response1 = $this->postJson('/api/login', [
             'email' => $this->admin->email,
             'password' => 'adminpass123',
+            'recaptcha_token' => 'dummy-token-for-testing',
+
         ]);
         $response1->assertStatus(401)
-                  ->assertJson(['message' => 'Email atau Password salah.']); // Pesan disamarkan demi keamanan
+            ->assertJson(['message' => 'Email atau Password salah.']); // Pesan disamarkan demi keamanan
 
         // Skenario B: User biasa mencoba login di portal Admin (Harus DITOLAK)
         // Asumsi rute admin login Anda adalah /api/admin/login
         $response2 = $this->postJson('/api/admin/login', [
             'email' => $this->user->email,
             'password' => 'password123',
+            'recaptcha_token' => 'dummy-token-for-testing',
+
         ]);
         $response2->assertStatus(401)
-                  ->assertJson(['message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.']);
+            ->assertJson(['message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.']);
 
         // Skenario C: Karyawan Gudang mencoba login di portal Admin (Harus DITERIMA)
         $gudang = User::create([
             'first_name' => 'Staf',
             'last_name' => 'Gudang',
-            'email' => 'gudang_' . \Str::random(5) . '@solher.com',
+            'email' => 'gudang_'.\Str::random(5).'@solher.com',
+            'recaptcha_token' => 'dummy-token-for-testing',
             'password' => bcrypt('gudang123'),
             'usertype' => 'gudang',
         ]);
@@ -121,9 +127,11 @@ class AuthControllerTest extends TestCase
         $response3 = $this->postJson('/api/admin/login', [
             'email' => $gudang->email,
             'password' => 'gudang123',
+            'recaptcha_token' => 'dummy-token-for-testing',
+
         ]);
         $response3->assertStatus(200)
-                  ->assertJsonStructure(['access_token', 'user']);
+            ->assertJsonStructure(['access_token', 'user']);
     }
 
     /**
@@ -132,11 +140,11 @@ class AuthControllerTest extends TestCase
     public function test_update_profile_image_replaces_old_file()
     {
         // 1. Berikan user foto lama terlebih dahulu
-        $oldImagePath = 'profiles/' . \Str::random(10) . '.jpg';
+        $oldImagePath = 'profiles/'.\Str::random(10).'.jpg';
         Storage::disk('public')->put($oldImagePath, 'dummy content');
 
         $this->user->update([
-            'profile_image' => url(Storage::url($oldImagePath))
+            'profile_image' => url(Storage::url($oldImagePath)),
         ]);
         Storage::disk('public')->assertExists($oldImagePath);
 
@@ -146,9 +154,9 @@ class AuthControllerTest extends TestCase
         // 3. Eksekusi API Update Image
         // Asumsi rute: /api/profile/image
         $response = $this->actingAs($this->user, 'sanctum')
-                         ->postJson('/api/user/update-image', [
-                             'image' => $newFakeImage
-                         ]);
+            ->postJson('/api/user/update-image', [
+                'image' => $newFakeImage,
+            ]);
 
         $response->assertStatus(200);
 
@@ -168,22 +176,22 @@ class AuthControllerTest extends TestCase
     {
         // A. Gagal karena password lama salah
         $responseFail = $this->actingAs($this->user, 'sanctum')
-                             ->postJson('/api/user/update-password', [
-                                 'old_password' => 'wrongpassword',
-                                 'password' => 'newpassword123',
-                                 'password_confirmation' => 'newpassword123',
-                             ]);
+            ->postJson('/api/user/update-password', [
+                'old_password' => 'wrongpassword',
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ]);
 
         $responseFail->assertStatus(401)
-                     ->assertJson(['message' => 'Password lama tidak sesuai']);
+            ->assertJson(['message' => 'Password lama tidak sesuai']);
 
         // B. Sukses karena password lama benar
         $responseSuccess = $this->actingAs($this->user, 'sanctum')
-                              ->postJson('/api/user/update-password', [
-                                  'old_password' => 'password123',
-                                  'password' => 'newpassword123',
-                                  'password_confirmation' => 'newpassword123',
-                              ]);
+            ->postJson('/api/user/update-password', [
+                'old_password' => 'password123',
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ]);
 
         $responseSuccess->assertStatus(200);
 
@@ -199,14 +207,14 @@ class AuthControllerTest extends TestCase
     {
         // Eksekusi permintaan OTP
         $response = $this->postJson('/api/forgot-password/send-code', [
-            'email' => $this->user->email
+            'email' => $this->user->email,
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson(['message' => 'Verification code sent to your email.']);
+            ->assertJson(['message' => 'Verification code sent to your email.']);
 
         // Verifikasi Email benar-benar masuk antrean untuk dikirim
-        Mail::assertSent(\App\Mail\ResetPasswordCodeMail::class, function ($mail) {
+        Mail::assertSent(ResetPasswordCodeMail::class, function ($mail) {
             return $mail->hasTo($this->user->email);
         });
 
