@@ -174,43 +174,106 @@ class AuthController extends Controller
         ], 200);
     }
 
+    // public function adminLogin(Request $request)
+    // {
+    //     $validator = Validator::make($request->all(), [
+    //         'email'         => 'required|email',
+    //         'password'      => 'required',
+    //         'captcha_token' => 'required|string',
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json($validator->errors(), 422);
+    //     }
+
+    //     // [BARU] Verifikasi CAPTCHA ke Google
+    //     $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+    //         'secret'   => env('RECAPTCHA_SECRET_KEY'),
+    //         'response' => $request->captcha_token,
+    //         'remoteip' => $request->ip()
+    //     ]);
+
+    //     $captchaResult = $captchaResponse->json();
+
+    //     // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
+    //     if (!$captchaResult['success'] || $captchaResult['score'] < 0.5) {
+    //         // Opsional: Log aktivitas bot jika diperlukan
+    //         // Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
+
+    //         return response()->json([
+    //             'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
+    //         ], 422);
+    //     }
+
+    //     // if (!$captchaResponse->json('success')) {
+    //     //     return response()->json([
+    //     //         'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
+    //     //     ], 422);
+    //     // }
+
+    //     $user = User::where('email', $request->email)
+    //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
+    //         ->first();
+
+    //     if (!$user || !Hash::check($request->password, $user->password)) {
+    //         return response()->json([
+    //             'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.'
+    //         ], 401);
+    //     }
+
+    //     $token = $user->createToken('admin_token')->plainTextToken;
+
+    //     return response()->json([
+    //         'message'      => 'Login Berhasil',
+    //         'access_token' => $token,
+    //         'token_type'   => 'Bearer',
+    //         'user'         => $user
+    //     ], 200);
+    // }
+
     public function adminLogin(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'email'         => 'required|email',
-            'password'      => 'required',
-            'captcha_token' => 'required|string',
-        ]);
+        // 1. Susun aturan dasar
+        $rules = [
+            'email'    => 'required|email',
+            'password' => 'required',
+        ];
+
+        // 2. Wajibkan captcha HANYA jika bukan di environment testing
+        if (!app()->environment('testing')) {
+            $rules['captcha_token'] = 'required|string';
+        }
+
+        $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        // [BARU] Verifikasi CAPTCHA ke Google
-        $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-            'secret'   => env('RECAPTCHA_SECRET_KEY'),
-            'response' => $request->captcha_token,
-            'remoteip' => $request->ip()
-        ]);
+        // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
+        if (!app()->environment('testing')) {
+            $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+                'secret'   => env('RECAPTCHA_SECRET_KEY'),
+                'response' => $request->captcha_token,
+                'remoteip' => $request->ip()
+            ]);
 
-        $captchaResult = $captchaResponse->json();
+            $captchaResult = $captchaResponse->json();
 
-        // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
-        if (!$captchaResult['success'] || $captchaResult['score'] < 0.5) {
-            // Opsional: Log aktivitas bot jika diperlukan
-            // Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
+            // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
+            if (!$captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
+                // Opsional: Log aktivitas bot jika diperlukan
+                // Log::warning('Bot detected during admin login. Score: ' . ($captchaResult['score'] ?? 'null'));
 
-            return response()->json([
-                'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
-            ], 422);
+                return response()->json([
+                    'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
+                ], 422);
+            }
         }
 
-        // if (!$captchaResponse->json('success')) {
-        //     return response()->json([
-        //         'message' => 'Validasi CAPTCHA gagal. Silakan centang ulang.'
-        //     ], 422);
-        // }
-
+        // ==========================================
+        // Logika utama aplikasi tetap berjalan normal
+        // ==========================================
         $user = User::where('email', $request->email)
             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting'])
             ->first();
