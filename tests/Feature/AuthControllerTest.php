@@ -97,7 +97,7 @@ class AuthControllerTest extends TestCase
         $response1 = $this->postJson('/api/login', [
             'email' => $this->admin->email,
             'password' => 'adminpass123',
-            'recaptcha_token' => 'dummy-token-for-testing',
+            'captcha_token' => 'dummy-token-for-testing',
 
         ]);
         $response1->assertStatus(401)
@@ -108,7 +108,7 @@ class AuthControllerTest extends TestCase
         $response2 = $this->postJson('/api/admin/login', [
             'email' => $this->user->email,
             'password' => 'password123',
-            'recaptcha_token' => 'dummy-token-for-testing',
+            'captcha_token' => 'dummy-token-for-testing',
 
         ]);
         $response2->assertStatus(401)
@@ -119,7 +119,7 @@ class AuthControllerTest extends TestCase
             'first_name' => 'Staf',
             'last_name' => 'Gudang',
             'email' => 'gudang_'.\Str::random(5).'@solher.com',
-            'recaptcha_token' => 'dummy-token-for-testing',
+            'captcha_token' => 'dummy-token-for-testing',
             'password' => bcrypt('gudang123'),
             'usertype' => 'gudang',
         ]);
@@ -127,7 +127,7 @@ class AuthControllerTest extends TestCase
         $response3 = $this->postJson('/api/admin/login', [
             'email' => $gudang->email,
             'password' => 'gudang123',
-            'recaptcha_token' => 'dummy-token-for-testing',
+            'captcha_token' => 'dummy-token-for-testing',
 
         ]);
         $response3->assertStatus(200)
