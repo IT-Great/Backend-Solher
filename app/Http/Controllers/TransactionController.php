@@ -11,6 +11,7 @@ use App\Models\PromoClaim;
 use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use App\Models\User;
+use App\Services\PaymentFactory;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -19,11 +20,10 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 // use Xendit\Configuration;
 // use Xendit\Invoice\CreateInvoiceRequest;
 // use Xendit\Invoice\InvoiceApi;
-use App\Services\PaymentFactory;
+use Illuminate\Support\Str;
 use Xendit\Refund\CreateRefund;
 use Xendit\Refund\RefundApi;
 use Xendit\XenditSdkException;
@@ -803,6 +803,26 @@ class TransactionController extends Controller
                              - $transactionData['pointDiscountAmount']
                              - ($transactionData['promoDiscountAmount'] ?? 0);
 
+                // =========================================================================
+                // [BARU] PENCEGATAN & KONVERSI KURS MATA UANG (FIX BUG MILIARDER)
+                // =========================================================================
+                $currencyCode = strtoupper($transactionData['currency']);
+
+                if ($currencyCode !== 'IDR') {
+                    // Ambil data kurs dari cache yang sudah di-generate oleh Command Anda
+                    $rates = Cache::get('exchange_rates', []);
+                    $exchangeRate = $rates[$currencyCode] ?? 1;
+
+                    // 1. Konversi Grand Total (Dibulatkan 2 angka di belakang koma)
+                    $finalAmount = round($finalAmount * $exchangeRate, 2);
+
+                    // 2. Konversi harga per item (Sangat penting agar rincian tagihan Stripe akurat)
+                    foreach ($transactionData['gatewayItems'] as &$item) {
+                        $item['price'] = round($item['price'] * $exchangeRate, 2);
+                    }
+                    unset($item); // Bersihkan referensi memori looping
+                }
+
                 Log::info('PAYMENT GATEWAY CALCULATION', [
                     'order_id' => $transactionData['transaction']->order_id,
                     'currency' => $transactionData['currency'],
@@ -846,7 +866,7 @@ class TransactionController extends Controller
                 Log::error('Payment Gateway Invoice Creation Failed: '.$e->getMessage());
                 app(TransactionController::class)->cancelOrder($request, $transactionData['transaction']->id);
 
-                return response()->json(['message' => 'Payment gateway error. Please try again. Error: ' . $e->getMessage()], 500);
+                return response()->json(['message' => 'Payment gateway error. Please try again. Error: '.$e->getMessage()], 500);
             }
 
         } catch (\Throwable $e) {
