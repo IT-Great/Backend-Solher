@@ -511,6 +511,7 @@ class PaymentController extends Controller
             'delivery_date' => 'nullable|date',
             'delivery_time' => 'nullable|date_format:H:i',
             'use_points' => 'nullable|integer|min:0',
+            'currency' => 'required|string|in:IDR,USD,SGD,EUR', // [BARU] Wajibkan Vue mengirim ini
         ]);
 
         $transaction = Transaction::with(['user', 'details.product', 'payment'])
@@ -543,6 +544,12 @@ class PaymentController extends Controller
                 'delivery_date' => $request->delivery_date,
                 'delivery_time' => $request->delivery_time,
                 'status' => 'pending',
+                'currency_code' => $request->currency, // [BARU] Simpan USD/IDR ke database
+            ]);
+        } else {
+            // Jika ongkir sudah ada, pastikan currency tetap diupdate
+            $transaction->update([
+                'currency_code' => $request->currency,
             ]);
         }
 
@@ -637,7 +644,7 @@ class PaymentController extends Controller
 
         return response()->json([
             'checkout_url' => $checkoutUrl,
-            'gateway' => $currency === 'IDR' ? 'Xendit' : 'Stripe' // Tambahan info untuk frontend
+            'gateway' => $currency === 'IDR' ? 'Xendit' : 'Stripe', // Tambahan info untuk frontend
         ]);
     }
 
@@ -697,8 +704,7 @@ class PaymentController extends Controller
                         'shipping_status' => 'ready_for_pickup',
                     ]);
                 }
-            }
-            elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+            } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
                 if ($transaction->status !== 'cancelled') {
                     $payment->update(['status' => $status]);
                     $transaction->update([
