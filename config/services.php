@@ -37,6 +37,7 @@ return [
     'xendit' => [
         'secret_key' => env('XENDIT_SECRET_KEY')
     ],
+    'stripe' => ['secret' => env('STRIPE_SECRET')],
     'biteship' => [
         'api_key' => env('BITESHIP_API_KEY'),
         'origin_postal_code' => env('BITESHIP_ORIGIN_POSTAL_CODE'),
