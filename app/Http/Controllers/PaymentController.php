@@ -489,7 +489,8 @@ use App\Models\Address;
 use App\Models\Cart;
 use App\Models\Payment;
 use App\Models\Transaction;
-use App\Services\BiteshipService;
+// use App\Services\BiteshipService;
+use App\Services\ShippingFactory; // [BARU] Import Shipping Factory
 use App\Services\PaymentFactory; // TAMBAHKAN IMPORT INI
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -681,21 +682,83 @@ class PaymentController extends Controller
                     'payment_method' => $fullPaymentMethod,
                 ]);
 
-                if ($transaction->shipping_method === 'biteship') {
+                // if ($transaction->shipping_method === 'biteship') {
+                //     DB::afterCommit(function () use ($transaction) {
+                //         try {
+                //             $biteship = new BiteshipService;
+                //             $order = $biteship->createOrder($transaction);
+
+                //             if (isset($order['id'])) {
+                //                 $transaction->update([
+                //                     'biteship_order_id' => $order['id'],
+                //                     'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
+                //                     'shipping_status' => strtolower($order['status'] ?? 'pending'),
+                //                 ]);
+                //             }
+                //         } catch (\Exception $e) {
+                //             \Log::error('Biteship Exception: '.$e->getMessage());
+                //         }
+                //     });
+                // } else {
+                //     $transaction->update([
+                //         'tracking_number' => 'In-Store Pickup',
+                //         'shipping_status' => 'ready_for_pickup',
+                //     ]);
+                // }
+
+                // [UBAH BAGIAN INI DI DALAM CALLBACK ANDA]
+                if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
                     DB::afterCommit(function () use ($transaction) {
                         try {
-                            $biteship = new BiteshipService;
-                            $order = $biteship->createOrder($transaction);
+                            // Pastikan relasi termuat
+                            $transaction->loadMissing(['address', 'user', 'details.product']);
+
+                            // $destinationCountry = $transaction->address->region ?? 'Indonesia';
+
+                            $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            $shippingGateway = ShippingFactory::make($destinationCountry);
+
+                            // Format Items
+                            $items = [];
+                            foreach ($transaction->details as $detail) {
+                                $items[] = [
+                                    'name' => $detail->product->name,
+                                    'value' => (int) $detail->price,
+                                    'quantity' => (int) $detail->quantity,
+                                    'weight' => (int) ($detail->product->weight ?? 1000),
+                                ];
+                            }
+
+                            // Format Payload Transaksi
+                            $transactionData = [
+                                'courier_company' => $transaction->courier_company,
+                                'courier_type' => $transaction->courier_type,
+                                'delivery_type' => $transaction->delivery_type,
+                                'delivery_date' => $transaction->delivery_date,
+                                'delivery_time' => $transaction->delivery_time,
+                                'destination' => [
+                                    'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+                                    'phone' => $transaction->user->phone ?? '08123456789',
+                                    'address' => $transaction->address->address_location,
+                                    'postal_code' => $transaction->address->postal_code,
+                                    'latitude' => $transaction->address->latitude,
+                                    'longitude' => $transaction->address->longitude,
+                                ],
+                                'items' => $items,
+                            ];
+
+                            // Eksekusi pembuatan resi pengiriman
+                            $order = $shippingGateway->createOrder($transactionData);
 
                             if (isset($order['id'])) {
                                 $transaction->update([
-                                    'biteship_order_id' => $order['id'],
-                                    'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
-                                    'shipping_status' => strtolower($order['status'] ?? 'pending'),
+                                    'biteship_order_id' => $order['id'], // Kolom ini bisa diganti namanya kelak jadi logistics_order_id
+                                    'tracking_number' => $order['tracking_number'],
+                                    'shipping_status' => $order['status'],
                                 ]);
                             }
                         } catch (\Exception $e) {
-                            \Log::error('Biteship Exception: '.$e->getMessage());
+                            \Log::error('Shipping Factory Exception: '.$e->getMessage());
                         }
                     });
                 } else {
@@ -730,13 +793,65 @@ class PaymentController extends Controller
         });
     }
 
+    // public function getShippingRates(Request $request)
+    // {
+    //     $user = $request->user();
+    //     if (! $user) {
+    //         return response()->json([
+    //             'message' => 'Unauthorized. Please login again.',
+    //         ], 401);
+    //     }
+
+    //     $request->validate([
+    //         'address_id' => 'required|exists:addresses,id',
+    //         'cart_ids' => 'required|array',
+    //         'cart_ids.*' => 'exists:carts,id',
+    //     ]);
+
+    //     $address = Address::find($request->address_id);
+
+    //     if (! $address || ! $address->postal_code) {
+    //         return response()->json([
+    //             'message' => 'Alamat tidak valid atau kodepos tidak ditemukan.',
+    //         ], 400);
+    //     }
+
+    //     try {
+    //         $biteship = new BiteshipService;
+
+    //         $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+    //         $totalWeight = 0;
+    //         foreach ($cartItems as $item) {
+    //             $itemWeight = $item->product->weight ?? 1000;
+    //             $totalWeight += ($itemWeight * $item->quantity);
+    //         }
+
+    //         if ($totalWeight <= 0) {
+    //             $totalWeight = 1000;
+    //         }
+
+    //         $rates = $biteship->getRates($address, $totalWeight);
+
+    //         if (isset($rates['success']) && $rates['success'] === false) {
+    //             return response()->json([
+    //                 'message' => 'Biteship API Error: '.($rates['error'] ?? 'Unknown error'),
+    //             ], 400);
+    //         }
+
+    //         return response()->json($rates);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function getShippingRates(Request $request)
     {
         $user = $request->user();
         if (! $user) {
-            return response()->json([
-                'message' => 'Unauthorized. Please login again.',
-            ], 401);
+            return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
         }
 
         $request->validate([
@@ -748,35 +863,51 @@ class PaymentController extends Controller
         $address = Address::find($request->address_id);
 
         if (! $address || ! $address->postal_code) {
-            return response()->json([
-                'message' => 'Alamat tidak valid atau kodepos tidak ditemukan.',
-            ], 400);
+            return response()->json(['message' => 'Alamat tidak valid atau kodepos tidak ditemukan.'], 400);
         }
 
         try {
-            $biteship = new BiteshipService;
-
             $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
 
-            $totalWeight = 0;
+            // 1. Format Data Origin (Gudang/Toko)
+            $origin = [
+                'postal_code' => config('services.biteship.origin_postal_code', '60272'),
+                'latitude' => -7.25653,
+                'longitude' => 112.74877,
+            ];
+
+            // 2. Format Data Destination (Pelanggan)
+            // $destinationCountry = $address->region ?? 'Indonesia'; // Fallback ke Indonesia jika kosong
+
+            $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
+            $destination = [
+                'name' => trim($address->first_name_address . ' ' . $address->last_name_address),
+                'phone' => $user->phone ?? '08123456789',
+                'address' => $address->address_location,
+                'postal_code' => $address->postal_code,
+                'latitude' => $address->latitude,
+                'longitude' => $address->longitude,
+            ];
+
+            // 3. Format Data Items
+            $items = [];
             foreach ($cartItems as $item) {
-                $itemWeight = $item->product->weight ?? 1000;
-                $totalWeight += ($itemWeight * $item->quantity);
+                $items[] = [
+                    'name' => $item->product->name,
+                    'value' => $item->product->discount_price ?? $item->product->price,
+                    'quantity' => $item->quantity,
+                    'weight' => $item->product->weight ?? 1000,
+                ];
             }
 
-            if ($totalWeight <= 0) {
-                $totalWeight = 1000;
-            }
-
-            $rates = $biteship->getRates($address, $totalWeight);
-
-            if (isset($rates['success']) && $rates['success'] === false) {
-                return response()->json([
-                    'message' => 'Biteship API Error: '.($rates['error'] ?? 'Unknown error'),
-                ], 400);
-            }
+            // =========================================================================
+            // [LOGIKA BARU] Panggil Shipping Factory berdasarkan Negara Tujuan!
+            // =========================================================================
+            $shippingGateway = ShippingFactory::make($destinationCountry);
+            $rates = $shippingGateway->calculateRates($origin, $destination, $items);
 
             return response()->json($rates);
+
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),

@@ -42,5 +42,11 @@ return [
         'api_key' => env('BITESHIP_API_KEY'),
         'origin_postal_code' => env('BITESHIP_ORIGIN_POSTAL_CODE'),
     ],
+    'dhl' => [
+        'base_url' => env('DHL_BASE_URL', 'https://express.api.dhl.com/mydhlapi/test'),
+        'api_key' => env('DHL_API_KEY'),
+        'api_secret' => env('DHL_API_SECRET'),
+        'account_number' => env('DHL_ACCOUNT_NUMBER'),
+    ],
 
 ];
