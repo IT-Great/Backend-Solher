@@ -323,6 +323,8 @@ Route::post('/contact', [ContactController::class, 'store']);
 Route::post('/subscribe', [ContactController::class, 'subscribe']);
 Route::post('/biteship/callback', [TransactionController::class, 'biteshipCallback']);
 Route::post('/payments/callback', [PaymentController::class, 'callback']);
+// Route::post('/payment/xendit-callback', [PaymentController::class, 'xenditCallback']);
+Route::post('/payments/stripe-webhook', [PaymentController::class, 'stripeWebhook']);
 Route::post('/promo/claim', [App\Http\Controllers\PromoController::class, 'claim']);
 
 

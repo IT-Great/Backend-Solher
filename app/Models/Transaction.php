@@ -28,10 +28,11 @@ class Transaction extends Model
         'biteship_order_id',
         'point',
         'points_used',
-        'promo_code',      
+        'promo_code',
         'promo_discount',
         'refund_reason',
-        'refund_proof_url'
+        'refund_proof_url',
+        'currency_code',
     ];
 
     /**

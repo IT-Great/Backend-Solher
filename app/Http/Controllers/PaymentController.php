@@ -650,9 +650,156 @@ class PaymentController extends Controller
     }
 
     // Callback ini menangani perubahan status dari Gateway
+    // public function callback(Request $request)
+    // {
+    //     // ... (Logika Webhook akan diatur terpisah nantinya, sementara biarkan seperti ini)
+
+    //     return DB::transaction(function () use ($request) {
+    //         $payment = Payment::where('external_id', $request->external_id)->lockForUpdate()->first();
+
+    //         if (! $payment) {
+    //             return response()->json(['message' => 'Payment not found'], 404);
+    //         }
+
+    //         $status = $request->status;
+    //         $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+    //         if ($status === 'PAID') {
+    //             if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+    //                 return response()->json(['message' => 'Already processed']);
+    //             }
+
+    //             $payment->update(['status' => $status]);
+
+    //             $paymentMethod = $request->input('payment_method', 'Unknown');
+    //             $paymentChannel = $request->input('payment_channel', '');
+    //             $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);
+
+    //             $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+    //             $transaction->update([
+    //                 'status' => $targetTransactionStatus,
+    //                 'payment_method' => $fullPaymentMethod,
+    //             ]);
+
+    //             // if ($transaction->shipping_method === 'biteship') {
+    //             //     DB::afterCommit(function () use ($transaction) {
+    //             //         try {
+    //             //             $biteship = new BiteshipService;
+    //             //             $order = $biteship->createOrder($transaction);
+
+    //             //             if (isset($order['id'])) {
+    //             //                 $transaction->update([
+    //             //                     'biteship_order_id' => $order['id'],
+    //             //                     'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
+    //             //                     'shipping_status' => strtolower($order['status'] ?? 'pending'),
+    //             //                 ]);
+    //             //             }
+    //             //         } catch (\Exception $e) {
+    //             //             \Log::error('Biteship Exception: '.$e->getMessage());
+    //             //         }
+    //             //     });
+    //             // } else {
+    //             //     $transaction->update([
+    //             //         'tracking_number' => 'In-Store Pickup',
+    //             //         'shipping_status' => 'ready_for_pickup',
+    //             //     ]);
+    //             // }
+
+    //             // [UBAH BAGIAN INI DI DALAM CALLBACK ANDA]
+    //             if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
+    //                 DB::afterCommit(function () use ($transaction) {
+    //                     try {
+    //                         // Pastikan relasi termuat
+    //                         $transaction->loadMissing(['address', 'user', 'details.product']);
+
+    //                         // $destinationCountry = $transaction->address->region ?? 'Indonesia';
+
+    //                         $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+    //                         $shippingGateway = ShippingFactory::make($destinationCountry);
+
+    //                         // Format Items
+    //                         $items = [];
+    //                         foreach ($transaction->details as $detail) {
+    //                             $items[] = [
+    //                                 'name' => $detail->product->name,
+    //                                 'value' => (int) $detail->price,
+    //                                 'quantity' => (int) $detail->quantity,
+    //                                 'weight' => (int) ($detail->product->weight ?? 1000),
+    //                             ];
+    //                         }
+
+    //                         // Format Payload Transaksi
+    //                         $transactionData = [
+    //                             'courier_company' => $transaction->courier_company,
+    //                             'courier_type' => $transaction->courier_type,
+    //                             'delivery_type' => $transaction->delivery_type,
+    //                             'delivery_date' => $transaction->delivery_date,
+    //                             'delivery_time' => $transaction->delivery_time,
+    //                             'destination' => [
+    //                                 'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+    //                                 'phone' => $transaction->user->phone ?? '08123456789',
+    //                                 'address' => $transaction->address->address_location,
+    //                                 'postal_code' => $transaction->address->postal_code,
+    //                                 'latitude' => $transaction->address->latitude,
+    //                                 'longitude' => $transaction->address->longitude,
+    //                             ],
+    //                             'items' => $items,
+    //                         ];
+
+    //                         // Eksekusi pembuatan resi pengiriman
+    //                         $order = $shippingGateway->createOrder($transactionData);
+
+    //                         if (isset($order['id'])) {
+    //                             $transaction->update([
+    //                                 'biteship_order_id' => $order['id'], // Kolom ini bisa diganti namanya kelak jadi logistics_order_id
+    //                                 'tracking_number' => $order['tracking_number'],
+    //                                 'shipping_status' => $order['status'],
+    //                             ]);
+    //                         }
+    //                     } catch (\Exception $e) {
+    //                         \Log::error('Shipping Factory Exception: '.$e->getMessage());
+    //                     }
+    //                 });
+    //             } else {
+    //                 $transaction->update([
+    //                     'tracking_number' => 'In-Store Pickup',
+    //                     'shipping_status' => 'ready_for_pickup',
+    //                 ]);
+    //             }
+    //         } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+    //             if ($transaction->status !== 'cancelled') {
+    //                 $payment->update(['status' => $status]);
+    //                 $transaction->update([
+    //                     'status' => 'cancelled',
+    //                     'shipping_status' => 'cancelled',
+    //                 ]);
+
+    //                 if ($transaction->points_used > 0) {
+    //                     $transaction->user->increment('point', $transaction->points_used);
+    //                 }
+
+    //                 $transactionController = app(TransactionController::class);
+    //                 foreach ($transaction->details as $detail) {
+    //                     $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
+    //                 }
+    //             }
+    //         } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
+    //             $payment->update(['status' => $status]);
+    //             $transaction->update(['status' => 'pending']);
+    //         }
+
+    //         return response()->json(['message' => 'Callback processed']);
+    //     });
+    // }
+
+    // =====================================================================
+    // 1. WEBHOOK XENDIT (UNTUK PEMBAYARAN LOKAL - IDR)
+    // =====================================================================
     public function callback(Request $request)
     {
-        // ... (Logika Webhook akan diatur terpisah nantinya, sementara biarkan seperti ini)
+        // Xendit biasanya mengirimkan token verifikasi di header untuk keamanan
+        // Anda bisa menambahkan logika validasi header X-CALLBACK-TOKEN di sini kelak.
 
         return DB::transaction(function () use ($request) {
             $payment = Payment::where('external_id', $request->external_id)->lockForUpdate()->first();
@@ -664,6 +811,7 @@ class PaymentController extends Controller
             $status = $request->status;
             $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
 
+            // Logika ketika sukses dibayar
             if ($status === 'PAID') {
                 if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
                     return response()->json(['message' => 'Already processed']);
@@ -682,43 +830,14 @@ class PaymentController extends Controller
                     'payment_method' => $fullPaymentMethod,
                 ]);
 
-                // if ($transaction->shipping_method === 'biteship') {
-                //     DB::afterCommit(function () use ($transaction) {
-                //         try {
-                //             $biteship = new BiteshipService;
-                //             $order = $biteship->createOrder($transaction);
-
-                //             if (isset($order['id'])) {
-                //                 $transaction->update([
-                //                     'biteship_order_id' => $order['id'],
-                //                     'tracking_number' => $order['courier']['waybill_id'] ?? 'Pending',
-                //                     'shipping_status' => strtolower($order['status'] ?? 'pending'),
-                //                 ]);
-                //             }
-                //         } catch (\Exception $e) {
-                //             \Log::error('Biteship Exception: '.$e->getMessage());
-                //         }
-                //     });
-                // } else {
-                //     $transaction->update([
-                //         'tracking_number' => 'In-Store Pickup',
-                //         'shipping_status' => 'ready_for_pickup',
-                //     ]);
-                // }
-
-                // [UBAH BAGIAN INI DI DALAM CALLBACK ANDA]
+                // Eksekusi API Logistik (Biteship/DHL)
                 if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
                     DB::afterCommit(function () use ($transaction) {
                         try {
-                            // Pastikan relasi termuat
                             $transaction->loadMissing(['address', 'user', 'details.product']);
-
-                            // $destinationCountry = $transaction->address->region ?? 'Indonesia';
-
                             $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
                             $shippingGateway = ShippingFactory::make($destinationCountry);
 
-                            // Format Items
                             $items = [];
                             foreach ($transaction->details as $detail) {
                                 $items[] = [
@@ -729,7 +848,6 @@ class PaymentController extends Controller
                                 ];
                             }
 
-                            // Format Payload Transaksi
                             $transactionData = [
                                 'courier_company' => $transaction->courier_company,
                                 'courier_type' => $transaction->courier_type,
@@ -743,16 +861,16 @@ class PaymentController extends Controller
                                     'postal_code' => $transaction->address->postal_code,
                                     'latitude' => $transaction->address->latitude,
                                     'longitude' => $transaction->address->longitude,
+                                    'country' => $destinationCountry // Ditambahkan untuk parsing DHL kelak
                                 ],
                                 'items' => $items,
                             ];
 
-                            // Eksekusi pembuatan resi pengiriman
                             $order = $shippingGateway->createOrder($transactionData);
 
                             if (isset($order['id'])) {
                                 $transaction->update([
-                                    'biteship_order_id' => $order['id'], // Kolom ini bisa diganti namanya kelak jadi logistics_order_id
+                                    'biteship_order_id' => $order['id'],
                                     'tracking_number' => $order['tracking_number'],
                                     'shipping_status' => $order['status'],
                                 ]);
@@ -767,7 +885,9 @@ class PaymentController extends Controller
                         'shipping_status' => 'ready_for_pickup',
                     ]);
                 }
-            } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+            }
+            // Logika ketika gagal atau expired
+            elseif ($status === 'EXPIRED' || $status === 'FAILED') {
                 if ($transaction->status !== 'cancelled') {
                     $payment->update(['status' => $status]);
                     $transaction->update([
@@ -789,8 +909,163 @@ class PaymentController extends Controller
                 $transaction->update(['status' => 'pending']);
             }
 
-            return response()->json(['message' => 'Callback processed']);
+            return response()->json(['message' => 'Xendit Callback processed']);
         });
+    }
+
+    // =====================================================================
+    // 2. WEBHOOK STRIPE (UNTUK PEMBAYARAN INTERNASIONAL - USD/SGD/EUR)
+    // =====================================================================
+    public function stripeWebhook(Request $request)
+    {
+        // 1. Ambil payload murni (dibutuhkan untuk verifikasi signature Stripe)
+        $payload = $request->getContent();
+        $sigHeader = $request->header('Stripe-Signature');
+        $endpointSecret = config('services.stripe.webhook_secret'); // Tambahkan variabel ini di .env kelak
+
+        try {
+            // Kita coba verifikasi origin-nya benar dari Stripe
+            // Jika Anda belum mensetup secret, lewati blok verifikasi ini dengan menonaktifkan kode ConstructEvent
+            if ($endpointSecret) {
+                $event = \Stripe\Webhook::constructEvent($payload, $sigHeader, $endpointSecret);
+            } else {
+                $event = json_decode($payload); // Fallback tanpa secret untuk testing lokal
+            }
+        } catch (\UnexpectedValueException $e) {
+            \Log::error('Stripe Webhook Error: Invalid payload');
+            return response()->json(['error' => 'Invalid payload'], 400);
+        } catch (\Stripe\Exception\SignatureVerificationException $e) {
+            \Log::error('Stripe Webhook Error: Invalid signature');
+            return response()->json(['error' => 'Invalid signature'], 400);
+        }
+
+        // 2. Tangani event sesuai tipenya
+        if ($event->type == 'checkout.session.completed') {
+            $session = $event->data->object;
+
+            // Xendit menggunakan 'external_id', sedangkan di Stripe kita menyimpan referensi itu di 'client_reference_id'
+            $externalId = $session->client_reference_id;
+
+            return DB::transaction(function () use ($externalId, $session) {
+                $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+
+                if (! $payment) {
+                    \Log::error("Stripe Webhook: Payment not found for reference {$externalId}");
+                    return response()->json(['message' => 'Payment not found'], 404);
+                }
+
+                $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+                // Cek apakah sudah diproses agar tidak dobel
+                if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+                    return response()->json(['message' => 'Already processed']);
+                }
+
+                // Update Status Pembayaran menjadi PAID
+                $payment->update(['status' => 'PAID']);
+
+                // Baca metode pembayaran yang dipakai di Stripe (misal: "card")
+                $paymentMethodTypes = $session->payment_method_types;
+                $paymentMethod = !empty($paymentMethodTypes) ? strtoupper($paymentMethodTypes[0]) : 'STRIPE';
+
+                $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+                $transaction->update([
+                    'status' => $targetTransactionStatus,
+                    'payment_method' => 'STRIPE ' . $paymentMethod,
+                ]);
+
+                // Eksekusi API Logistik (Biteship/DHL) - Logika kembar dengan Xendit
+                if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
+                    DB::afterCommit(function () use ($transaction) {
+                        try {
+                            $transaction->loadMissing(['address', 'user', 'details.product']);
+                            $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            $shippingGateway = ShippingFactory::make($destinationCountry);
+
+                            $items = [];
+                            foreach ($transaction->details as $detail) {
+                                $items[] = [
+                                    'name' => $detail->product->name,
+                                    'value' => (int) $detail->price,
+                                    'quantity' => (int) $detail->quantity,
+                                    'weight' => (int) ($detail->product->weight ?? 1000),
+                                ];
+                            }
+
+                            $transactionData = [
+                                'courier_company' => $transaction->courier_company,
+                                'courier_type' => $transaction->courier_type,
+                                'delivery_type' => $transaction->delivery_type,
+                                'delivery_date' => $transaction->delivery_date,
+                                'delivery_time' => $transaction->delivery_time,
+                                'destination' => [
+                                    'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+                                    'phone' => $transaction->user->phone ?? '08123456789',
+                                    'address' => $transaction->address->address_location,
+                                    'postal_code' => $transaction->address->postal_code,
+                                    'latitude' => $transaction->address->latitude,
+                                    'longitude' => $transaction->address->longitude,
+                                    'country' => $destinationCountry
+                                ],
+                                'items' => $items,
+                            ];
+
+                            $order = $shippingGateway->createOrder($transactionData);
+
+                            if (isset($order['id'])) {
+                                $transaction->update([
+                                    'biteship_order_id' => $order['id'],
+                                    'tracking_number' => $order['tracking_number'],
+                                    'shipping_status' => $order['status'],
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            \Log::error('Stripe Shipping Callback Exception: '.$e->getMessage());
+                        }
+                    });
+                } else {
+                    $transaction->update([
+                        'tracking_number' => 'In-Store Pickup',
+                        'shipping_status' => 'ready_for_pickup',
+                    ]);
+                }
+
+                return response()->json(['message' => 'Stripe Checkout Session Completed Handled']);
+            });
+        }
+
+        // Logika ketika sesi Stripe expired / ditutup paksa
+        elseif ($event->type == 'checkout.session.expired') {
+            $session = $event->data->object;
+            $externalId = $session->client_reference_id;
+
+            DB::transaction(function () use ($externalId) {
+                $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+                if ($payment) {
+                    $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+                    if ($transaction->status !== 'cancelled') {
+                        $payment->update(['status' => 'EXPIRED']);
+                        $transaction->update([
+                            'status' => 'cancelled',
+                            'shipping_status' => 'cancelled',
+                        ]);
+
+                        if ($transaction->points_used > 0) {
+                            $transaction->user->increment('point', $transaction->points_used);
+                        }
+
+                        $transactionController = app(TransactionController::class);
+                        foreach ($transaction->details as $detail) {
+                            $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
+                        }
+                    }
+                }
+            });
+        }
+
+        // Return status 200 agar Stripe berhenti mem-ping server
+        return response()->json(['status' => 'success']);
     }
 
     // public function getShippingRates(Request $request)
