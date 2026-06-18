@@ -53,6 +53,7 @@ class PayPalService
             'purchase_units' => [
                 [
                     'reference_id' => $data['external_id'],
+                    'custom_id' => $data['external_id'],
                     'amount' => [
                         'currency_code' => $data['currency'],
                         'value' => number_format($data['amount'], 2, '.', ''), // Pastikan format 2 desimal, ex: 15.50
