@@ -796,7 +796,7 @@ class PaymentController extends Controller
     // =====================================================================
     // 1. WEBHOOK XENDIT (UNTUK PEMBAYARAN LOKAL - IDR)
     // =====================================================================
-    public function callback(Request $request)
+    public function xenditCallback(Request $request)
     {
         // Xendit biasanya mengirimkan token verifikasi di header untuk keamanan
         // Anda bisa menambahkan logika validasi header X-CALLBACK-TOKEN di sini kelak.
@@ -1065,6 +1065,115 @@ class PaymentController extends Controller
         }
 
         // Return status 200 agar Stripe berhenti mem-ping server
+        return response()->json(['status' => 'success']);
+    }
+
+    // =====================================================================
+    // 3. WEBHOOK PAYPAL (UNTUK PEMBAYARAN INTERNASIONAL)
+    // =====================================================================
+    public function paypalWebhook(Request $request)
+    {
+        $payload = $request->all();
+        $eventType = $payload['event_type'] ?? null;
+
+        // Kita hanya peduli pada event ketika uang benar-benar sudah ditarik
+        if ($eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+            // Ambil Order ID bawaan PayPal dari kedalaman data JSON mereka
+            $paypalOrderId = $payload['resource']['supplementary_data']['related_ids']['order_id'] ?? null;
+
+            if (!$paypalOrderId) {
+                \Log::error("PayPal Webhook: Order ID tidak ditemukan di payload.");
+                return response()->json(['error' => 'Order ID missing'], 400);
+            }
+
+            return DB::transaction(function () use ($paypalOrderId) {
+                // Trik Cerdas: Karena kita menyimpan Order ID PayPal di dalam tautan checkout_url,
+                // kita bisa mencari pesanan yang sesuai menggunakan kata kunci (LIKE)
+                $payment = Payment::where('checkout_url', 'LIKE', '%' . $paypalOrderId . '%')->lockForUpdate()->first();
+
+                if (!$payment) {
+                    \Log::error("PayPal Webhook: Payment tidak ditemukan untuk Order ID {$paypalOrderId}");
+                    return response()->json(['message' => 'Payment not found'], 404);
+                }
+
+                $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+                // Cek apakah status sudah lunas untuk mencegah pemrosesan ganda
+                if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+                    return response()->json(['message' => 'Already processed']);
+                }
+
+                // 1. Ubah status menjadi LUNAS
+                $payment->update(['status' => 'PAID']);
+
+                $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+                $transaction->update([
+                    'status' => $targetTransactionStatus,
+                    'payment_method' => 'PAYPAL',
+                ]);
+
+                // 2. Eksekusi API Logistik (Logika ini sama persis dengan Xendit/Stripe)
+                if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
+                    DB::afterCommit(function () use ($transaction) {
+                        try {
+                            $transaction->loadMissing(['address', 'user', 'details.product']);
+                            $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            $shippingGateway = ShippingFactory::make($destinationCountry);
+
+                            $items = [];
+                            foreach ($transaction->details as $detail) {
+                                $items[] = [
+                                    'name' => $detail->product->name,
+                                    'value' => (int) $detail->price,
+                                    'quantity' => (int) $detail->quantity,
+                                    'weight' => (int) ($detail->product->weight ?? 1000),
+                                ];
+                            }
+
+                            $transactionData = [
+                                'courier_company' => $transaction->courier_company,
+                                'courier_type' => $transaction->courier_type,
+                                'delivery_type' => $transaction->delivery_type,
+                                'delivery_date' => $transaction->delivery_date,
+                                'delivery_time' => $transaction->delivery_time,
+                                'destination' => [
+                                    'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+                                    'phone' => $transaction->user->phone ?? '08123456789',
+                                    'address' => $transaction->address->address_location,
+                                    'postal_code' => $transaction->address->postal_code,
+                                    'latitude' => $transaction->address->latitude,
+                                    'longitude' => $transaction->address->longitude,
+                                    'country' => $destinationCountry
+                                ],
+                                'items' => $items,
+                            ];
+
+                            $order = $shippingGateway->createOrder($transactionData);
+
+                            if (isset($order['id'])) {
+                                $transaction->update([
+                                    'biteship_order_id' => $order['id'],
+                                    'tracking_number' => $order['tracking_number'],
+                                    'shipping_status' => $order['status'],
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            \Log::error('PayPal Shipping Callback Exception: '.$e->getMessage());
+                        }
+                    });
+                } else {
+                    $transaction->update([
+                        'tracking_number' => 'In-Store Pickup',
+                        'shipping_status' => 'ready_for_pickup',
+                    ]);
+                }
+
+                return response()->json(['message' => 'PayPal Webhook Processed Successfully']);
+            });
+        }
+
+        // Return 200 OK untuk event lain agar server PayPal tenang dan tidak terus mencoba mengirim ulang
         return response()->json(['status' => 'success']);
     }
 

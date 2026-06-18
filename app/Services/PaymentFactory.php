@@ -17,7 +17,7 @@ class PaymentFactory
 
         // Jika USD, SGD, EUR, dll, lempar ke Stripe
         // return app(StripeService::class);
-        // return app(PayPalService::class);
-        return new PayPalService();
+        return app(PayPalService::class);
+        // return new PayPalService();
     }
 }
