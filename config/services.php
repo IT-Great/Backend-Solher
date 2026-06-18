@@ -48,5 +48,10 @@ return [
         'api_secret' => env('DHL_API_SECRET'),
         'account_number' => env('DHL_ACCOUNT_NUMBER'),
     ],
+    'paypal' => [
+        'client_id' => env('PAYPAL_CLIENT_ID'),
+        'secret' => env('PAYPAL_SECRET'),
+        'mode' => env('PAYPAL_MODE', 'sandbox'),
+    ],
 
 ];
