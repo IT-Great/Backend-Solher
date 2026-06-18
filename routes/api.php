@@ -325,6 +325,7 @@ Route::post('/biteship/callback', [TransactionController::class, 'biteshipCallba
 Route::post('/payments/callback', [PaymentController::class, 'xenditCallback']);
 Route::post('/payments/stripe-webhook', [PaymentController::class, 'stripeWebhook']);
 Route::post('/payments/paypal-webhook', [PaymentController::class, 'paypalWebhook']);
+Route::get('/payments/paypal-capture', [PaymentController::class, 'capturePayPal']);
 Route::post('/promo/claim', [App\Http\Controllers\PromoController::class, 'claim']);
 
 

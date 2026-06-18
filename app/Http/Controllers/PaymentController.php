@@ -627,9 +627,10 @@ class PaymentController extends Controller
             'amount' => $finalAmount,
             'currency' => $currency, // Perlu diteruskan ke gateway
             'items' => $items,
-            'success_redirect_url' => config('app.frontend_url')
-                .'/payment-success?external_id='.$externalId
-                .'&order_id='.$transaction->order_id,
+            // 'success_redirect_url' => config('app.frontend_url')
+            //     .'/payment-success?external_id='.$externalId
+            //     .'&order_id='.$transaction->order_id,
+            'success_redirect_url' => url('/api/payments/paypal-capture?external_id='.$externalId.'&order_id='.$transaction->order_id),
             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
 
@@ -1175,6 +1176,25 @@ class PaymentController extends Controller
 
         // Return 200 OK untuk event lain agar server PayPal tenang dan tidak terus mencoba mengirim ulang
         return response()->json(['status' => 'success']);
+    }
+
+    public function capturePayPal(Request $request)
+    {
+        // PayPal otomatis menyisipkan Order ID mereka ke dalam parameter URL bernama 'token'
+        $paypalToken = $request->query('token'); 
+        $externalId = $request->query('external_id');
+        $orderId = $request->query('order_id');
+
+        // Lakukan penarikan dana (Capture)
+        $paypalService = app(\App\Services\PayPalService::class);
+        $paypalService->capturePayment($paypalToken);
+
+        // Setelah ditarik, lemparkan pembeli ke halaman sukses Vue.js Anda seperti biasa
+        $frontendSuccessUrl = config('app.frontend_url') 
+            . '/payment-success?external_id=' . $externalId 
+            . '&order_id=' . $orderId;
+            
+        return redirect($frontendSuccessUrl);
     }
 
     // public function getShippingRates(Request $request)
