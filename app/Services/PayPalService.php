@@ -90,12 +90,30 @@ class PayPalService
         return $checkoutUrl;
     }
 
+    // public function capturePayment($paypalOrderId)
+    // {
+    //     $accessToken = $this->getAccessToken();
+
+    //     $response = Http::withToken($accessToken)
+    //         ->withHeaders(['Content-Type' => 'application/json'])
+    //         ->post("{$this->baseUrl}/v2/checkout/orders/{$paypalOrderId}/capture");
+
+    //     if ($response->failed()) {
+    //         \Log::error('PayPal Capture Failed: ' . $response->body());
+    //         return false;
+    //     }
+
+    //     return true;
+    // }
+
     public function capturePayment($paypalOrderId)
     {
         $accessToken = $this->getAccessToken();
 
+        // Kita secara eksplisit mengirimkan string '{}' (JSON Object kosong) 
+        // menggunakan method withBody() bawaan Laravel Http Client
         $response = Http::withToken($accessToken)
-            ->withHeaders(['Content-Type' => 'application/json'])
+            ->withBody('{}', 'application/json')
             ->post("{$this->baseUrl}/v2/checkout/orders/{$paypalOrderId}/capture");
 
         if ($response->failed()) {
