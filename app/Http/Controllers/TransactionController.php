@@ -832,16 +832,33 @@ class TransactionController extends Controller
                 // =========================================================================
                 // [LOGIKA BARU] PANGGIL PAYMENT FACTORY DI SINI
                 // =========================================================================
-                $paymentGateway = PaymentFactory::make($transactionData['currency']);
+                // $paymentGateway = PaymentFactory::make($transactionData['currency']);
+
+                // =========================================================================
+                // [LOGIKA BARU] PANGGIL PAYMENT FACTORY & REDIRECT DINAMIS
+                // =========================================================================
+                $currency = $transactionData['currency'] ?? 'IDR';
+                $paymentGateway = PaymentFactory::make($currency);
+
+                // 1. Tentukan URL sukses standar (Untuk Xendit -> Langsung ke Vue.js)
+                $frontendSuccessUrl = config('app.frontend_url')
+                    . '/payment-success?external_id=' . $externalId
+                    . '&order_id=' . $transactionData['transaction']->order_id;
+
+                // 2. Tentukan URL sukses khusus PayPal (Untuk PayPal -> Masuk Jembatan Capture dulu)
+                $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' . $transactionData['transaction']->order_id);
+
+                // 3. Logika Kondisional Penentu Arah
+                $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
 
                 $checkoutUrl = $paymentGateway->createInvoice([
                     'order_id' => $transactionData['transaction']->order_id,
                     'external_id' => $externalId,
                     'payer_email' => $user->email,
                     'amount' => $finalAmount,
-                    'currency' => $transactionData['currency'],
+                    'currency' => $currency,
                     'items' => $transactionData['gatewayItems'],
-                    'success_redirect_url' => config('app.frontend_url').'/payment-success?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id,
+                    'success_redirect_url' => $dynamicSuccessUrl, 
                     'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
                 ]);
 

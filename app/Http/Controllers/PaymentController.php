@@ -620,19 +620,48 @@ class PaymentController extends Controller
 
         $paymentGateway = PaymentFactory::make($currency);
 
+        // [LOGIKA BARU]: Deteksi mata uang dan panggil Factory
+        $currency = $transaction->currency_code ?? 'IDR';
+        $paymentGateway = PaymentFactory::make($currency);
+
+        // 1. Tentukan URL sukses standar (Untuk Xendit -> Langsung ke Vue.js)
+        $frontendSuccessUrl = config('app.frontend_url')
+            . '/payment-success?external_id=' . $externalId
+            . '&order_id=' . $transaction->order_id;
+
+        // 2. Tentukan URL sukses khusus PayPal (Untuk PayPal -> Masuk Jembatan Capture dulu)
+        $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' . $transaction->order_id);
+
+        // 3. Logika Kondisional Penentu Arah
+        $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
+
         $checkoutUrl = $paymentGateway->createInvoice([
             'order_id' => $transaction->order_id,
             'external_id' => $externalId,
             'payer_email' => $transaction->user->email,
             'amount' => $finalAmount,
-            'currency' => $currency, // Perlu diteruskan ke gateway
+            'currency' => $currency, 
             'items' => $items,
-            // 'success_redirect_url' => config('app.frontend_url')
-            //     .'/payment-success?external_id='.$externalId
-            //     .'&order_id='.$transaction->order_id,
-            'success_redirect_url' => url('/api/payments/paypal-capture?external_id='.$externalId.'&order_id='.$transaction->order_id),
+            
+            // 🔥 Gunakan variabel dinamis di sini
+            'success_redirect_url' => $dynamicSuccessUrl, 
+            
             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
+
+        // $checkoutUrl = $paymentGateway->createInvoice([
+        //     'order_id' => $transaction->order_id,
+        //     'external_id' => $externalId,
+        //     'payer_email' => $transaction->user->email,
+        //     'amount' => $finalAmount,
+        //     'currency' => $currency, // Perlu diteruskan ke gateway
+        //     'items' => $items,
+        //     // 'success_redirect_url' => config('app.frontend_url')
+        //     //     .'/payment-success?external_id='.$externalId
+        //     //     .'&order_id='.$transaction->order_id,
+        //     'success_redirect_url' => url('/api/payments/paypal-capture?external_id='.$externalId.'&order_id='.$transaction->order_id),
+        //     'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
+        // ]);
 
         Payment::updateOrCreate(
             ['transaction_id' => $transaction->id],
