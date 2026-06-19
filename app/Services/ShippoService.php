@@ -201,7 +201,8 @@ class ShippoService implements ShippingGatewayInterface
                     'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
                     'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
                     'certify' => true,
-                    'certifier' => 'Solher Admin',
+                    // 'certifier' => 'Solher Admin',
+                    'certifier' => $destination['name'] ?? 'Solher Admin',
                     'items' => [
                         [
                             'description' => 'Solher Fashion Bag', // Deskripsi barang
