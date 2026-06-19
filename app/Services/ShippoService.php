@@ -165,14 +165,24 @@ class ShippoService implements ShippingGatewayInterface
 
         try {
             $payload = [
+                // 'address_from' => [
+                //     'name'    => $origin['name'] ?? 'Solher Warehouse',
+                //     'street1' => $origin['street1'] ?? '57 Jalan Wijaya Kusuma',
+                //     'city'    => $origin['city'] ?? 'Surabaya',
+                //     'state'   => $origin['state'] ?? 'Jawa Timur',
+                //     'zip'     => $origin['postal_code'] ?? '60272', // Disesuaikan dengan controller
+                //     'country' => 'ID',
+                //     'phone'   => $origin['phone'] ?? '08973424888',
+                // ],
+
                 'address_from' => [
-                    'name'    => $origin['name'] ?? 'Solher Warehouse',
-                    'street1' => $origin['street1'] ?? '57 Jalan Wijaya Kusuma',
-                    'city'    => $origin['city'] ?? 'Surabaya',
-                    'state'   => $origin['state'] ?? 'Jawa Timur',
-                    'zip'     => $origin['postal_code'] ?? '60272', // Disesuaikan dengan controller
-                    'country' => 'ID',
-                    'phone'   => $origin['phone'] ?? '08973424888',
+                    'name'    => 'Solher US Branch',
+                    'street1' => '215 Clayton St.',
+                    'city'    => 'San Francisco',
+                    'state'   => 'CA',
+                    'zip'     => '94117',
+                    'country' => 'US', 
+                    'phone'   => '+15553424888',
                 ],
                 'address_to' => [
                     'name'    => $destination['name'] ?? 'Customer Solher',
@@ -263,14 +273,24 @@ class ShippoService implements ShippingGatewayInterface
                 'Authorization' => 'ShippoToken ' . $this->apiKey,
                 'Content-Type' => 'application/json',
             ])->post("{$this->baseUrl}/shipments/", [
+                // 'address_from' => [
+                //     'name'    => $origin['name'] ?? 'Solher Warehouse',
+                //     'street1' => $origin['street1'] ?? '57 Jalan Wijaya Kusuma',
+                //     'city'    => $origin['city'] ?? 'Surabaya',
+                //     'state'   => $origin['state'] ?? 'Jawa Timur',
+                //     'zip'     => $origin['postal_code'] ?? '60272', // Disesuaikan dengan controller
+                //     'country' => 'ID',
+                //     'phone'   => $origin['phone'] ?? '08973424888',
+                // ],
+
                 'address_from' => [
-                    'name'    => $origin['name'] ?? 'Solher Warehouse',
-                    'street1' => $origin['street1'] ?? '57 Jalan Wijaya Kusuma',
-                    'city'    => $origin['city'] ?? 'Surabaya',
-                    'state'   => $origin['state'] ?? 'Jawa Timur',
-                    'zip'     => $origin['postal_code'] ?? '60272', // Disesuaikan dengan controller
-                    'country' => 'ID',
-                    'phone'   => $origin['phone'] ?? '08973424888',
+                    'name'    => 'Solher US Branch',
+                    'street1' => '215 Clayton St.',
+                    'city'    => 'San Francisco',
+                    'state'   => 'CA',
+                    'zip'     => '94117',
+                    'country' => 'US', 
+                    'phone'   => '+15553424888',
                 ],
                 'address_to' => [
                     'name'    => $destination['name'] ?? 'Customer Solher',
