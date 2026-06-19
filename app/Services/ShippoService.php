@@ -217,12 +217,32 @@ class ShippoService implements ShippingGatewayInterface
                 // ],
 
                 // [PERBAIKAN FINAL]: Struktur yang disesuaikan dengan standar JSON API Shippo
+                // 'customs_declaration' => [
+                //     'contents_type'       => 'MERCHANDISE',
+                //     'non_delivery_option' => 'RETURN',
+                //     'certify'             => true,           // WAJIB: Boolean, bukan string
+                //     'disclaimer_accepted' => true,           // WAJIB: Seringkali diperlukan bersama certify
+                //     'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                //     'items' => [
+                //         [
+                //             'description'    => 'Solher Fashion Bag',
+                //             'quantity'       => 1,
+                //             'net_weight'     => (string) ($parcel['weight'] ?? '0.5'),
+                //             'mass_unit'      => 'kg',
+                //             'value_amount'   => '15.00',
+                //             'value_currency' => 'USD',
+                //             'origin_country' => 'ID'
+                //         ]
+                //     ]
+                // ],
+
+                // [PERBAIKAN FINAL]: Kunci yang benar adalah 'certify_signer'
                 'customs_declaration' => [
                     'contents_type'       => 'MERCHANDISE',
                     'non_delivery_option' => 'RETURN',
-                    'certify'             => true,           // WAJIB: Boolean, bukan string
-                    'disclaimer_accepted' => true,           // WAJIB: Seringkali diperlukan bersama certify
-                    'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                    'certify'             => true,
+                    'certify_signer'      => $destination['name'] ?? 'Solher Admin', // KUNCI YANG BENAR
+                    'incoterm'            => 'DDU', // Sangat direkomendasikan (Delivery Duty Unpaid)
                     'items' => [
                         [
                             'description'    => 'Solher Fashion Bag',
@@ -294,13 +314,33 @@ class ShippoService implements ShippingGatewayInterface
                 //     ]
                 // ],
 
-                // [PERBAIKAN FINAL]: Struktur yang disesuaikan dengan standar JSON API Shippo
+                // // [PERBAIKAN FINAL]: Struktur yang disesuaikan dengan standar JSON API Shippo
+                // 'customs_declaration' => [
+                //     'contents_type'       => 'MERCHANDISE',
+                //     'non_delivery_option' => 'RETURN',
+                //     'certify'             => true,           // WAJIB: Boolean, bukan string
+                //     'disclaimer_accepted' => true,           // WAJIB: Seringkali diperlukan bersama certify
+                //     'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                //     'items' => [
+                //         [
+                //             'description'    => 'Solher Fashion Bag',
+                //             'quantity'       => 1,
+                //             'net_weight'     => (string) ($parcel['weight'] ?? '0.5'),
+                //             'mass_unit'      => 'kg',
+                //             'value_amount'   => '15.00',
+                //             'value_currency' => 'USD',
+                //             'origin_country' => 'ID'
+                //         ]
+                //     ]
+                // ],
+
+                // [PERBAIKAN FINAL]: Kunci yang benar adalah 'certify_signer'
                 'customs_declaration' => [
                     'contents_type'       => 'MERCHANDISE',
                     'non_delivery_option' => 'RETURN',
-                    'certify'             => true,           // WAJIB: Boolean, bukan string
-                    'disclaimer_accepted' => true,           // WAJIB: Seringkali diperlukan bersama certify
-                    'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                    'certify'             => true,
+                    'certify_signer'      => $destination['name'] ?? 'Solher Admin', // KUNCI YANG BENAR
+                    'incoterm'            => 'DDU', // Sangat direkomendasikan (Delivery Duty Unpaid)
                     'items' => [
                         [
                             'description'    => 'Solher Fashion Bag',
