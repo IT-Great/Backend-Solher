@@ -195,6 +195,26 @@ class ShippoService implements ShippingGatewayInterface
                     'weight'        => $parcel['weight'] ?? '0.5',
                     'mass_unit'     => 'kg',
                 ]],
+
+                // [BARU] WAJIB UNTUK PENGIRIMAN INTERNASIONAL
+                'customs_declaration' => [
+                    'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
+                    'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
+                    'certify' => true,
+                    'certifier' => 'Solher Admin',
+                    'items' => [
+                        [
+                            'description' => 'Solher Fashion Bag', // Deskripsi barang
+                            'quantity' => 1,
+                            'net_weight' => $parcel['weight'] ?? '0.5',
+                            'mass_unit' => 'kg',
+                            'value_amount' => '15.00', // Nilai barang (wajib diisi untuk asuransi/pajak)
+                            'value_currency' => 'USD',
+                            'origin_country' => 'ID' // Negara asal pembuat barang
+                        ]
+                    ]
+                ],
+
                 'async' => false
             ]);
 
