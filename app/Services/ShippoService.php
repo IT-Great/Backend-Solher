@@ -27,6 +27,7 @@ class ShippoService implements ShippingGatewayInterface
      */
     public function calculateRates(array $origin, array $destination, array $parcel): array
     {
+        Log::info('Data Destination dari Vue:', $destination);
         try {
             // Shippo mewajibkan otentikasi dengan format header: "ShippoToken <key>"
             $response = Http::withHeaders([
@@ -44,11 +45,13 @@ class ShippoService implements ShippingGatewayInterface
                 ],
                 'address_to' => [
                     'name'    => $destination['name'],
-                    'street1' => $destination['street1'],
+                    // 'street1' => $destination['street1'],
+                    'street1' => $destination['street1'] ?? $destination['address'] ?? 'Alamat belum lengkap',
                     'city'    => $destination['city'],
                     'state'   => $destination['state'], // Sangat penting untuk US/Canada
                     'zip'     => $destination['zip'],
-                    'country' => $destination['country_code'], // Misal: 'SG', 'US', 'AU'
+                    // 'country' => $destination['country_code'], // Misal: 'SG', 'US', 'AU'
+                    'country' => $destination['country_code'] ?? $destination['postal_code'] ?? '',
                     'phone'   => $destination['phone'],
                 ],
                 'parcels' => [[
