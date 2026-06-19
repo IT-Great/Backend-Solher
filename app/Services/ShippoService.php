@@ -51,7 +51,7 @@ class ShippoService implements ShippingGatewayInterface
                     'state'   => $destination['state'], // Sangat penting untuk US/Canada
                     'zip'     => $destination['zip'],
                     // 'country' => $destination['country_code'], // Misal: 'SG', 'US', 'AU'
-                    'country' => $destination['country_code'] ?? $destination['postal_code'] ?? '',
+                    'country' => $destination['country_code'] ?? $destination['country'] ?? '',
                     'phone'   => $destination['phone'],
                 ],
                 'parcels' => [[

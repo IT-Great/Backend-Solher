@@ -640,12 +640,12 @@ class PaymentController extends Controller
             'external_id' => $externalId,
             'payer_email' => $transaction->user->email,
             'amount' => $finalAmount,
-            'currency' => $currency, 
+            'currency' => $currency,
             'items' => $items,
-            
+
             // 🔥 Gunakan variabel dinamis di sini
-            'success_redirect_url' => $dynamicSuccessUrl, 
-            
+            'success_redirect_url' => $dynamicSuccessUrl,
+
             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
 
@@ -1216,7 +1216,7 @@ class PaymentController extends Controller
         $eventType = $payload['event_type'] ?? null;
 
         if ($eventType === 'PAYMENT.CAPTURE.COMPLETED') {
-            
+
             // 🔥 Ambil external_id asli kita yang disimpan PayPal di dalam custom_id
             $externalId = $payload['resource']['custom_id'] ?? null;
 
@@ -1226,7 +1226,7 @@ class PaymentController extends Controller
             }
 
             return DB::transaction(function () use ($externalId) {
-                
+
                 // 🔥 Pencarian sekarang 100% akurat dan instan, sama seperti Xendit & Stripe!
                 $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
 
@@ -1315,7 +1315,7 @@ class PaymentController extends Controller
     public function capturePayPal(Request $request)
     {
         // PayPal otomatis menyisipkan Order ID mereka ke dalam parameter URL bernama 'token'
-        $paypalToken = $request->query('token'); 
+        $paypalToken = $request->query('token');
         $externalId = $request->query('external_id');
         $orderId = $request->query('order_id');
 
@@ -1324,10 +1324,10 @@ class PaymentController extends Controller
         $paypalService->capturePayment($paypalToken);
 
         // Setelah ditarik, lemparkan pembeli ke halaman sukses Vue.js Anda seperti biasa
-        $frontendSuccessUrl = config('app.frontend_url') 
-            . '/payment-success?external_id=' . $externalId 
+        $frontendSuccessUrl = config('app.frontend_url')
+            . '/payment-success?external_id=' . $externalId
             . '&order_id=' . $orderId;
-            
+
         return redirect($frontendSuccessUrl);
     }
 
@@ -1385,6 +1385,74 @@ class PaymentController extends Controller
     //     }
     // }
 
+    // public function getShippingRates(Request $request)
+    // {
+    //     $user = $request->user();
+    //     if (! $user) {
+    //         return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
+    //     }
+
+    //     $request->validate([
+    //         'address_id' => 'required|exists:addresses,id',
+    //         'cart_ids' => 'required|array',
+    //         'cart_ids.*' => 'exists:carts,id',
+    //     ]);
+
+    //     $address = Address::find($request->address_id);
+
+    //     if (! $address || ! $address->postal_code) {
+    //         return response()->json(['message' => 'Alamat tidak valid atau kodepos tidak ditemukan.'], 400);
+    //     }
+
+    //     try {
+    //         $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+    //         // 1. Format Data Origin (Gudang/Toko)
+    //         $origin = [
+    //             'postal_code' => config('services.biteship.origin_postal_code', '60272'),
+    //             'latitude' => -7.25653,
+    //             'longitude' => 112.74877,
+    //         ];
+
+    //         // 2. Format Data Destination (Pelanggan)
+    //         // $destinationCountry = $address->region ?? 'Indonesia'; // Fallback ke Indonesia jika kosong
+
+    //         $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
+    //         $destination = [
+    //             'name' => trim($address->first_name_address . ' ' . $address->last_name_address),
+    //             'phone' => $user->phone ?? '08123456789',
+    //             'address' => $address->address_location,
+    //             'postal_code' => $address->postal_code,
+    //             'latitude' => $address->latitude,
+    //             'longitude' => $address->longitude,
+    //         ];
+
+    //         // 3. Format Data Items
+    //         $items = [];
+    //         foreach ($cartItems as $item) {
+    //             $items[] = [
+    //                 'name' => $item->product->name,
+    //                 'value' => $item->product->discount_price ?? $item->product->price,
+    //                 'quantity' => $item->quantity,
+    //                 'weight' => $item->product->weight ?? 1000,
+    //             ];
+    //         }
+
+    //         // =========================================================================
+    //         // [LOGIKA BARU] Panggil Shipping Factory berdasarkan Negara Tujuan!
+    //         // =========================================================================
+    //         $shippingGateway = ShippingFactory::make($destinationCountry);
+    //         $rates = $shippingGateway->calculateRates($origin, $destination, $items);
+
+    //         return response()->json($rates);
+
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function getShippingRates(Request $request)
     {
         $user = $request->user();
@@ -1415,34 +1483,66 @@ class PaymentController extends Controller
             ];
 
             // 2. Format Data Destination (Pelanggan)
-            // $destinationCountry = $address->region ?? 'Indonesia'; // Fallback ke Indonesia jika kosong
-
             $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
+
+            // [BARU] Konversi nama negara menjadi kode ISO-2 huruf untuk API Shippo
+            $countryCode = match (strtolower(trim($destinationCountry))) {
+                'indonesia' => 'ID',
+                'singapore' => 'SG',
+                'malaysia' => 'MY',
+                'united states' => 'US',
+                'australia' => 'AU',
+                'japan' => 'JP',
+                'united kingdom' => 'GB',
+                'taiwan' => 'TW',
+                default => 'US' // Fallback aman
+            };
+
             $destination = [
-                'name' => trim($address->first_name_address . ' ' . $address->last_name_address),
-                'phone' => $user->phone ?? '08123456789',
-                'address' => $address->address_location,
-                'postal_code' => $address->postal_code,
-                'latitude' => $address->latitude,
-                'longitude' => $address->longitude,
+                'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
+                'phone'        => $user->phone ?? '08123456789',
+                'address'      => $address->address_location,
+                'postal_code'  => $address->postal_code,
+                'latitude'     => $address->latitude,
+                'longitude'    => $address->longitude,
+                // [BARU] Data krusial yang dibutuhkan oleh kurir Internasional
+                'city'         => $address->city ?? 'Unknown City',
+                'province'     => $address->province ?? 'Unknown Province',
+                'country_code' => $countryCode,
             ];
 
-            // 3. Format Data Items
+            // 3. Format Data Items (Biteship Format)
             $items = [];
+            $totalWeightGrams = 0; // [BARU] Kalkulasi total berat untuk Shippo
+
             foreach ($cartItems as $item) {
+                $itemWeight = $item->product->weight ?? 1000;
                 $items[] = [
-                    'name' => $item->product->name,
-                    'value' => $item->product->discount_price ?? $item->product->price,
+                    'name'     => $item->product->name,
+                    'value'    => $item->product->discount_price ?? $item->product->price,
                     'quantity' => $item->quantity,
-                    'weight' => $item->product->weight ?? 1000,
+                    'weight'   => $itemWeight,
                 ];
+                $totalWeightGrams += ($itemWeight * $item->quantity);
             }
 
+            // [BARU] Menyisipkan total berat dalam kilogram untuk Shippo
+            // Shippo menerima parameter ke-3 ($parcel), jadi kita bungkus items & ringkasan beratnya
+            $parcelData = [
+                'items'  => $items,
+                'weight' => max(0.1, $totalWeightGrams / 1000), // Konversi gram ke KG (minimal 0.1 kg)
+                'length' => '20', // Asumsi standar ukuran paket
+                'width'  => '20',
+                'height' => '10'
+            ];
+
             // =========================================================================
-            // [LOGIKA BARU] Panggil Shipping Factory berdasarkan Negara Tujuan!
+            // Panggil Shipping Factory berdasarkan Negara Tujuan!
             // =========================================================================
             $shippingGateway = ShippingFactory::make($destinationCountry);
-            $rates = $shippingGateway->calculateRates($origin, $destination, $items);
+
+            // Oper $parcelData ke Factory agar Biteship dapat 'items' dan Shippo dapat 'weight'
+            $rates = $shippingGateway->calculateRates($origin, $destination, $parcelData);
 
             return response()->json($rates);
 
