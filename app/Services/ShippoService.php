@@ -193,32 +193,52 @@ class ShippoService implements ShippingGatewayInterface
                     'mass_unit'     => 'kg',
                 ]],
 
-                // [BARU] WAJIB UNTUK PENGIRIMAN INTERNASIONAL
+                // // [BARU] WAJIB UNTUK PENGIRIMAN INTERNASIONAL
+                // 'customs_declaration' => [
+                //     'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
+                //     'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
+                //     // 'certify' => true,
+                //     // // 'certifier' => 'Solher Admin',
+                //     // 'certifier' => $destination['name'] ?? 'Solher Admin',
+                //     'certify'             => "true", // Ubah ke string "true"
+                //     'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                //     'certifier_name'      => (string) ($destination['name'] ?? 'Solher Admin'), // Tambahkan sebagai cadangan
+                //     'items' => [
+                //         [
+                //             'description' => 'Solher Fashion Bag', // Deskripsi barang
+                //             'quantity' => 1,
+                //             'net_weight' => $parcel['weight'] ?? '0.5',
+                //             'mass_unit' => 'kg',
+                //             'value_amount' => '15.00', // Nilai barang (wajib diisi untuk asuransi/pajak)
+                //             'value_currency' => 'USD',
+                //             'origin_country' => 'ID' // Negara asal pembuat barang
+                //         ]
+                //     ]
+                // ],
+
+                // [PERBAIKAN FINAL]: Struktur yang disesuaikan dengan standar JSON API Shippo
                 'customs_declaration' => [
-                    'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
-                    'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
-                    // 'certify' => true,
-                    // // 'certifier' => 'Solher Admin',
-                    // 'certifier' => $destination['name'] ?? 'Solher Admin',
-                    'certify'             => "true", // Ubah ke string "true"
+                    'contents_type'       => 'MERCHANDISE',
+                    'non_delivery_option' => 'RETURN',
+                    'certify'             => true,           // WAJIB: Boolean, bukan string
+                    'disclaimer_accepted' => true,           // WAJIB: Seringkali diperlukan bersama certify
                     'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
-                    'certifier_name'      => (string) ($destination['name'] ?? 'Solher Admin'), // Tambahkan sebagai cadangan
                     'items' => [
                         [
-                            'description' => 'Solher Fashion Bag', // Deskripsi barang
-                            'quantity' => 1,
-                            'net_weight' => $parcel['weight'] ?? '0.5',
-                            'mass_unit' => 'kg',
-                            'value_amount' => '15.00', // Nilai barang (wajib diisi untuk asuransi/pajak)
+                            'description'    => 'Solher Fashion Bag',
+                            'quantity'       => 1,
+                            'net_weight'     => (string) ($parcel['weight'] ?? '0.5'),
+                            'mass_unit'      => 'kg',
+                            'value_amount'   => '15.00',
                             'value_currency' => 'USD',
-                            'origin_country' => 'ID' // Negara asal pembuat barang
+                            'origin_country' => 'ID'
                         ]
                     ]
                 ],
             ];
 
             Log::info('Payload Lengkap ke Shippo:', $payload); // TAMBAHKAN BARIS INI
-            
+
             $response = Http::withHeaders([
                 'Authorization' => 'ShippoToken ' . $this->apiKey,
                 'Content-Type' => 'application/json',
@@ -251,25 +271,45 @@ class ShippoService implements ShippingGatewayInterface
                     'mass_unit'     => 'kg',
                 ]],
 
-                // [BARU] WAJIB UNTUK PENGIRIMAN INTERNASIONAL
+                // // [BARU] WAJIB UNTUK PENGIRIMAN INTERNASIONAL
+                // 'customs_declaration' => [
+                //     'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
+                //     'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
+                //     // 'certify' => true,
+                //     // // 'certifier' => 'Solher Admin',
+                //     // 'certifier' => $destination['name'] ?? 'Solher Admin',
+                //     'certify'             => "true", // Ubah ke string "true"
+                //     'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                //     'certifier_name'      => (string) ($destination['name'] ?? 'Solher Admin'), // Tambahkan sebagai cadangan
+                //     'items' => [
+                //         [
+                //             'description' => 'Solher Fashion Bag', // Deskripsi barang
+                //             'quantity' => 1,
+                //             'net_weight' => $parcel['weight'] ?? '0.5',
+                //             'mass_unit' => 'kg',
+                //             'value_amount' => '15.00', // Nilai barang (wajib diisi untuk asuransi/pajak)
+                //             'value_currency' => 'USD',
+                //             'origin_country' => 'ID' // Negara asal pembuat barang
+                //         ]
+                //     ]
+                // ],
+
+                // [PERBAIKAN FINAL]: Struktur yang disesuaikan dengan standar JSON API Shippo
                 'customs_declaration' => [
-                    'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
-                    'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
-                    // 'certify' => true,
-                    // // 'certifier' => 'Solher Admin',
-                    // 'certifier' => $destination['name'] ?? 'Solher Admin',
-                    'certify'             => "true", // Ubah ke string "true"
+                    'contents_type'       => 'MERCHANDISE',
+                    'non_delivery_option' => 'RETURN',
+                    'certify'             => true,           // WAJIB: Boolean, bukan string
+                    'disclaimer_accepted' => true,           // WAJIB: Seringkali diperlukan bersama certify
                     'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
-                    'certifier_name'      => (string) ($destination['name'] ?? 'Solher Admin'), // Tambahkan sebagai cadangan
                     'items' => [
                         [
-                            'description' => 'Solher Fashion Bag', // Deskripsi barang
-                            'quantity' => 1,
-                            'net_weight' => $parcel['weight'] ?? '0.5',
-                            'mass_unit' => 'kg',
-                            'value_amount' => '15.00', // Nilai barang (wajib diisi untuk asuransi/pajak)
+                            'description'    => 'Solher Fashion Bag',
+                            'quantity'       => 1,
+                            'net_weight'     => (string) ($parcel['weight'] ?? '0.5'),
+                            'mass_unit'      => 'kg',
+                            'value_amount'   => '15.00',
                             'value_currency' => 'USD',
-                            'origin_country' => 'ID' // Negara asal pembuat barang
+                            'origin_country' => 'ID'
                         ]
                     ]
                 ],
