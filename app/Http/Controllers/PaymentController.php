@@ -1495,6 +1495,8 @@ class PaymentController extends Controller
                 'japan' => 'JP',
                 'united kingdom' => 'GB',
                 'taiwan' => 'TW',
+                'china' => 'CN',
+                'tiongkok' => 'CN',
                 default => 'US' // Fallback aman
             };
 
