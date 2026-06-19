@@ -19,6 +19,7 @@ class ShippingFactory
         }
 
         // Jika tujuan di luar negeri, delegasikan ke DHL Express
-        return app(DHLService::class);
+        // return app(DHLService::class);
+        return app(ShippoService::class);
     }
 }

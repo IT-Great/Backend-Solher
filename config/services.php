@@ -35,7 +35,7 @@ return [
         ],
     ],
     'xendit' => [
-        'secret_key' => env('XENDIT_SECRET_KEY')
+        'secret_key' => env('XENDIT_SECRET_KEY'),
     ],
     'stripe' => ['secret' => env('STRIPE_SECRET')],
     'biteship' => [
@@ -53,5 +53,7 @@ return [
         'secret' => env('PAYPAL_SECRET'),
         'mode' => env('PAYPAL_MODE', 'sandbox'),
     ],
-
+    'shippo' => [
+        'key' => env('SHIPPO_API_KEY'),
+    ],
 ];
