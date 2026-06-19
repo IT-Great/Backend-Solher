@@ -164,6 +164,61 @@ class ShippoService implements ShippingGatewayInterface
         Log::info('Data Destination Shippo Final:', $destination);
 
         try {
+            $payload = [
+                'address_from' => [
+                    'name'    => $origin['name'] ?? 'Solher Warehouse',
+                    'street1' => $origin['street1'] ?? '57 Jalan Wijaya Kusuma',
+                    'city'    => $origin['city'] ?? 'Surabaya',
+                    'state'   => $origin['state'] ?? 'Jawa Timur',
+                    'zip'     => $origin['postal_code'] ?? '60272', // Disesuaikan dengan controller
+                    'country' => 'ID',
+                    'phone'   => $origin['phone'] ?? '08973424888',
+                ],
+                'address_to' => [
+                    'name'    => $destination['name'] ?? 'Customer Solher',
+                    'street1' => $destination['address'] ?? 'Alamat belum lengkap',
+                    'city'    => $destination['city'] ?? 'Unknown City',
+                    // [KUNCI PERBAIKAN]: Membaca 'province' dari controller, bukan 'state'
+                    'state'   => $destination['province'] ?? 'Unknown State',
+                    'zip'     => $destination['postal_code'] ?? '00000',
+                    'country' => $destination['country_code'] ?? 'US',
+                    'phone'   => $destination['phone'] ?? '',
+                ],
+                'parcels' => [[
+                    'length'        => $parcel['length'] ?? '20',
+                    'width'         => $parcel['width'] ?? '20',
+                    'height'        => $parcel['height'] ?? '10',
+                    'distance_unit' => 'cm',
+                    'weight'        => $parcel['weight'] ?? '0.5',
+                    'mass_unit'     => 'kg',
+                ]],
+
+                // [BARU] WAJIB UNTUK PENGIRIMAN INTERNASIONAL
+                'customs_declaration' => [
+                    'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
+                    'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
+                    // 'certify' => true,
+                    // // 'certifier' => 'Solher Admin',
+                    // 'certifier' => $destination['name'] ?? 'Solher Admin',
+                    'certify'             => "true", // Ubah ke string "true"
+                    'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                    'certifier_name'      => (string) ($destination['name'] ?? 'Solher Admin'), // Tambahkan sebagai cadangan
+                    'items' => [
+                        [
+                            'description' => 'Solher Fashion Bag', // Deskripsi barang
+                            'quantity' => 1,
+                            'net_weight' => $parcel['weight'] ?? '0.5',
+                            'mass_unit' => 'kg',
+                            'value_amount' => '15.00', // Nilai barang (wajib diisi untuk asuransi/pajak)
+                            'value_currency' => 'USD',
+                            'origin_country' => 'ID' // Negara asal pembuat barang
+                        ]
+                    ]
+                ],
+            ];
+
+            Log::info('Payload Lengkap ke Shippo:', $payload); // TAMBAHKAN BARIS INI
+            
             $response = Http::withHeaders([
                 'Authorization' => 'ShippoToken ' . $this->apiKey,
                 'Content-Type' => 'application/json',
@@ -200,9 +255,12 @@ class ShippoService implements ShippingGatewayInterface
                 'customs_declaration' => [
                     'contents_type' => 'MERCHANDISE', // Jenis barang: Dagangan
                     'non_delivery_option' => 'RETURN', // Jika gagal kirim, kembalikan
-                    'certify' => true,
-                    // 'certifier' => 'Solher Admin',
-                    'certifier' => $destination['name'] ?? 'Solher Admin',
+                    // 'certify' => true,
+                    // // 'certifier' => 'Solher Admin',
+                    // 'certifier' => $destination['name'] ?? 'Solher Admin',
+                    'certify'             => "true", // Ubah ke string "true"
+                    'certifier'           => (string) ($destination['name'] ?? 'Solher Admin'),
+                    'certifier_name'      => (string) ($destination['name'] ?? 'Solher Admin'), // Tambahkan sebagai cadangan
                     'items' => [
                         [
                             'description' => 'Solher Fashion Bag', // Deskripsi barang
