@@ -665,6 +665,8 @@ class TransactionController extends Controller
                 $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
                 $totalShippingCost = $baseShippingRate * $totalQuantity;
 
+                $affiliateId = Cookie::get('solher_affiliate_id');
+
                 $transaction = Transaction::create([
                     'user_id' => $lockedUser->id,
                     'address_id' => $request->address_id,
@@ -675,6 +677,7 @@ class TransactionController extends Controller
                     'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
                     'order_id' => $orderId,
                     'total_amount' => $totalAmount,
+                    'affiliate_id' => $affiliateId,
                     'status' => 'pending',
                     'point' => $earnedPoints,
                     'points_used' => $pointsUsed,
@@ -842,11 +845,11 @@ class TransactionController extends Controller
 
                 // 1. Tentukan URL sukses standar (Untuk Xendit -> Langsung ke Vue.js)
                 $frontendSuccessUrl = config('app.frontend_url')
-                    . '/payment-success?external_id=' . $externalId
-                    . '&order_id=' . $transactionData['transaction']->order_id;
+                    .'/payment-success?external_id='.$externalId
+                    .'&order_id='.$transactionData['transaction']->order_id;
 
                 // 2. Tentukan URL sukses khusus PayPal (Untuk PayPal -> Masuk Jembatan Capture dulu)
-                $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' . $transactionData['transaction']->order_id);
+                $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id);
 
                 // 3. Logika Kondisional Penentu Arah
                 $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
@@ -858,7 +861,7 @@ class TransactionController extends Controller
                     'amount' => $finalAmount,
                     'currency' => $currency,
                     'items' => $transactionData['gatewayItems'],
-                    'success_redirect_url' => $dynamicSuccessUrl, 
+                    'success_redirect_url' => $dynamicSuccessUrl,
                     'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
                 ]);
 
@@ -1071,6 +1074,20 @@ class TransactionController extends Controller
         }
 
         $transaction->update(['status' => 'completed']);
+
+        // 👇 TEMPEL KODE PENCAIRAN AFILIASI DI SINI 👇
+        if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
+
+            // 1. Ubah status komisi menjadi cair (settled)
+            $transaction->update(['commission_status' => 'settled']);
+
+            // 2. Tambahkan uangnya ke dompet afiliator
+            $affiliate = User::find($transaction->affiliate_id);
+            if ($affiliate) {
+                $affiliate->increment('commission_balance', $transaction->commission_earned);
+            }
+        }
+
         $this->checkAndAssignMembership($transaction->user);
 
         // [PERBAIKAN MUTLAK] Jangan lupakan poin pelanggan yang menyelesaikan pesanan manual!
