@@ -447,6 +447,8 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () 
     Route::prefix('admin/affiliates')->group(function () {
         Route::get('/dashboard', [AffiliateController::class, 'index']);
         Route::post('/withdrawals/{id}/approve', [AffiliateController::class, 'approve']);
+        // [BARU] Rute Persetujuan Afiliator
+        Route::post('/applications/{id}/approve', [AffiliateController::class, 'approveApplication']);
     });
 });
 

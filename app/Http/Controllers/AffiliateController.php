@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AffiliateApplication;
 use Illuminate\Http\Request;
 use App\Models\Transaction;
 use App\Models\Withdrawal;
@@ -262,5 +263,42 @@ class AffiliateController extends Controller
             'status' => 'success',
             'message' => 'Pencairan dana berhasil ditandai selesai.'
         ]);
+    }
+
+    public function approveApplication($id)
+    {
+        $application = AffiliateApplication::findOrFail($id);
+
+        if ($application->status !== 'pending') {
+            return response()->json(['message' => 'Pendaftaran ini sudah diproses.'], 400);
+        }
+
+        try {
+            DB::transaction(function () use ($application) {
+                // 1. Ubah status aplikasi menjadi disetujui
+                $application->update(['status' => 'approved']);
+
+                $user = $application->user;
+
+                // 2. Buat Kode Referal Otomatis (Contoh: Budi -> BUDI-8A2F)
+                $prefix = strtoupper(substr($user->first_name, 0, 4));
+                $randomString = strtoupper(Str::random(4));
+                $referralCode = $prefix . '-' . $randomString;
+
+                // 3. Sulap user biasa menjadi afiliator tanpa query manual!
+                $user->update([
+                    'is_affiliate' => true,
+                    'referral_code' => $referralCode
+                ]);
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Pendaftaran disetujui! Akun pengguna kini menjadi afiliator aktif.'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Gagal memproses persetujuan.'], 500);
+        }
     }
 }
