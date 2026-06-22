@@ -590,7 +590,19 @@ class TransactionController extends Controller
 
                 $totalAmount = 0;
                 foreach ($cartItems as $item) {
-                    $currentPrice = $item->product->discount_price ?? $item->product->price;
+                    // $currentPrice = $item->product->discount_price ?? $item->product->price;
+                    $currentPrice = $item->product->price; // Set default ke harga normal
+
+                    // Cek apakah ada diskon DAN apakah waktu sekarang berada di dalam masa aktif diskon
+                    // (Ganti 'discount_start' dan 'discount_end' dengan nama kolom di database Anda)
+                    if (
+                        !empty($item->product->discount_price) &&
+                        $item->product->discount_start <= now() &&
+                        $item->product->discount_end >= now()
+                    ) {
+                        $currentPrice = $item->product->discount_price;
+                    }
+
                     $totalAmount += ($currentPrice * $item->quantity);
                 }
 
@@ -723,7 +735,17 @@ class TransactionController extends Controller
                         throw new \Exception("Stock {$product->name} insufficient");
                     }
 
-                    $price = $item->product->discount_price ?? $item->product->price;
+                    // $price = $item->product->discount_price ?? $item->product->price;
+                    // 👇 [PERBAIKAN LOGIKA HARGA DISKON KEDUA] 👇
+                    $price = $product->price; 
+                    if (
+                        !empty($product->discount_price) &&
+                        $product->discount_start <= now() && 
+                        $product->discount_end >= now()
+                    ) {
+                        $price = $product->discount_price;
+                    }
+                    // 👆 BATAS PERBAIKAN 👆
 
                     TransactionDetail::create([
                         'transaction_id' => $transaction->id,

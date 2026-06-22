@@ -288,6 +288,15 @@ class Product extends Model
         return url($pathOnly);
     }
 
+    public function getCurrentPriceAttribute()
+    {
+        if ($this->discount_price && $this->discount_start <= now() && $this->discount_end >= now()) {
+            return $this->discount_price;
+        }
+
+        return $this->price;
+    }
+
     // public function getDiscountPriceAttribute($value)
     // {
     //     if (is_null($value)) {

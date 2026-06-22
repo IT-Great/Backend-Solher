@@ -1178,14 +1178,40 @@ class PaymentController extends Controller
             ];
 
             // 3. Format Data Items (Biteship Format)
+            // $items = [];
+            // $totalWeightGrams = 0; // [BARU] Kalkulasi total berat untuk Shippo
+
+            // foreach ($cartItems as $item) {
+            //     $itemWeight = $item->product->weight ?? 1000;
+            //     $items[] = [
+            //         'name'     => $item->product->name,
+            //         'value'    => $item->product->discount_price ?? $item->product->price,
+            //         'quantity' => $item->quantity,
+            //         'weight'   => $itemWeight,
+            //     ];
+            //     $totalWeightGrams += ($itemWeight * $item->quantity);
+            // }
+
+            // 3. Format Data Items (Biteship Format)
             $items = [];
-            $totalWeightGrams = 0; // [BARU] Kalkulasi total berat untuk Shippo
+            $totalWeightGrams = 0; 
 
             foreach ($cartItems as $item) {
                 $itemWeight = $item->product->weight ?? 1000;
+                
+                // 👇 [PERBAIKAN LOGIKA HARGA DISKON] 👇
+                $validPrice = $item->product->price;
+                if (
+                    !empty($item->product->discount_price) &&
+                    $item->product->discount_start <= now() && 
+                    $item->product->discount_end >= now()
+                ) {
+                    $validPrice = $item->product->discount_price;
+                }
+
                 $items[] = [
                     'name'     => $item->product->name,
-                    'value'    => $item->product->discount_price ?? $item->product->price,
+                    'value'    => $validPrice, // Gunakan harga yang sudah tervalidasi
                     'quantity' => $item->quantity,
                     'weight'   => $itemWeight,
                 ];
