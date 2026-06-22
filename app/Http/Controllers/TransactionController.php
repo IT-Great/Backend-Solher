@@ -570,6 +570,7 @@ class TransactionController extends Controller
                 'delivery_type' => 'nullable|string',
                 // [BARU] Wajibkan frontend mengirim mata uang
                 'currency' => 'required|string',
+                'referral_code' => 'nullable|string',
             ]);
 
             $user = $request->user();
@@ -665,7 +666,32 @@ class TransactionController extends Controller
                 $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
                 $totalShippingCost = $baseShippingRate * $totalQuantity;
 
-                $affiliateId = Cookie::get('solher_affiliate_id');
+                // $affiliateId = Cookie::get('solher_affiliate_id');
+                // =========================================================================
+                // [BARU] LOGIKA PELACAK KOMISI AFILIATOR
+                // =========================================================================
+
+                $affiliateId = null;
+                $commissionEarned = 0;
+                $commissionStatus = null;
+
+                if (!empty($request->referral_code)) {
+                    // Cari siapa pemilik kode referal ini (Hanya yang statusnya is_affiliate = 1)
+                    $affiliateUser = User::where('referral_code', $request->referral_code)
+                                         ->where('is_affiliate', true)
+                                         ->first();
+
+                    if ($affiliateUser) {
+                        // Jangan biarkan user memakai kode afiliasinya sendiri untuk belanja
+                        if ($affiliateUser->id !== $lockedUser->id) {
+                            $affiliateId = $affiliateUser->id;
+                            $commissionRate = $affiliateUser->commission_rate ?? 5.00;
+                            // Komisi dihitung dari total harga barang (sebelum dipotong poin/promo, atau sesudah, tergantung kebijakan Ibu Melisa. Standarnya dari total kotor barang).
+                            $commissionEarned = $totalAmount * ($commissionRate / 100);
+                            $commissionStatus = 'pending';
+                        }
+                    }
+                }
 
                 $transaction = Transaction::create([
                     'user_id' => $lockedUser->id,
@@ -678,6 +704,8 @@ class TransactionController extends Controller
                     'order_id' => $orderId,
                     'total_amount' => $totalAmount,
                     'affiliate_id' => $affiliateId,
+                    'commission_earned' => $commissionEarned,
+                    'commission_status' => $commissionStatus,
                     'status' => 'pending',
                     'point' => $earnedPoints,
                     'points_used' => $pointsUsed,
