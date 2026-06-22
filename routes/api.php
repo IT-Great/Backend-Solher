@@ -372,6 +372,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
     Route::post('/promo/verify', [PromoController::class, 'verify']);
+
+    // [BARU] Rute Khusus Afiliator Solher
+    Route::prefix('affiliate')->group(function () {
+        Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
+        Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
+    });
 });
 
 // =========================================================================
@@ -437,12 +443,6 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () 
     Route::post('/admin/events', [EventController::class, 'store']);
     Route::put('/admin/events/{id}', [EventController::class, 'update']);
     Route::delete('/admin/events/{id}', [EventController::class, 'destroy']);
-
-    // [BARU] Rute Khusus Afiliator Solher
-    Route::prefix('affiliate')->group(function () {
-        Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
-        Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
-    });
 
     Route::prefix('admin/affiliates')->group(function () {
         Route::get('/dashboard', [AffiliateController::class, 'index']);
