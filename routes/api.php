@@ -111,7 +111,6 @@
 //     Route::post('/promo/verify', [App\Http\Controllers\PromoController::class, 'verify']);
 // });
 
-
 // // =========================================================================
 // // PROTECTED ROUTES: ADMIN & STAFF AREA (RBAC APPLIED)
 // // =========================================================================
@@ -250,31 +249,34 @@
 //     ], 200);
 // });
 
+use App\Http\Controllers\AddressController;
 use App\Http\Controllers\AffiliateController;
-use App\Http\Controllers\ChatController;
-use App\Http\Controllers\EventController;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\CoaController;
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartController;
-use App\Http\Controllers\HomeController;
-use App\Http\Controllers\ProductController;
-use App\Http\Controllers\ContactController;
-use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\InvoiceController;
-use App\Http\Controllers\AddressController;
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\S3UploadController;
-use App\Http\Controllers\WishlistController;
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\CategoryCoaController;
-use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\CoaController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EventController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductStockController;
+use App\Http\Controllers\PromoController;
+use App\Http\Controllers\S3UploadController;
+use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransferReceivePaymentController;
+use App\Http\Controllers\WishlistController;
+use App\Models\Subscriber;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -296,14 +298,12 @@ Route::get('/products/{id}', [ProductController::class, 'show']);
 Route::get('/guest/categories', [CategoryController::class, 'index']);
 Route::get('/events', [EventController::class, 'indexPublic']);
 
-
 // --- KLASTER AUTH (Dibatasi 5 request / menit untuk mencegah Brute-Force) ---
 Route::middleware('throttle:auth-limiter')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/admin/login', [AuthController::class, 'adminLogin']);
 });
-
 
 // --- KLASTER OTP (Dibatasi 3 request / menit untuk mencegah Email Bombing) ---
 Route::middleware('throttle:otp-limiter')->group(function () {
@@ -318,7 +318,6 @@ Route::middleware('throttle:otp-limiter')->group(function () {
     Route::post('/admin/forgot-password/reset', [AuthController::class, 'adminResetPassword']);
 });
 
-
 // --- WEBHOOKS & FORMS ---
 Route::post('/contact', [ContactController::class, 'store']);
 Route::post('/subscribe', [ContactController::class, 'subscribe']);
@@ -327,8 +326,7 @@ Route::post('/payments/callback', [PaymentController::class, 'xenditCallback']);
 Route::post('/payments/stripe-webhook', [PaymentController::class, 'stripeWebhook']);
 Route::post('/payments/paypal-webhook', [PaymentController::class, 'paypalWebhook']);
 Route::get('/payments/paypal-capture', [PaymentController::class, 'capturePayPal']);
-Route::post('/promo/claim', [App\Http\Controllers\PromoController::class, 'claim']);
-
+Route::post('/promo/claim', [PromoController::class, 'claim']);
 
 // =========================================================================
 // PROTECTED ROUTES: GLOBAL LOGGED IN USERS (Semua User)
@@ -373,9 +371,8 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
-    Route::post('/promo/verify', [App\Http\Controllers\PromoController::class, 'verify']);
+    Route::post('/promo/verify', [PromoController::class, 'verify']);
 });
-
 
 // =========================================================================
 // PROTECTED ROUTES: ADMIN & STAFF AREA (RBAC APPLIED)
@@ -419,7 +416,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::post('/admin/messages/{id}/respond', [ContactController::class, 'respondMessage']);
 
     Route::get('/admin/subscribers', function () {
-        return response()->json(\App\Models\Subscriber::latest()->get());
+        return response()->json(Subscriber::latest()->get());
     });
 });
 
@@ -432,7 +429,7 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () 
     Route::delete('/products/{id}/force', [ProductController::class, 'forceDelete']);
     Route::post('/admin/s3/presign', [S3UploadController::class, 'presign']);
 
-    Route::get('/admin/audit-logs', [\App\Http\Controllers\AuditLogController::class, 'index']);
+    Route::get('/admin/audit-logs', [AuditLogController::class, 'index']);
 
     // CRUD Event
     Route::get('/admin/events', [EventController::class, 'index']);
@@ -493,7 +490,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::get('/exchange-rates', function () {
-    if (!Cache::has('exchange_rates')) {
+    if (! Cache::has('exchange_rates')) {
         Artisan::call('currency:update-rates');
     }
 
@@ -504,16 +501,21 @@ Route::get('/exchange-rates', function () {
         'base' => 'IDR',
         'data' => [
             'rates' => $rates,
-            'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString()
-        ]
+            'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString(),
+        ],
     ], 200);
 });
 
 // GRUP I: Affiliate
 Route::middleware('auth:sanctum')->group(function () {
-// [BARU] Rute Khusus Afiliator Solher
+    // [BARU] Rute Khusus Afiliator Solher
     Route::prefix('affiliate')->group(function () {
         Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
         Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
+    });
+
+    Route::prefix('admin/affiliates')->group(function () {
+        Route::get('/dashboard', [AffiliateController::class, 'index']);
+        Route::post('/withdrawals/{id}/approve', [AffiliateController::class, 'approve']);
     });
 });
