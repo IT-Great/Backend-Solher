@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\AffiliateApprovedMail;
 use App\Models\AffiliateApplication;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Withdrawal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 
 class AffiliateController extends Controller
 {
@@ -282,6 +284,43 @@ class AffiliateController extends Controller
         ]);
     }
 
+    // public function approveApplication($id)
+    // {
+    //     $application = AffiliateApplication::findOrFail($id);
+
+    //     if ($application->status !== 'pending') {
+    //         return response()->json(['message' => 'Pendaftaran ini sudah diproses.'], 400);
+    //     }
+
+    //     try {
+    //         DB::transaction(function () use ($application) {
+    //             // 1. Ubah status aplikasi menjadi disetujui
+    //             $application->update(['status' => 'approved']);
+
+    //             $user = $application->user;
+
+    //             // 2. Buat Kode Referal Otomatis (Contoh: Budi -> BUDI-8A2F)
+    //             $prefix = strtoupper(substr($user->first_name, 0, 4));
+    //             $randomString = strtoupper(Str::random(4));
+    //             $referralCode = $prefix.'-'.$randomString;
+
+    //             // 3. Sulap user biasa menjadi afiliator tanpa query manual!
+    //             $user->update([
+    //                 'is_affiliate' => true,
+    //                 'referral_code' => $referralCode,
+    //             ]);
+    //         });
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'message' => 'Pendaftaran disetujui! Akun pengguna kini menjadi afiliator aktif.',
+    //         ]);
+
+    //     } catch (\Exception $e) {
+    //         return response()->json(['message' => 'Gagal memproses persetujuan.'], 500);
+    //     }
+    // }
+
     public function approveApplication($id)
     {
         $application = AffiliateApplication::findOrFail($id);
@@ -291,7 +330,8 @@ class AffiliateController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($application) {
+            // Tarik nilai referral code keluar dari transaksi agar bisa diemailkan
+            $referralCode = DB::transaction(function () use ($application) {
                 // 1. Ubah status aplikasi menjadi disetujui
                 $application->update(['status' => 'approved']);
 
@@ -300,22 +340,27 @@ class AffiliateController extends Controller
                 // 2. Buat Kode Referal Otomatis (Contoh: Budi -> BUDI-8A2F)
                 $prefix = strtoupper(substr($user->first_name, 0, 4));
                 $randomString = strtoupper(Str::random(4));
-                $referralCode = $prefix.'-'.$randomString;
+                $code = $prefix.'-'.$randomString;
 
                 // 3. Sulap user biasa menjadi afiliator tanpa query manual!
                 $user->update([
                     'is_affiliate' => true,
-                    'referral_code' => $referralCode,
+                    'referral_code' => $code,
                 ]);
+
+                return $code; // Kembalikan kode untuk digunakan di luar blok ini
             });
+
+            // 4. Kirim Email Notifikasi ke User (menggunakan antrean / queue)
+            Mail::to($application->user->email)->queue(new AffiliateApprovedMail($application->user, $referralCode));
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Pendaftaran disetujui! Akun pengguna kini menjadi afiliator aktif.',
+                'message' => 'Pendaftaran disetujui! Akun pengguna kini menjadi afiliator aktif dan email telah dikirim.',
             ]);
 
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Gagal memproses persetujuan.'], 500);
+            return response()->json(['message' => 'Gagal memproses persetujuan: ' . $e->getMessage()], 500);
         }
     }
 
