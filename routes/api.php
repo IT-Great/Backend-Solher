@@ -437,6 +437,17 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin'])->group(function () 
     Route::post('/admin/events', [EventController::class, 'store']);
     Route::put('/admin/events/{id}', [EventController::class, 'update']);
     Route::delete('/admin/events/{id}', [EventController::class, 'destroy']);
+
+    // [BARU] Rute Khusus Afiliator Solher
+    Route::prefix('affiliate')->group(function () {
+        Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
+        Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
+    });
+
+    Route::prefix('admin/affiliates')->group(function () {
+        Route::get('/dashboard', [AffiliateController::class, 'index']);
+        Route::post('/withdrawals/{id}/approve', [AffiliateController::class, 'approve']);
+    });
 });
 
 // GRUP E: STOK & GUDANG (Admin & Gudang)
@@ -504,18 +515,4 @@ Route::get('/exchange-rates', function () {
             'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString(),
         ],
     ], 200);
-});
-
-// GRUP I: Affiliate
-Route::middleware('auth:sanctum')->group(function () {
-    // [BARU] Rute Khusus Afiliator Solher
-    Route::prefix('affiliate')->group(function () {
-        Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
-        Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
-    });
-
-    Route::prefix('admin/affiliates')->group(function () {
-        Route::get('/dashboard', [AffiliateController::class, 'index']);
-        Route::post('/withdrawals/{id}/approve', [AffiliateController::class, 'approve']);
-    });
 });
