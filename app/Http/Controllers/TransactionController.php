@@ -1703,6 +1703,20 @@ class TransactionController extends Controller
             if ($status === 'delivered' && $transaction->status === 'processing') {
                 $updates['status'] = 'completed';
 
+                // ==========================================================
+                // 👇 [BARU] CAIRKAN KOMISI KARENA BARANG SUDAH SAMPAI 👇
+                // ==========================================================
+                if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
+                    $updates['commission_status'] = 'settled'; // Status komisi jadi Selesai
+
+                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+                    if ($affiliateUser) {
+                        // Tambahkan uang ke dompet afiliator sesuai perhitungan saat checkout
+                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+                    }
+                }
+                // ==========================================================
+
                 // Simpan status transaksi agar query SUM di helper bisa menangkap transaksi ini
                 $transaction->update($updates);
 

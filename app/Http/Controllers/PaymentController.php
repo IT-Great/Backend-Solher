@@ -386,33 +386,45 @@ class PaymentController extends Controller
                 //             $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
                 //         } else {
                 //             $totalItems = $transaction->details->sum('quantity');
-                //             $commissionEarned = $totalItems * $affiliate->commission_rate;
+                //            // $commissionEarned = $totalItems * $affiliate->commission_rate;
                 //         }
                 //         $transaction->update(['commission_earned' => $commissionEarned]);
                 //         $affiliate->increment('commission_balance', $commissionEarned);
                 //     }
                 // }
 
-                if ($transaction->affiliate_id) {
-                    $affiliate = \App\Models\User::find($transaction->affiliate_id);
-                    if ($affiliate) {
-                        $commissionEarned = 0;
-                        if ($affiliate->commission_type === 'percentage') {
-                            $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
-                        } else {
-                            $totalItems = $transaction->details->sum('quantity');
-                            $commissionEarned = $totalItems * $affiliate->commission_rate;
-                        }
-                        
-                        // [PERUBAHAN]: Hanya catat nominal dan set status menjadi 'pending'
-                        // Uang BELUM masuk ke commission_balance milik afiliator
-                        $transaction->update([
-                            'commission_earned' => $commissionEarned,
-                            'commission_status' => 'pending'
-                        ]);
+                // if ($transaction->affiliate_id) {
+                //     $affiliate = \App\Models\User::find($transaction->affiliate_id);
+                //     if ($affiliate) {
+                //         $commissionEarned = 0;
+                //         if ($affiliate->commission_type === 'percentage') {
+                //             $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
+                //         } else {
+                //             $totalItems = $transaction->details->sum('quantity');
+                //             // $commissionEarned = $totalItems * $affiliate->commission_rate;
+                //         }
+
+                //         // [PERUBAHAN]: Hanya catat nominal dan set status menjadi 'pending'
+                //         // Uang BELUM masuk ke commission_balance milik afiliator
+                //         $transaction->update([
+                //             'commission_earned' => $commissionEarned,
+                //             'commission_status' => 'pending'
+                //         ]);
+                //     }
+                // }
+                // 👆 BATAS KODE AFILIATOR 👆
+
+                // =====================================================================
+                // 👇 [PERBAIKAN] PENCAIRAN INSTAN KHUSUS IN-STORE PICKUP 👇
+                // =====================================================================
+                if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+                    $transaction->update(['commission_status' => 'settled']);
+
+                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+                    if ($affiliateUser) {
+                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
                     }
                 }
-                // 👆 BATAS KODE AFILIATOR 👆
 
                 // Eksekusi API Logistik (Biteship/DHL)
                 if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
@@ -568,33 +580,45 @@ class PaymentController extends Controller
                 //             $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
                 //         } else {
                 //             $totalItems = $transaction->details->sum('quantity');
-                //             $commissionEarned = $totalItems * $affiliate->commission_rate;
+                //            // $commissionEarned = $totalItems * $affiliate->commission_rate;
                 //         }
                 //         $transaction->update(['commission_earned' => $commissionEarned]);
                 //         $affiliate->increment('commission_balance', $commissionEarned);
                 //     }
                 // }
 
-                if ($transaction->affiliate_id) {
-                    $affiliate = \App\Models\User::find($transaction->affiliate_id);
-                    if ($affiliate) {
-                        $commissionEarned = 0;
-                        if ($affiliate->commission_type === 'percentage') {
-                            $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
-                        } else {
-                            $totalItems = $transaction->details->sum('quantity');
-                            $commissionEarned = $totalItems * $affiliate->commission_rate;
-                        }
-                        
-                        // [PERUBAHAN]: Hanya catat nominal dan set status menjadi 'pending'
-                        // Uang BELUM masuk ke commission_balance milik afiliator
-                        $transaction->update([
-                            'commission_earned' => $commissionEarned,
-                            'commission_status' => 'pending'
-                        ]);
+                // if ($transaction->affiliate_id) {
+                //     $affiliate = \App\Models\User::find($transaction->affiliate_id);
+                //     if ($affiliate) {
+                //         $commissionEarned = 0;
+                //         if ($affiliate->commission_type === 'percentage') {
+                //             $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
+                //         } else {
+                //             $totalItems = $transaction->details->sum('quantity');
+                //             // $commissionEarned = $totalItems * $affiliate->commission_rate;
+                //         }
+
+                //         // [PERUBAHAN]: Hanya catat nominal dan set status menjadi 'pending'
+                //         // Uang BELUM masuk ke commission_balance milik afiliator
+                //         $transaction->update([
+                //             'commission_earned' => $commissionEarned,
+                //             'commission_status' => 'pending'
+                //         ]);
+                //     }
+                // }
+                // 👆 BATAS KODE AFILIATOR 👆
+
+                // =====================================================================
+                // 👇 [PERBAIKAN] PENCAIRAN INSTAN KHUSUS IN-STORE PICKUP 👇
+                // =====================================================================
+                if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+                    $transaction->update(['commission_status' => 'settled']);
+
+                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+                    if ($affiliateUser) {
+                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
                     }
                 }
-                // 👆 BATAS KODE AFILIATOR 👆
 
                 // Eksekusi API Logistik (Biteship/DHL) - Logika kembar dengan Xendit
                 if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
@@ -850,33 +874,45 @@ class PaymentController extends Controller
                 //             $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
                 //         } else {
                 //             $totalItems = $transaction->details->sum('quantity');
-                //             $commissionEarned = $totalItems * $affiliate->commission_rate;
+                //            // $commissionEarned = $totalItems * $affiliate->commission_rate;
                 //         }
                 //         $transaction->update(['commission_earned' => $commissionEarned]);
                 //         $affiliate->increment('commission_balance', $commissionEarned);
                 //     }
                 // }
 
-                if ($transaction->affiliate_id) {
-                    $affiliate = \App\Models\User::find($transaction->affiliate_id);
-                    if ($affiliate) {
-                        $commissionEarned = 0;
-                        if ($affiliate->commission_type === 'percentage') {
-                            $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
-                        } else {
-                            $totalItems = $transaction->details->sum('quantity');
-                            $commissionEarned = $totalItems * $affiliate->commission_rate;
-                        }
-                        
-                        // [PERUBAHAN]: Hanya catat nominal dan set status menjadi 'pending'
-                        // Uang BELUM masuk ke commission_balance milik afiliator
-                        $transaction->update([
-                            'commission_earned' => $commissionEarned,
-                            'commission_status' => 'pending'
-                        ]);
+                // if ($transaction->affiliate_id) {
+                //     $affiliate = \App\Models\User::find($transaction->affiliate_id);
+                //     if ($affiliate) {
+                //         $commissionEarned = 0;
+                //         if ($affiliate->commission_type === 'percentage') {
+                //             $commissionEarned = $transaction->total_amount * ($affiliate->commission_rate / 100);
+                //         } else {
+                //             $totalItems = $transaction->details->sum('quantity');
+                //             // $commissionEarned = $totalItems * $affiliate->commission_rate;
+                //         }
+
+                //         // [PERUBAHAN]: Hanya catat nominal dan set status menjadi 'pending'
+                //         // Uang BELUM masuk ke commission_balance milik afiliator
+                //         $transaction->update([
+                //             'commission_earned' => $commissionEarned,
+                //             'commission_status' => 'pending'
+                //         ]);
+                //     }
+                // }
+                // 👆 BATAS KODE AFILIATOR 👆
+
+                // =====================================================================
+                // 👇 [PERBAIKAN] PENCAIRAN INSTAN KHUSUS IN-STORE PICKUP 👇
+                // =====================================================================
+                if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+                    $transaction->update(['commission_status' => 'settled']);
+
+                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+                    if ($affiliateUser) {
+                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
                     }
                 }
-                // 👆 BATAS KODE AFILIATOR 👆
 
                 if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
                     DB::afterCommit(function () use ($transaction) {
