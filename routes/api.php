@@ -250,6 +250,7 @@
 //     ], 200);
 // });
 
+use App\Http\Controllers\AffiliateController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\EventController;
 use Illuminate\Http\Request;
@@ -506,4 +507,13 @@ Route::get('/exchange-rates', function () {
             'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString()
         ]
     ], 200);
+});
+
+// GRUP I: Affiliate
+Route::middleware('auth:sanctum')->group(function () {
+// [BARU] Rute Khusus Afiliator Solher
+    Route::prefix('affiliate')->group(function () {
+        Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
+        Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
+    });
 });
