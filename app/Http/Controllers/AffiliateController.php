@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\AffiliateApplication;
-use Illuminate\Http\Request;
 use App\Models\Transaction;
-use App\Models\Withdrawal;
 use App\Models\User;
+use App\Models\Withdrawal;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AffiliateController extends Controller
@@ -19,7 +19,7 @@ class AffiliateController extends Controller
         $user = $request->user();
 
         // Keamanan lapis pertama: Tolak jika bukan afiliator
-        if (!$user->is_affiliate) {
+        if (! $user->is_affiliate) {
             return response()->json(['message' => 'Anda bukan afiliator terdaftar.'], 403);
         }
 
@@ -50,8 +50,8 @@ class AffiliateController extends Controller
                 'active_balance' => $activeBalance,
                 'pending_balance' => $pendingBalance,
                 'total_earned' => $totalEarned,
-                'transactions' => $transactions
-            ]
+                'transactions' => $transactions,
+            ],
         ]);
     }
 
@@ -138,15 +138,15 @@ class AffiliateController extends Controller
         // 1. Logika Deteksi Potongan Bank (BI-FAST)
         $adminFee = 0;
         // Jika teks bank_name TIDAK mengandung kata "mandiri", kenakan potongan BI-FAST
-        if (!str_contains($bankName, 'mandiri')) {
-            $adminFee = 2500; 
+        if (! str_contains($bankName, 'mandiri')) {
+            $adminFee = 2500;
         }
 
         $netReceived = $amountToWithdraw - $adminFee;
 
         try {
             return DB::transaction(function () use ($userId, $request, $amountToWithdraw, $adminFee, $netReceived) {
-                
+
                 $user = User::where('id', $userId)->lockForUpdate()->first();
 
                 if ($user->commission_balance < $amountToWithdraw) {
@@ -158,8 +158,8 @@ class AffiliateController extends Controller
                 }
 
                 // 2. Simpan instruksi transfer bersih untuk Admin di kolom admin_notes
-                $transferInstruction = "Biaya Admin: Rp" . number_format($adminFee, 0, ',', '.') . 
-                                       " | TRANSFER BERSIH KE AFILIATOR: Rp" . number_format($netReceived, 0, ',', '.');
+                $transferInstruction = 'Biaya Admin: Rp'.number_format($adminFee, 0, ',', '.').
+                                       ' | TRANSFER BERSIH KE AFILIATOR: Rp'.number_format($netReceived, 0, ',', '.');
 
                 $withdrawal = Withdrawal::create([
                     'affiliate_id' => $user->id,
@@ -175,19 +175,19 @@ class AffiliateController extends Controller
 
                 return response()->json([
                     'status' => 'success',
-                    'message' => 'Penarikan diajukan. Biaya admin Rp ' . number_format($adminFee, 0, ',', '.') . ' telah disesuaikan.',
+                    'message' => 'Penarikan diajukan. Biaya admin Rp '.number_format($adminFee, 0, ',', '.').' telah disesuaikan.',
                     'data' => [
                         'withdrawal_id' => $withdrawal->id,
                         'amount_deducted' => $amountToWithdraw,
-                        'net_received' => $netReceived
-                    ]
+                        'net_received' => $netReceived,
+                    ],
                 ]);
             });
 
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
         }
     }
@@ -200,6 +200,7 @@ class AffiliateController extends Controller
             'totalAffiliates' => User::where('is_affiliate', true)->count(),
             'pendingRequests' => Withdrawal::where('status', 'pending')->count(),
             'totalTransferred' => Withdrawal::where('status', 'approved')->sum('amount'), // Dari migration pakai 'approved'
+            'pendingApplications' => AffiliateApplication::where('status', 'pending')->count(),
         ];
 
         // 2. Tarik Daftar Afiliator
@@ -211,7 +212,7 @@ class AffiliateController extends Controller
 
             return [
                 'id' => $user->id,
-                'name' => trim($user->first_name . ' ' . $user->last_name),
+                'name' => trim($user->first_name.' '.$user->last_name),
                 'email' => $user->email,
                 'referral_code' => $user->referral_code,
                 'active_balance' => $user->commission_balance,
@@ -224,7 +225,7 @@ class AffiliateController extends Controller
             return [
                 'id' => $w->id,
                 'date' => $w->created_at->format('d M Y H:i'),
-                'affiliate_name' => trim($w->affiliate->first_name . ' ' . $w->affiliate->last_name),
+                'affiliate_name' => trim($w->affiliate->first_name.' '.$w->affiliate->last_name),
                 'bank_name' => $w->bank_name,
                 'account_number' => $w->account_number,
                 'account_name' => $w->account_name,
@@ -234,13 +235,29 @@ class AffiliateController extends Controller
             ];
         });
 
+        $applications = AffiliateApplication::with('user')
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(function ($app) {
+                return [
+                    'id' => $app->id,
+                    'user_name' => trim($app->user->first_name.' '.$app->user->last_name),
+                    'user_email' => $app->user->email,
+                    'social_media_url' => $app->social_media_url,
+                    'reason' => $app->reason,
+                    'date' => $app->created_at->format('d M Y H:i'),
+                ];
+            });
+
         return response()->json([
             'status' => 'success',
             'data' => [
                 'stats' => $stats,
                 'affiliates' => $affiliates,
-                'withdrawals' => $withdrawals
-            ]
+                'withdrawals' => $withdrawals,
+                'applications' => $applications, // <--- Jangan lupa disisipkan!
+            ],
         ]);
     }
 
@@ -261,7 +278,7 @@ class AffiliateController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Pencairan dana berhasil ditandai selesai.'
+            'message' => 'Pencairan dana berhasil ditandai selesai.',
         ]);
     }
 
@@ -283,18 +300,18 @@ class AffiliateController extends Controller
                 // 2. Buat Kode Referal Otomatis (Contoh: Budi -> BUDI-8A2F)
                 $prefix = strtoupper(substr($user->first_name, 0, 4));
                 $randomString = strtoupper(Str::random(4));
-                $referralCode = $prefix . '-' . $randomString;
+                $referralCode = $prefix.'-'.$randomString;
 
                 // 3. Sulap user biasa menjadi afiliator tanpa query manual!
                 $user->update([
                     'is_affiliate' => true,
-                    'referral_code' => $referralCode
+                    'referral_code' => $referralCode,
                 ]);
             });
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Pendaftaran disetujui! Akun pengguna kini menjadi afiliator aktif.'
+                'message' => 'Pendaftaran disetujui! Akun pengguna kini menjadi afiliator aktif.',
             ]);
 
         } catch (\Exception $e) {
@@ -329,12 +346,12 @@ class AffiliateController extends Controller
             'user_id' => $user->id,
             'social_media_url' => $request->social_media_url,
             'reason' => $request->reason,
-            'status' => 'pending'
+            'status' => 'pending',
         ]);
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Pendaftaran berhasil dikirim.'
+            'message' => 'Pendaftaran berhasil dikirim.',
         ]);
     }
 }
