@@ -10,6 +10,7 @@ use App\Models\Withdrawal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Str;
 
 class AffiliateController extends Controller
 {
@@ -339,7 +340,7 @@ class AffiliateController extends Controller
 
                 // 2. Buat Kode Referal Otomatis (Contoh: Budi -> BUDI-8A2F)
                 $prefix = strtoupper(substr($user->first_name, 0, 4));
-                $randomString = strtoupper(Str::random(4));
+                $randomString = strtoupper(\Illuminate\Support\Str::random(4));
                 $code = $prefix.'-'.$randomString;
 
                 // 3. Sulap user biasa menjadi afiliator tanpa query manual!
