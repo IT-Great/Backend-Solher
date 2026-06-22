@@ -377,6 +377,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('affiliate')->group(function () {
         Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
         Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
+        Route::post('/apply', [AffiliateController::class, 'apply']);
     });
 });
 

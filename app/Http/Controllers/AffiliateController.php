@@ -301,4 +301,40 @@ class AffiliateController extends Controller
             return response()->json(['message' => 'Gagal memproses persetujuan.'], 500);
         }
     }
+
+    public function apply(Request $request)
+    {
+        $user = $request->user();
+
+        // Tolak jika sudah jadi afiliator
+        if ($user->is_affiliate) {
+            return response()->json(['message' => 'Anda sudah menjadi afiliator.'], 400);
+        }
+
+        // Cek apakah sudah pernah mendaftar dan masih pending
+        $existingApp = AffiliateApplication::where('user_id', $user->id)
+            ->where('status', 'pending')
+            ->first();
+
+        if ($existingApp) {
+            return response()->json(['message' => 'Anda sudah mengajukan pendaftaran yang saat ini sedang menunggu tinjauan admin.'], 400);
+        }
+
+        $request->validate([
+            'social_media_url' => 'required|url|max:255',
+            'reason' => 'required|string|max:1000',
+        ]);
+
+        AffiliateApplication::create([
+            'user_id' => $user->id,
+            'social_media_url' => $request->social_media_url,
+            'reason' => $request->reason,
+            'status' => 'pending'
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Pendaftaran berhasil dikirim.'
+        ]);
+    }
 }
