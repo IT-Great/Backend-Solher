@@ -33,6 +33,9 @@ class Transaction extends Model
         'refund_reason',
         'refund_proof_url',
         'currency_code',
+        'affiliate_id',
+        'commission_earned',
+        'commission_status',
     ];
 
     /**
