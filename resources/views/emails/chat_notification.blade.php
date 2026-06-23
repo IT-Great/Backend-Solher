@@ -23,7 +23,7 @@
         </div>
 
         <p style="text-align: center;">
-            <a href="{{ config('app.frontend_url') }}/chat" class="btn">Balas Pesan Sekarang</a>
+            <a href="{{ config('app.frontend_url') }}/chat-list" class="btn">Balas Pesan Sekarang</a>
         </p>
 
         <div class="footer">
