@@ -120,11 +120,22 @@ class AffiliateController extends Controller
 
     public function withdraw(Request $request)
     {
+        // $request->validate([
+        //     'bank_name' => 'required|string|max:100',
+        //     'account_number' => 'required|string|max:50',
+        //     'account_name' => 'required|string|max:100',
+        //     'amount' => 'required|numeric|min:10000',
+        // ]);
+
+        // 👇 [PERBAIKAN] Ubah aturan 'min' menjadi 50000 dan tambahkan 'max' 1000000 👇
         $request->validate([
             'bank_name' => 'required|string|max:100',
             'account_number' => 'required|string|max:50',
             'account_name' => 'required|string|max:100',
-            'amount' => 'required|numeric|min:10000',
+            'amount' => 'required|numeric|min:50000|max:1000000',
+        ], [
+            'amount.min' => 'Minimal penarikan adalah Rp 50.000',
+            'amount.max' => 'Maksimal penarikan adalah Rp 1.000.000 per transaksi',
         ]);
 
         $userId = $request->user()->id;
