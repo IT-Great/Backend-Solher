@@ -158,7 +158,7 @@ class ChatController extends Controller
     // Mengambil daftar admin (hanya Superadmin & Admin) untuk halaman customer
     public function getAdmins()
     {
-        $admins = User::whereIn('usertype', ['admin', 'superadmin'])
+        $admins = User::whereIn('usertype', ['admin'])
             ->orderBy('usertype', 'desc')
             ->withCount(['messages as unread_count' => function ($query) {
                 $query->where('is_read', false)
