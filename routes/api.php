@@ -449,6 +449,8 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin,cs'])->group(function 
     Route::get('/admin/messages/unread-count', [ContactController::class, 'getUnreadCount']);
     Route::get('/admin/messages/{id}', [ContactController::class, 'showAdminMessage']);
     Route::post('/admin/messages/{id}/respond', [ContactController::class, 'respondMessage']);
+    Route::get('/admin/users', [AuthController::class, 'getAllUsers']);
+    Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
 });
 
 // [BARU] GRUP KHUSUS SUPERADMIN (SYSTEM SETTINGS)
