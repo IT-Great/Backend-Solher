@@ -406,6 +406,27 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin/dashboard')->gr
     Route::get('/daily-average', [DashboardController::class, 'getAverageDailyRevenue']);
 });
 
+// // GRUP C: MANAJEMEN KATEGORI & SISTEM (Hanya Admin)
+// Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
+//     Route::get('/categories', [CategoryController::class, 'index']);
+//     Route::post('/categories', [CategoryController::class, 'store']);
+//     Route::put('/categories/{id}', [CategoryController::class, 'update']);
+//     Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+//     Route::get('/categories/{id}', [CategoryController::class, 'show']);
+
+//     Route::get('/admin/users', [AuthController::class, 'getAllUsers']);
+//     Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
+
+//     Route::get('/admin/messages', [ContactController::class, 'getInboundMessages']);
+//     Route::get('/admin/messages/unread-count', [ContactController::class, 'getUnreadCount']);
+//     Route::get('/admin/messages/{id}', [ContactController::class, 'showAdminMessage']);
+//     Route::post('/admin/messages/{id}/respond', [ContactController::class, 'respondMessage']);
+
+//     Route::get('/admin/subscribers', function () {
+//         return response()->json(Subscriber::latest()->get());
+//     });
+// });
+
 // GRUP C: MANAJEMEN KATEGORI & SISTEM (Hanya Admin)
 Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::get('/categories', [CategoryController::class, 'index']);
@@ -417,14 +438,23 @@ Route::middleware(['auth:sanctum', 'role:admin'])->group(function () {
     Route::get('/admin/users', [AuthController::class, 'getAllUsers']);
     Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
 
+    Route::get('/admin/subscribers', function () {
+        return response()->json(Subscriber::latest()->get());
+    });
+});
+
+// [BARU] GRUP KHUSUS CUSTOMER SERVICE & SUPERADMIN
+Route::middleware(['auth:sanctum', 'role:admin,superadmin,cs'])->group(function () {
     Route::get('/admin/messages', [ContactController::class, 'getInboundMessages']);
     Route::get('/admin/messages/unread-count', [ContactController::class, 'getUnreadCount']);
     Route::get('/admin/messages/{id}', [ContactController::class, 'showAdminMessage']);
     Route::post('/admin/messages/{id}/respond', [ContactController::class, 'respondMessage']);
+});
 
-    Route::get('/admin/subscribers', function () {
-        return response()->json(Subscriber::latest()->get());
-    });
+// [BARU] GRUP KHUSUS SUPERADMIN (SYSTEM SETTINGS)
+Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
+    Route::get('/admin/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'getPolicies']);
+    Route::post('/admin/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'savePolicies']);
 });
 
 // GRUP D: MANAJEMEN PRODUK KREASI & HAPUS (Hanya Admin)
