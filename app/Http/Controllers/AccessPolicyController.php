@@ -278,11 +278,72 @@ class AccessPolicyController extends Controller
     //     }
     // }
 
+    // public function savePolicies(Request $request)
+    // {
+    //     $request->validate([
+    //         'permissions' => 'present|array',
+    //     ]);
+
+    //     $permissions = $request->permissions ?? [];
+    //     $insertData = [];
+
+    //     foreach ($permissions as $role => $modules) {
+    //         foreach ($modules as $module => $actions) {
+    //             foreach ($actions as $action) {
+    //                 $insertData[] = [
+    //                     'role' => $role,
+    //                     'module' => $module,
+    //                     'action' => $action,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now(),
+    //                 ];
+    //             }
+    //         }
+    //     }
+
+    //     try {
+    //         DB::beginTransaction();
+
+    //         // 1. Matikan pengecekan Foreign Key sementara
+    //         // Ini sering jadi penyebab utama 'truncate' gagal secara diam-diam
+    //         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
+    //         DB::table('role_permissions')->truncate();
+
+    //         if (! empty($insertData)) {
+    //             DB::table('role_permissions')->insert($insertData);
+    //         }
+
+    //         // 2. Hidupkan kembali pengecekan Foreign Key
+    //         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+    //         DB::commit();
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'message' => 'Kebijakan hak akses CRUD berhasil diperbarui.',
+    //         ], 200);
+
+    //     } catch (\Exception $e) {
+    //         // [PENTING] Rollback hanya jika transaksi benar-benar aktif
+    //         if (DB::transactionLevel() > 0) {
+    //             DB::rollBack();
+    //         }
+
+    //         // Logging error yang SEBENARNYA (bukan pesan rollback)
+    //         Log::error('Error Simpan Policy: '.$e->getMessage());
+
+    //         return response()->json([
+    //             'status' => 'error',
+    //             // Kita kembalikan pesan asli dari exception agar kita tahu letak errornya
+    //             'message' => 'Error: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function savePolicies(Request $request)
     {
-        $request->validate([
-            'permissions' => 'present|array',
-        ]);
+        $request->validate(['permissions' => 'present|array']);
 
         $permissions = $request->permissions ?? [];
         $insertData = [];
@@ -302,10 +363,12 @@ class AccessPolicyController extends Controller
         }
 
         try {
+            // [DEBUG] Log data yang akan dimasukkan
+            Log::info('Data untuk diinsert:', $insertData);
+
             DB::beginTransaction();
 
-            // 1. Matikan pengecekan Foreign Key sementara
-            // Ini sering jadi penyebab utama 'truncate' gagal secara diam-diam
+            // Matikan FK Checks agar Truncate tidak terhalang
             DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 
             DB::table('role_permissions')->truncate();
@@ -314,29 +377,24 @@ class AccessPolicyController extends Controller
                 DB::table('role_permissions')->insert($insertData);
             }
 
-            // 2. Hidupkan kembali pengecekan Foreign Key
             DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
             DB::commit();
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Kebijakan hak akses CRUD berhasil diperbarui.',
-            ], 200);
+            return response()->json(['status' => 'success', 'message' => 'Berhasil disimpan.'], 200);
 
         } catch (\Exception $e) {
-            // [PENTING] Rollback hanya jika transaksi benar-benar aktif
+            // [PERBAIKAN] Rollback hanya jika transaksi benar-benar aktif
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }
 
-            // Logging error yang SEBENARNYA (bukan pesan rollback)
-            Log::error('Error Simpan Policy: '.$e->getMessage());
+            // [PENTING] Log error yang SEBENARNYA ke file laravel.log
+            Log::error('DEBUG ERROR SIMPAN: '.$e->getMessage());
 
             return response()->json([
                 'status' => 'error',
-                // Kita kembalikan pesan asli dari exception agar kita tahu letak errornya
-                'message' => 'Error: '.$e->getMessage(),
+                'message' => 'Error: '.$e->getMessage(), // Ini akan memberitahu Anda error asli di browser
             ], 500);
         }
     }
