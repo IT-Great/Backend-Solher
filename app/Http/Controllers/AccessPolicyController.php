@@ -72,6 +72,80 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\DB;
+
+// class AccessPolicyController extends Controller
+// {
+//     public function getPolicies()
+//     {
+//         $permissionsData = DB::table('role_permissions')->get();
+
+//         $formattedPermissions = [];
+
+//         // Menyusun ulang data dari database menjadi nested JSON
+//         // Contoh Output: { "admin": { "products": ["create", "read", "update"] } }
+//         foreach ($permissionsData as $perm) {
+//             $formattedPermissions[$perm->role][$perm->module][] = $perm->action;
+//         }
+
+//         return response()->json([
+//             'status' => 'success',
+//             'permissions' => $formattedPermissions
+//         ], 200);
+//     }
+
+//     public function savePolicies(Request $request)
+//     {
+//         $request->validate([
+//             'permissions' => 'required|array'
+//         ]);
+
+//         $permissions = $request->permissions;
+//         $insertData = [];
+
+//         // Memecah nested JSON dari Vue kembali menjadi baris database
+//         foreach ($permissions as $role => $modules) {
+//             foreach ($modules as $module => $actions) {
+//                 foreach ($actions as $action) {
+//                     $insertData[] = [
+//                         'role' => $role,
+//                         'module' => $module,
+//                         'action' => $action, // [BARU] Memasukkan kolom aksi (create/read/update/delete)
+//                         'created_at' => now(),
+//                         'updated_at' => now()
+//                     ];
+//                 }
+//             }
+//         }
+
+//         DB::beginTransaction();
+//         try {
+//             DB::table('role_permissions')->truncate();
+
+//             if (!empty($insertData)) {
+//                 // Bulk insert untuk performa optimal
+//                 DB::table('role_permissions')->insert($insertData);
+//             }
+
+//             DB::commit();
+
+//             return response()->json([
+//                 'status' => 'success',
+//                 'message' => 'Kebijakan hak akses CRUD berhasil diperbarui.'
+//             ], 200);
+//         } catch (\Exception $e) {
+//             DB::rollBack();
+//             return response()->json([
+//                 'status' => 'error',
+//                 'message' => 'Gagal memperbarui kebijakan akses: ' . $e->getMessage()
+//             ], 500);
+//         }
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
@@ -85,35 +159,36 @@ class AccessPolicyController extends Controller
 
         $formattedPermissions = [];
 
-        // Menyusun ulang data dari database menjadi nested JSON
-        // Contoh Output: { "admin": { "products": ["create", "read", "update"] } }
         foreach ($permissionsData as $perm) {
             $formattedPermissions[$perm->role][$perm->module][] = $perm->action;
         }
 
         return response()->json([
             'status' => 'success',
-            'permissions' => $formattedPermissions
+            // [PERBAIKAN 1]: Paksa casting (object) agar PHP selalu merender '{}' saat kosong, bukan '[]'
+            'permissions' => (object) $formattedPermissions
         ], 200);
     }
 
     public function savePolicies(Request $request)
     {
         $request->validate([
-            'permissions' => 'required|array'
+            // [PERBAIKAN 2]: Ganti 'required' menjadi 'present'.
+            // Ini mengizinkan Superadmin menyimpan array kosong (mencabut semua akses)
+            'permissions' => 'present|array'
         ]);
 
-        $permissions = $request->permissions;
+        // Beri fallback array kosong
+        $permissions = $request->permissions ?? [];
         $insertData = [];
 
-        // Memecah nested JSON dari Vue kembali menjadi baris database
         foreach ($permissions as $role => $modules) {
             foreach ($modules as $module => $actions) {
                 foreach ($actions as $action) {
                     $insertData[] = [
                         'role' => $role,
                         'module' => $module,
-                        'action' => $action, // [BARU] Memasukkan kolom aksi (create/read/update/delete)
+                        'action' => $action,
                         'created_at' => now(),
                         'updated_at' => now()
                     ];
@@ -126,7 +201,6 @@ class AccessPolicyController extends Controller
             DB::table('role_permissions')->truncate();
 
             if (!empty($insertData)) {
-                // Bulk insert untuk performa optimal
                 DB::table('role_permissions')->insert($insertData);
             }
 
