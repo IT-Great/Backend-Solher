@@ -399,6 +399,46 @@ class AccessPolicyController extends Controller
     //     }
     // }
 
+    // public function savePolicies(Request $request)
+    // {
+    //     $request->validate(['permissions' => 'present|array']);
+
+    //     $permissions = $request->permissions ?? [];
+    //     $insertData = [];
+
+    //     foreach ($permissions as $role => $modules) {
+    //         foreach ($modules as $module => $actions) {
+    //             foreach ($actions as $action) {
+    //                 $insertData[] = [
+    //                     'role' => $role,
+    //                     'module' => $module,
+    //                     'action' => $action,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now(),
+    //                 ];
+    //             }
+    //         }
+    //     }
+
+    //     // --- TANPA TRANSAKSI UNTUK DEBUGGING ---
+    //     // Matikan FK Checks
+    //     DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
+    //     // Langsung jalankan query
+    //     DB::table('role_permissions')->truncate();
+
+    //     if (! empty($insertData)) {
+    //         DB::table('role_permissions')->insert($insertData);
+    //     }
+
+    //     DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+    //     return response()->json([
+    //         'status' => 'success',
+    //         'message' => 'Berhasil disimpan tanpa transaksi.',
+    //     ], 200);
+    // }
+
     public function savePolicies(Request $request)
     {
         $request->validate(['permissions' => 'present|array']);
@@ -420,22 +460,32 @@ class AccessPolicyController extends Controller
             }
         }
 
-        // --- TANPA TRANSAKSI UNTUK DEBUGGING ---
-        // Matikan FK Checks
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        try {
+            // DB::transaction akan menangani begin, commit, dan rollback secara otomatis
+            DB::transaction(function () use ($insertData) {
+                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 
-        // Langsung jalankan query
-        DB::table('role_permissions')->truncate();
+                DB::table('role_permissions')->truncate();
 
-        if (! empty($insertData)) {
-            DB::table('role_permissions')->insert($insertData);
+                if (! empty($insertData)) {
+                    DB::table('role_permissions')->insert($insertData);
+                }
+
+                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Berhasil disimpan dengan aman.',
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Error saat menyimpan policy: '.$e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal memperbarui: '.$e->getMessage(),
+            ], 500);
         }
-
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Berhasil disimpan tanpa transaksi.',
-        ], 200);
     }
 }
