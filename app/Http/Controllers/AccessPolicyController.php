@@ -220,6 +220,64 @@ class AccessPolicyController extends Controller
     //     }
     // }
 
+    // public function savePolicies(Request $request)
+    // {
+    //     $request->validate([
+    //         'permissions' => 'present|array',
+    //     ]);
+
+    //     $permissions = $request->permissions ?? [];
+    //     $insertData = [];
+
+    //     foreach ($permissions as $role => $modules) {
+    //         foreach ($modules as $module => $actions) {
+    //             foreach ($actions as $action) {
+    //                 $insertData[] = [
+    //                     'role' => $role,
+    //                     'module' => $module,
+    //                     'action' => $action,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now(),
+    //                 ];
+    //             }
+    //         }
+    //     }
+
+    //     try {
+    //         // Pindahkan beginTransaction ke dalam try
+    //         DB::beginTransaction();
+
+    //         // [CEK PENTING]: Pastikan tabel ada.
+    //         // Jika tabel belum dibuat, ini akan memberi error yang lebih jelas di log
+    //         DB::table('role_permissions')->truncate();
+
+    //         if (! empty($insertData)) {
+    //             DB::table('role_permissions')->insert($insertData);
+    //         }
+
+    //         DB::commit();
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'message' => 'Kebijakan hak akses CRUD berhasil diperbarui.',
+    //         ], 200);
+
+    //     } catch (\Exception $e) {
+    //         // Log error asli agar kita tahu kenapa sebenarnya gagal
+    //         Log::error('Gagal simpan policy: '.$e->getMessage());
+
+    //         // [PERBAIKAN]: Cek apakah ada transaksi aktif sebelum melakukan rollback
+    //         if (DB::transactionLevel() > 0) {
+    //             DB::rollBack();
+    //         }
+
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => 'Gagal memperbarui kebijakan akses: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function savePolicies(Request $request)
     {
         $request->validate([
@@ -244,16 +302,20 @@ class AccessPolicyController extends Controller
         }
 
         try {
-            // Pindahkan beginTransaction ke dalam try
             DB::beginTransaction();
 
-            // [CEK PENTING]: Pastikan tabel ada.
-            // Jika tabel belum dibuat, ini akan memberi error yang lebih jelas di log
+            // 1. Matikan pengecekan Foreign Key sementara
+            // Ini sering jadi penyebab utama 'truncate' gagal secara diam-diam
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
             DB::table('role_permissions')->truncate();
 
             if (! empty($insertData)) {
                 DB::table('role_permissions')->insert($insertData);
             }
+
+            // 2. Hidupkan kembali pengecekan Foreign Key
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
             DB::commit();
 
@@ -263,17 +325,18 @@ class AccessPolicyController extends Controller
             ], 200);
 
         } catch (\Exception $e) {
-            // Log error asli agar kita tahu kenapa sebenarnya gagal
-            Log::error('Gagal simpan policy: '.$e->getMessage());
-
-            // [PERBAIKAN]: Cek apakah ada transaksi aktif sebelum melakukan rollback
+            // [PENTING] Rollback hanya jika transaksi benar-benar aktif
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
             }
 
+            // Logging error yang SEBENARNYA (bukan pesan rollback)
+            Log::error('Error Simpan Policy: '.$e->getMessage());
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Gagal memperbarui kebijakan akses: '.$e->getMessage(),
+                // Kita kembalikan pesan asli dari exception agar kita tahu letak errornya
+                'message' => 'Error: '.$e->getMessage(),
             ], 500);
         }
     }
