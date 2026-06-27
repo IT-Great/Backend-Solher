@@ -489,6 +489,60 @@ class AccessPolicyController extends Controller
     //     }
     // }
 
+    // public function savePolicies(Request $request)
+    // {
+    //     $request->validate(['permissions' => 'present|array']);
+
+    //     $permissions = $request->permissions ?? [];
+    //     $insertData = [];
+
+    //     foreach ($permissions as $role => $modules) {
+    //         foreach ($modules as $module => $actions) {
+    //             foreach ($actions as $action) {
+    //                 $insertData[] = [
+    //                     'role' => $role,
+    //                     'module' => $module,
+    //                     'action' => $action,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now(),
+    //                 ];
+    //             }
+    //         }
+    //     }
+
+    //     try {
+    //         // 1. Matikan pengecekan di luar transaksi agar aman
+    //         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
+    //         // 2. Gunakan DB::transaction untuk pembungkusan yang benar
+    //         DB::transaction(function () use ($insertData) {
+    //             DB::table('role_permissions')->truncate();
+
+    //             if (!empty($insertData)) {
+    //                 DB::table('role_permissions')->insert($insertData);
+    //             }
+    //         });
+
+    //         // 3. Hidupkan kembali
+    //         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'message' => 'Kebijakan hak akses berhasil disimpan.',
+    //         ], 200);
+    //     } catch (\Exception $e) {
+    //         // Hidupkan kembali FK checks jika error (agar database tetap konsisten)
+    //         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+    //         Log::error('Error saat menyimpan policy: ' . $e->getMessage());
+
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => 'Gagal memperbarui: ' . $e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function savePolicies(Request $request)
     {
         $request->validate(['permissions' => 'present|array']);
@@ -511,34 +565,36 @@ class AccessPolicyController extends Controller
         }
 
         try {
-            // 1. Matikan pengecekan di luar transaksi agar aman
-            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-
-            // 2. Gunakan DB::transaction untuk pembungkusan yang benar
             DB::transaction(function () use ($insertData) {
-                DB::table('role_permissions')->truncate();
+                // Matikan pengecekan FK sementara
+                DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 
-                if (!empty($insertData)) {
+                // [PERBAIKAN UTAMA] Gunakan DELETE daripada TRUNCATE
+                // DELETE adalah perintah DML yang aman di dalam transaksi
+                DB::table('role_permissions')->delete();
+
+                if (! empty($insertData)) {
                     DB::table('role_permissions')->insert($insertData);
                 }
-            });
 
-            // 3. Hidupkan kembali
-            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+                // Hidupkan kembali FK checks
+                DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+            });
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Kebijakan hak akses berhasil disimpan.',
             ], 200);
+
         } catch (\Exception $e) {
-            // Hidupkan kembali FK checks jika error (agar database tetap konsisten)
+            // Jika error, pastikan FK checks menyala kembali
             DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
-            Log::error('Error saat menyimpan policy: ' . $e->getMessage());
+            Log::error('Error saat menyimpan policy: '.$e->getMessage());
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Gagal memperbarui: ' . $e->getMessage(),
+                'message' => 'Gagal memperbarui: '.$e->getMessage(),
             ], 500);
         }
     }
