@@ -150,6 +150,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AccessPolicyController extends Controller
 {
@@ -166,19 +167,65 @@ class AccessPolicyController extends Controller
         return response()->json([
             'status' => 'success',
             // [PERBAIKAN 1]: Paksa casting (object) agar PHP selalu merender '{}' saat kosong, bukan '[]'
-            'permissions' => (object) $formattedPermissions
+            'permissions' => (object) $formattedPermissions,
         ], 200);
     }
+
+    // public function savePolicies(Request $request)
+    // {
+    //     $request->validate([
+    //         // [PERBAIKAN 2]: Ganti 'required' menjadi 'present'.
+    //         // Ini mengizinkan Superadmin menyimpan array kosong (mencabut semua akses)
+    //         'permissions' => 'present|array'
+    //     ]);
+
+    //     // Beri fallback array kosong
+    //     $permissions = $request->permissions ?? [];
+    //     $insertData = [];
+
+    //     foreach ($permissions as $role => $modules) {
+    //         foreach ($modules as $module => $actions) {
+    //             foreach ($actions as $action) {
+    //                 $insertData[] = [
+    //                     'role' => $role,
+    //                     'module' => $module,
+    //                     'action' => $action,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now()
+    //                 ];
+    //             }
+    //         }
+    //     }
+
+    //     DB::beginTransaction();
+    //     try {
+    //         DB::table('role_permissions')->truncate();
+
+    //         if (!empty($insertData)) {
+    //             DB::table('role_permissions')->insert($insertData);
+    //         }
+
+    //         DB::commit();
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'message' => 'Kebijakan hak akses CRUD berhasil diperbarui.'
+    //         ], 200);
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => 'Gagal memperbarui kebijakan akses: ' . $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
 
     public function savePolicies(Request $request)
     {
         $request->validate([
-            // [PERBAIKAN 2]: Ganti 'required' menjadi 'present'.
-            // Ini mengizinkan Superadmin menyimpan array kosong (mencabut semua akses)
-            'permissions' => 'present|array'
+            'permissions' => 'present|array',
         ]);
 
-        // Beri fallback array kosong
         $permissions = $request->permissions ?? [];
         $insertData = [];
 
@@ -190,17 +237,21 @@ class AccessPolicyController extends Controller
                         'module' => $module,
                         'action' => $action,
                         'created_at' => now(),
-                        'updated_at' => now()
+                        'updated_at' => now(),
                     ];
                 }
             }
         }
 
-        DB::beginTransaction();
         try {
+            // Pindahkan beginTransaction ke dalam try
+            DB::beginTransaction();
+
+            // [CEK PENTING]: Pastikan tabel ada.
+            // Jika tabel belum dibuat, ini akan memberi error yang lebih jelas di log
             DB::table('role_permissions')->truncate();
 
-            if (!empty($insertData)) {
+            if (! empty($insertData)) {
                 DB::table('role_permissions')->insert($insertData);
             }
 
@@ -208,13 +259,21 @@ class AccessPolicyController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Kebijakan hak akses CRUD berhasil diperbarui.'
+                'message' => 'Kebijakan hak akses CRUD berhasil diperbarui.',
             ], 200);
+
         } catch (\Exception $e) {
-            DB::rollBack();
+            // Log error asli agar kita tahu kenapa sebenarnya gagal
+            Log::error('Gagal simpan policy: '.$e->getMessage());
+
+            // [PERBAIKAN]: Cek apakah ada transaksi aktif sebelum melakukan rollback
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Gagal memperbarui kebijakan akses: ' . $e->getMessage()
+                'message' => 'Gagal memperbarui kebijakan akses: '.$e->getMessage(),
             ], 500);
         }
     }
