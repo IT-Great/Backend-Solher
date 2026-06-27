@@ -454,8 +454,18 @@ Route::middleware(['auth:sanctum', 'role:admin,superadmin,cs'])->group(function 
 });
 
 // [BARU] GRUP KHUSUS SUPERADMIN (SYSTEM SETTINGS)
-Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
+// Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
+//     Route::get('/admin/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'getPolicies']);
+//     Route::post('/admin/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'savePolicies']);
+// });
+
+// [PERBAIKAN] Buka akses GET untuk semua tipe staf agar frontend bisa membaca rule tombol
+Route::middleware(['auth:sanctum', 'role:superadmin,admin,gudang,accounting,cs'])->group(function () {
     Route::get('/admin/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'getPolicies']);
+});
+
+// [PERBAIKAN] POST tetap DIBATASI ketat HANYA untuk superadmin
+Route::middleware(['auth:sanctum', 'role:superadmin'])->group(function () {
     Route::post('/admin/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'savePolicies']);
 });
 
