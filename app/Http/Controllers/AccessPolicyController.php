@@ -341,6 +341,64 @@ class AccessPolicyController extends Controller
     //     }
     // }
 
+    // public function savePolicies(Request $request)
+    // {
+    //     $request->validate(['permissions' => 'present|array']);
+
+    //     $permissions = $request->permissions ?? [];
+    //     $insertData = [];
+
+    //     foreach ($permissions as $role => $modules) {
+    //         foreach ($modules as $module => $actions) {
+    //             foreach ($actions as $action) {
+    //                 $insertData[] = [
+    //                     'role' => $role,
+    //                     'module' => $module,
+    //                     'action' => $action,
+    //                     'created_at' => now(),
+    //                     'updated_at' => now(),
+    //                 ];
+    //             }
+    //         }
+    //     }
+
+    //     try {
+    //         // [DEBUG] Log data yang akan dimasukkan
+    //         Log::info('Data untuk diinsert:', $insertData);
+
+    //         DB::beginTransaction();
+
+    //         // Matikan FK Checks agar Truncate tidak terhalang
+    //         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
+    //         DB::table('role_permissions')->truncate();
+
+    //         if (! empty($insertData)) {
+    //             DB::table('role_permissions')->insert($insertData);
+    //         }
+
+    //         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+    //         DB::commit();
+
+    //         return response()->json(['status' => 'success', 'message' => 'Berhasil disimpan.'], 200);
+
+    //     } catch (\Exception $e) {
+    //         // [PERBAIKAN] Rollback hanya jika transaksi benar-benar aktif
+    //         if (DB::transactionLevel() > 0) {
+    //             DB::rollBack();
+    //         }
+
+    //         // [PENTING] Log error yang SEBENARNYA ke file laravel.log
+    //         Log::error('DEBUG ERROR SIMPAN: '.$e->getMessage());
+
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => 'Error: '.$e->getMessage(), // Ini akan memberitahu Anda error asli di browser
+    //         ], 500);
+    //     }
+    // }
+
     public function savePolicies(Request $request)
     {
         $request->validate(['permissions' => 'present|array']);
@@ -362,40 +420,22 @@ class AccessPolicyController extends Controller
             }
         }
 
-        try {
-            // [DEBUG] Log data yang akan dimasukkan
-            Log::info('Data untuk diinsert:', $insertData);
+        // --- TANPA TRANSAKSI UNTUK DEBUGGING ---
+        // Matikan FK Checks
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
 
-            DB::beginTransaction();
+        // Langsung jalankan query
+        DB::table('role_permissions')->truncate();
 
-            // Matikan FK Checks agar Truncate tidak terhalang
-            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-
-            DB::table('role_permissions')->truncate();
-
-            if (! empty($insertData)) {
-                DB::table('role_permissions')->insert($insertData);
-            }
-
-            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-            DB::commit();
-
-            return response()->json(['status' => 'success', 'message' => 'Berhasil disimpan.'], 200);
-
-        } catch (\Exception $e) {
-            // [PERBAIKAN] Rollback hanya jika transaksi benar-benar aktif
-            if (DB::transactionLevel() > 0) {
-                DB::rollBack();
-            }
-
-            // [PENTING] Log error yang SEBENARNYA ke file laravel.log
-            Log::error('DEBUG ERROR SIMPAN: '.$e->getMessage());
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error: '.$e->getMessage(), // Ini akan memberitahu Anda error asli di browser
-            ], 500);
+        if (! empty($insertData)) {
+            DB::table('role_permissions')->insert($insertData);
         }
+
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Berhasil disimpan tanpa transaksi.',
+        ], 200);
     }
 }
