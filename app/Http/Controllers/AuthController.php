@@ -268,7 +268,7 @@ class AuthController extends Controller
             // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
             if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
                 // Opsional: Log aktivitas bot jika diperlukan
-                // Log::warning('Bot detected during admin login. Score: ' . ($captchaResult['score'] ?? 'null'));
+                Log::warning('Bot detected during admin login. Score: ' . ($captchaResult['score'] ?? 'null'));
 
                 return response()->json([
                     'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
