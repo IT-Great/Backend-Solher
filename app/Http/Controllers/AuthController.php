@@ -265,8 +265,8 @@ class AuthController extends Controller
                 Log::error('reCAPTCHA Failed: '.json_encode($captchaResult));
             }
 
-            // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
-            if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
+            // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.3
+            if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.3) {
                 // Opsional: Log aktivitas bot jika diperlukan
                 Log::warning('Bot detected during admin login. Score: ' . ($captchaResult['score'] ?? 'null'));
 
