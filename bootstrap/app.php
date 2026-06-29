@@ -40,6 +40,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             // [BARU] Daftarkan middleware Role untuk RBAC (Role-Based Access Control)
             'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'module' => \App\Http\Middleware\RoleMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
