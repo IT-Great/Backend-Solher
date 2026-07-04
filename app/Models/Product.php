@@ -20,7 +20,9 @@ class Product extends Model
         'variant_images',
         'variant_video',
         'price',
+        'prices',
         'discount_price',
+        'discount_prices',
         'discount_start_date', // <--- BARU
         'discount_end_date',   // <--- BARU
         'stock',
@@ -42,6 +44,8 @@ class Product extends Model
         'variant_images' => 'array',
         'color' => 'array',            // <--- BARU: Casting ke Array
         'strap_length' => 'array',
+        'prices' => 'array',         
+        'discount_prices' => 'array',
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
         'discount_start_date' => 'datetime', // <--- BARU

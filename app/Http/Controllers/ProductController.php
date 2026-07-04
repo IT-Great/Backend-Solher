@@ -79,6 +79,12 @@ class ProductController extends Controller
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric|min:0',
+
+            'prices' => 'nullable|array',
+            'prices.*' => 'nullable|numeric|min:0',
+            'discount_prices' => 'nullable|array',
+            'discount_prices.*' => 'nullable|numeric|min:0',
+
             'stock' => 'required|integer|min:0',
             'weight' => 'required|integer|min:1',
             'length' => 'nullable|numeric|min:0',
@@ -116,6 +122,9 @@ class ProductController extends Controller
             $data = $request->except(['variant_images', 'variant_video', 'image']);
 
             $data['slug'] = \Illuminate\Support\Str::slug($request->name);
+
+            $data['prices'] = $request->input('prices', null);
+            $data['discount_prices'] = $request->input('discount_prices', null);
 
             $nullableFields = ['discount_price', 'discount_start_date', 'discount_end_date', 'length', 'width', 'height', 'material', 'strap_length','description','design','description_en', 'design_en'];
             foreach ($nullableFields as $field) {
@@ -174,6 +183,12 @@ class ProductController extends Controller
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
             'price' => 'required|numeric',
+
+            'prices' => 'nullable|array',
+            'prices.*' => 'nullable|numeric|min:0',
+            'discount_prices' => 'nullable|array',
+            'discount_prices.*' => 'nullable|numeric|min:0',
+
             'weight' => 'required|integer|min:1',
             'length' => 'nullable|numeric|min:0',
             'width' => 'nullable|numeric|min:0',
@@ -204,7 +219,10 @@ class ProductController extends Controller
 
         $data['slug'] = \Illuminate\Support\Str::slug($request->name);
 
-        $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length','description','design','description_en', 'design_en'];
+        $data['prices'] = $request->input('prices', null);
+        $data['discount_prices'] = $request->input('discount_prices', null);
+
+        $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length','description','design','description_en', 'design_en', 'discount_start_date', 'discount_end_date'];
 
         foreach ($nullableFields as $field) {
             if (! isset($data[$field]) || $data[$field] === '' || $data[$field] === 'null') {
