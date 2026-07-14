@@ -73,6 +73,7 @@ class InvoiceController extends Controller
             $supplier->delete();
             return response()->json(['message' => 'Supplier deleted successfully.']);
         } catch (\Exception $e) {
+            report($e);
             return response()->json(['message' => 'Failed to delete supplier.'], 500);
         }
     }
@@ -210,6 +211,7 @@ class InvoiceController extends Controller
                 'message' => 'Payment processed'
             ]);
         } catch (\Exception $e) {
+            report($e);
 
             DB::rollBack();
             throw $e;
@@ -247,6 +249,7 @@ class InvoiceController extends Controller
             $invoice->delete();
             return response()->json(['message' => 'Invoice deleted successfully']);
         } catch (\Exception $e) {
+            report($e);
             return response()->json(['message' => 'Failed to delete invoice.'], 500);
         }
     }

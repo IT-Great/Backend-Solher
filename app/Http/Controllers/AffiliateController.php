@@ -199,6 +199,7 @@ class AffiliateController extends Controller
             });
 
         } catch (\Exception $e) {
+            report($e);
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage(),
@@ -372,6 +373,7 @@ class AffiliateController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            report($e);
             return response()->json(['message' => 'Gagal memproses persetujuan: ' . $e->getMessage()], 500);
         }
     }

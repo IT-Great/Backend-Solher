@@ -472,6 +472,7 @@ class PaymentController extends Controller
                                 ]);
                             }
                         } catch (\Exception $e) {
+                            report($e);
                             \Log::error('Shipping Factory Exception: '.$e->getMessage());
                         }
                     });
@@ -528,9 +529,11 @@ class PaymentController extends Controller
                 $event = json_decode($payload); // Fallback tanpa secret untuk testing lokal
             }
         } catch (\UnexpectedValueException $e) {
+            report($e);
             \Log::error('Stripe Webhook Error: Invalid payload');
             return response()->json(['error' => 'Invalid payload'], 400);
         } catch (\Stripe\Exception\SignatureVerificationException $e) {
+            report($e);
             \Log::error('Stripe Webhook Error: Invalid signature');
             return response()->json(['error' => 'Invalid signature'], 400);
         }
@@ -666,6 +669,7 @@ class PaymentController extends Controller
                                 ]);
                             }
                         } catch (\Exception $e) {
+                            report($e);
                             \Log::error('Stripe Shipping Callback Exception: '.$e->getMessage());
                         }
                     });
@@ -959,6 +963,7 @@ class PaymentController extends Controller
                                 ]);
                             }
                         } catch (\Exception $e) {
+                            report($e);
                             \Log::error('PayPal Shipping Callback Exception: '.$e->getMessage());
                         }
                     });
@@ -1239,6 +1244,7 @@ class PaymentController extends Controller
             return response()->json($rates);
 
         } catch (\Exception $e) {
+            report($e);
             return response()->json([
                 'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
             ], 500);

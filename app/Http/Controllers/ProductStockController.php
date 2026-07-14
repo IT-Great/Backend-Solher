@@ -65,6 +65,7 @@ class ProductStockController extends Controller
             return response()->json(['message' => 'New stock batch added successfully.']);
 
         } catch (\Exception $e) {
+            report($e);
             // Pencatatan Error Sistem agar Admin Server bisa melakukan pelacakan (Debugging)
             Log::error("Stock Addition Error (Product ID: {$productId}): " . $e->getMessage());
 

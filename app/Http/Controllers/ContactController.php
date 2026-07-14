@@ -65,6 +65,7 @@ class ContactController extends Controller
         try {
             Mail::to($contact->email)->send(new AdminResponseMail($contact));
         } catch (\Exception $e) {
+            report($e);
             // Lanjutkan saja meskipun email gagal, data tetap tersimpan di web
             \Log::error('Gagal kirim email kontak: ' . $e->getMessage());
         }
@@ -118,6 +119,7 @@ class ContactController extends Controller
         try {
             \Illuminate\Support\Facades\Mail::to($email)->send(new \App\Mail\WelcomeSubscriberMail($email));
         } catch (\Exception $e) {
+            report($e);
             \Illuminate\Support\Facades\Log::error('Subscribe Mail Error: ' . $e->getMessage());
         }
 

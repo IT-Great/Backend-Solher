@@ -236,6 +236,7 @@ class ChatController extends Controller
                 Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
             }
         } catch (\Exception $e) {
+            report($e);
             \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
         }
         // ====================================================================

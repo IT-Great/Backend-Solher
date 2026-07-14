@@ -168,6 +168,8 @@ class ProductController extends Controller
 
             return response()->json($product, 201);
         } catch (\Exception $e) {
+            report($e);
+            
             DB::rollBack();
 
             return response()->json(['message' => $e->getMessage()], 500);
@@ -309,6 +311,7 @@ class ProductController extends Controller
             return response()->json(['message' => 'Product deleted permanently'], 200);
 
         } catch (QueryException $e) {
+            report($e);
             return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi'], 422);
         }
     }

@@ -587,6 +587,7 @@ class AccessPolicyController extends Controller
             ], 200);
 
         } catch (\Exception $e) {
+            report($e);
             // Jika error, pastikan FK checks menyala kembali
             DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 

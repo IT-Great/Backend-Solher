@@ -933,6 +933,7 @@ class TransactionController extends Controller
                 return response()->json(['checkout_url' => $checkoutUrl], 201);
 
             } catch (\Exception $e) {
+                report($e);
                 Log::error('Payment Gateway Invoice Creation Failed: '.$e->getMessage());
                 app(TransactionController::class)->cancelOrder($request, $transactionData['transaction']->id);
 
@@ -940,6 +941,7 @@ class TransactionController extends Controller
             }
 
         } catch (\Throwable $e) {
+            report($e);
             Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -1021,6 +1023,7 @@ class TransactionController extends Controller
                     ])->delete('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
                 }
             } catch (\Exception $e) {
+                report($e);
                 return response()->json(['message' => 'Failed to verify logistics status with Biteship.'], 500);
             }
 
@@ -1046,6 +1049,7 @@ class TransactionController extends Controller
                     }
                 }
             } catch (\Exception $e) {
+                report($e);
                 // JIKA REFUND GAGAL (TAPI KURIR SUDAH DIBATALKAN), LEMPAR KE REFUND MANUAL TAPI KEMBALIKAN STOKNYA
                 DB::transaction(function () use ($transaction) {
                     $transaction->update(['status' => 'refund_manual_required']);
@@ -1183,6 +1187,7 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
 
         } catch (\Exception $e) {
+            report($e);
             Log::error('Failed to upload refund proof: '.$e->getMessage());
 
             return response()->json(['message' => 'Failed to process refund request. Please try again.'], 500);
@@ -1256,6 +1261,7 @@ class TransactionController extends Controller
                     }
                 }
             } catch (\Exception $e) {
+                report($e);
                 $transaction->update(['status' => 'refund_approved']); // Rollback
                 Log::error('Biteship Pre-Check Error: '.$e->getMessage());
 
@@ -1324,6 +1330,7 @@ class TransactionController extends Controller
                 'type' => 'automatic',
             ]);
         } catch (XenditSdkException $e) {
+            report($e);
             $errorMessage = $e->getMessage();
 
             if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
@@ -1350,6 +1357,7 @@ class TransactionController extends Controller
 
             return response()->json(['message' => 'Xendit Refund Failed: '.$errorMessage], 422);
         } catch (\Exception $e) {
+            report($e);
             $transaction->update(['status' => 'refund_approved']); // Rollback
 
             return response()->json(['message' => 'Refund Error: '.$e->getMessage()], 500);
@@ -1371,6 +1379,7 @@ class TransactionController extends Controller
         try {
             Mail::to($transaction->user->email)->send(new RefundResultMail($transaction, 'approve'));
         } catch (\Exception $e) {
+            report($e);
             // Jika gagal kirim email, jangan hentikan proses approve
             Log::error("Gagal kirim email Approve Refund ke {$transaction->user->email}: ".$e->getMessage());
         }
@@ -1404,6 +1413,7 @@ class TransactionController extends Controller
         try {
             Mail::to($transaction->user->email)->send(new RefundResultMail($transaction, 'reject'));
         } catch (\Exception $e) {
+            report($e);
             // Jika gagal kirim email, jangan hentikan proses reject
             Log::error("Gagal kirim email Reject Refund ke {$transaction->user->email}: ".$e->getMessage());
         }
@@ -1495,6 +1505,7 @@ class TransactionController extends Controller
             // Kembalikan seluruh objek respon JSON dari Biteship ke Frontend
             return response()->json($data);
         } catch (\Exception $e) {
+            report($e);
             return response()->json(['message' => 'Failed to retrieve tracking data: '.$e->getMessage()], 500);
         }
     }
@@ -1528,6 +1539,7 @@ class TransactionController extends Controller
                     $trackingData[$transaction->id] = ['status' => 'pending']; // Fallback jika belum teralokasi
                 }
             } catch (\Exception $e) {
+                report($e);
                 // Jangan gagalkan seluruh request jika 1 order error di sisi Biteship
                 $trackingData[$transaction->id] = ['status' => 'error fetching data'];
             }
@@ -1640,6 +1652,7 @@ class TransactionController extends Controller
 
             return response()->json($data);
         } catch (\Exception $e) {
+            report($e);
             return response()->json(['message' => 'Failed to retrieve tracking data: '.$e->getMessage()], 500);
         }
     }
@@ -1673,6 +1686,7 @@ class TransactionController extends Controller
 
             return response()->json(['message' => 'Gagal mengambil resi dari Biteship: '.$response->body()], 400);
         } catch (\Exception $e) {
+            report($e);
             return response()->json(['message' => 'Terjadi kesalahan sistem: '.$e->getMessage()], 500);
         }
     }

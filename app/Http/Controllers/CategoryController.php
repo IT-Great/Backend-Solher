@@ -47,6 +47,8 @@ class CategoryController extends Controller
             $this->categoryService->deleteCategory($id);
             return response()->json(['message' => 'Category successfully deleted.']);
         } catch (\Exception $e) {
+            report($e);
+            
             if ($e->getCode() === 409) {
                 return response()->json(['message' => $e->getMessage()], 409);
             }

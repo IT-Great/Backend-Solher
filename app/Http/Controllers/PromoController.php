@@ -31,6 +31,7 @@ class PromoController extends Controller
         try {
             Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
         } catch (\Exception $e) {
+            report($e);
             Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
             return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
         }

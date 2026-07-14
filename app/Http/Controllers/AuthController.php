@@ -370,6 +370,7 @@ class AuthController extends Controller
                 'user' => $user,
             ]);
         } catch (\Exception $e) {
+            report($e);
             Log::error('Failed to update profile image', [
                 'user_id' => $user->id ?? null,
                 'error_message' => $e->getMessage(),
@@ -474,6 +475,7 @@ class AuthController extends Controller
                 'admin' => $admin->fresh(),
             ]);
         } catch (\Exception $e) {
+            report($e);
             return response()->json([
                 'message' => 'Failed to update admin photo',
             ], 500);
@@ -546,6 +548,7 @@ class AuthController extends Controller
 
             return response()->json(['message' => 'Verification code sent to your email.']);
         } catch (\Exception $e) {
+            report($e);
             Log::error('Failed to send reset code: '.$e->getMessage());
 
             return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
@@ -640,6 +643,7 @@ class AuthController extends Controller
 
             return response()->json(['message' => 'Kode verifikasi telah dikirim ke email Anda.']);
         } catch (\Exception $e) {
+            report($e);
             Log::error('Failed to send admin reset code: '.$e->getMessage());
 
             return response()->json(['message' => 'Gagal mengirim email. Silakan coba lagi nanti.'], 500);
