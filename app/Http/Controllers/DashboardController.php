@@ -796,7 +796,7 @@ class DashboardController extends Controller
             ->get()
             ->map(function ($item) {
                 $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-                $imgUrl = $item->image && !str_starts_with($item->image, 'http') ? $baseUrlFixed . '/storage/' . $item->image : $item->image;
+                $imgUrl = $item->image && !str_starts_with($item->image, 'http') ? $baseUrlFixed . 'storage/' . $item->image : $item->image;
                 
                 return [
                     'name' => $item->name,
