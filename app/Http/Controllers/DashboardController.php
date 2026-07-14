@@ -13,47 +13,544 @@ use App\Http\Controllers\Controller;
 
 class DashboardController extends Controller
 {
-    // public function getStats()
+    // // public function getStats()
+    // // {
+    // //     // 1. Total Sales (Hanya transaksi yang sukses/completed)
+    // //     $totalSales = Transaction::where('status', 'completed')->sum('total_amount');
+
+    // //     // 2. Total Products (Hanya yang aktif)
+    // //     $totalProducts = Product::where('status', 'active')->count();
+
+    // //     // 3. Total Transactions
+    // //     $totalTransactions = Transaction::count();
+
+    // //     // 4. Total Users (Tipe user biasa)
+    // //     $totalUsers = User::where('usertype', 'user')->count();
+
+    // //     return response()->json([
+    // //         'total_sales' => (float) $totalSales,
+    // //         'total_products' => $totalProducts,
+    // //         'total_transactions' => $totalTransactions,
+    // //         'total_users' => $totalUsers,
+    // //     ]);
+    // // }
+
+    // // =========================================================================
+    // // [BARU] MASTER ENDPOINT (SOLUSI ERROR MAX_USER_CONNECTIONS)
+    // // =========================================================================
+    // public function getDashboardMasterData(C45Service $c45Service)
     // {
-    //     // 1. Total Sales (Hanya transaksi yang sukses/completed)
-    //     $totalSales = Transaction::where('status', 'completed')->sum('total_amount');
-
-    //     // 2. Total Products (Hanya yang aktif)
-    //     $totalProducts = Product::where('status', 'active')->count();
-
-    //     // 3. Total Transactions
-    //     $totalTransactions = Transaction::count();
-
-    //     // 4. Total Users (Tipe user biasa)
-    //     $totalUsers = User::where('usertype', 'user')->count();
-
+    //     // Hanya menggunakan 1 koneksi database untuk mengambil semua data ini
     //     return response()->json([
-    //         'total_sales' => (float) $totalSales,
-    //         'total_products' => $totalProducts,
-    //         'total_transactions' => $totalTransactions,
-    //         'total_users' => $totalUsers,
+    //         'stats'      => $this->fetchStatsData(),
+    //         'revenue'    => $this->fetchRevenueChartData(),
+    //         'popular'    => $this->fetchPopularProductsData(),
+    //         'predicted'  => $this->fetchPredictedBestsellersData($c45Service),
+    //         'activities' => $this->fetchRecentActivitiesData(),
+    //         'daily'      => $this->fetchAverageDailyRevenueData(),
     //     ]);
     // }
 
+
+    // // =========================================================================
+    // // PRIVATE HELPER METHODS (MENGEMBALIKAN ARRAY, BUKAN JSON RESPONSE)
+    // // =========================================================================
+
+    // private function fetchStatsData()
+    // {
+    //     $currentMonthSales = Transaction::where('status', 'completed')
+    //         ->whereMonth('created_at', Carbon::now()->month)
+    //         ->whereYear('created_at', Carbon::now()->year)
+    //         ->sum('total_amount');
+
+    //     $lastMonthSales = Transaction::where('status', 'completed')
+    //         ->whereMonth('created_at', Carbon::now()->subMonth()->month)
+    //         ->whereYear('created_at', Carbon::now()->subMonth()->year)
+    //         ->sum('total_amount');
+
+    //     $salesGrowth = $lastMonthSales > 0 ? (($currentMonthSales - $lastMonthSales) / $lastMonthSales) * 100 : 0;
+    //     $totalSalesAllTime = Transaction::where('status', 'completed')->sum('total_amount');
+
+    //     $totalProducts = Product::where('status', 'active')->count();
+    //     $newProductsThisMonth = Product::where('status', 'active')
+    //         ->whereMonth('created_at', Carbon::now()->month)
+    //         ->count();
+
+    //     $currentMonthTransactions = Transaction::whereMonth('created_at', Carbon::now()->month)->count();
+    //     $lastMonthTransactions = Transaction::whereMonth('created_at', Carbon::now()->subMonth()->month)->count();
+    //     $transactionGrowth = $lastMonthTransactions > 0 ? (($currentMonthTransactions - $lastMonthTransactions) / $lastMonthTransactions) * 100 : 0;
+    //     $totalTransactionsAllTime = Transaction::count();
+
+    //     $totalUsers = User::where('usertype', 'user')->count();
+    //     $newUsersThisMonth = User::where('usertype', 'user')
+    //         ->whereMonth('created_at', Carbon::now()->month)
+    //         ->count();
+
+    //     return [
+    //         'total_sales' => (float) $totalSalesAllTime,
+    //         'sales_growth' => round($salesGrowth, 1),
+    //         'total_products' => $totalProducts,
+    //         'new_products_growth' => $newProductsThisMonth,
+    //         'total_transactions' => $totalTransactionsAllTime,
+    //         'transaction_growth' => round($transactionGrowth, 1),
+    //         'total_users' => $totalUsers,
+    //         'new_users_growth' => $newUsersThisMonth,
+    //     ];
+    // }
+
+    // private function fetchRevenueChartData()
+    // {
+    //     return Transaction::where('status', 'completed')
+    //         ->where('created_at', '>=', Carbon::now()->subMonths(6))
+    //         ->select(
+    //             DB::raw('SUM(total_amount) as total'),
+    //             DB::raw("DATE_FORMAT(created_at, '%b') as month"),
+    //             DB::raw('MONTH(created_at) as month_num')
+    //         )
+    //         ->groupBy('month', 'month_num')
+    //         ->orderBy('month_num', 'ASC')
+    //         ->get()
+    //         ->toArray();
+    // }
+
+    // private function fetchPopularProductsData()
+    // {
+    //     return TransactionDetail::select('products.name', DB::raw('SUM(transaction_details.quantity) as total_sold'))
+    //         ->join('products', 'products.id', '=', 'transaction_details.product_id')
+    //         ->groupBy('products.name')
+    //         ->orderBy('total_sold', 'DESC')
+    //         ->limit(5)
+    //         ->get()
+    //         ->toArray();
+    // }
+
+    // // private function fetchPredictedBestsellersData(C45Service $c45Service)
+    // // {
+    // //     $products = Product::with('category')
+    // //         ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
+    // //         ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
+    // //         ->leftJoin('transactions', function ($join) {
+    // //             $join->on('transaction_details.transaction_id', '=', 'transactions.id')
+    // //                 ->where('transactions.status', '=', 'completed');
+    // //         })
+    // //         ->where('products.status', 'active')
+    // //         ->groupBy('products.id')
+    // //         ->get();
+
+    // //     if ($products->isEmpty()) {
+    // //         return [];
+    // //     }
+
+    // //     $avgSold = $products->avg('total_sold') ?: 1;
+    // //     $avgPrice = $products->avg('price') ?: 100000;
+
+    // //     $dataset = [];
+    // //     $predictData = [];
+
+    // //     foreach ($products as $p) {
+    // //         $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
+    // //         $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
+    // //         $hasDiscount = $p->discount_price ? 'Yes' : 'No';
+    // //         $categoryName = $p->category->name ?? 'Unknown';
+
+    // //         $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
+
+    // //         $features = [
+    // //             'category' => $categoryName,
+    // //             'price_level' => $priceCategory,
+    // //             'is_discounted' => $hasDiscount,
+    // //             'stock_status' => $stockCategory,
+    // //             'label' => $label
+    // //         ];
+
+    // //         $dataset[] = $features;
+    // //         $predictData[$p->id] = [
+    // //             'product' => $p,
+    // //             'features' => $features
+    // //         ];
+    // //     }
+
+    // //     $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
+    // //     $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
+
+    // //     $results = [];
+
+    // //     foreach ($predictData as $id => $data) {
+    // //         $product = $data['product'];
+    // //         $features = $data['features'];
+
+    // //         $prediction = $c45Service->predict($decisionTree, $features);
+    // //         $statusLabel = $prediction['label'];
+    // //         $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
+
+    // //         if ($statusLabel === 'Laris') {
+    // //             $results[] = [
+    // //                 'id' => $product->id,
+    // //                 'name' => $product->name,
+    // //                 'image' => $product->image,
+    // //                 'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
+    // //                 'label' => 'High Potential (C4.5)',
+    // //                 'color' => 'text-green-600',
+    // //                 'score' => random_int(75, 100)
+    // //             ];
+    // //         }
+    // //     }
+
+    // //     if (empty($results)) {
+    // //         return $this->fetchPopularProductsData();
+    // //     }
+
+    // //     return array_slice($results, 0, 100);
+    // // }
+
+    // // private function fetchPredictedBestsellersData(C45Service $c45Service)
+    // // {
+    // //     // 1. AMBIL SEMUA PRODUK UNTUK DATA TRAINING & PREDIKSI
+    // //     $products = Product::with('category')
+    // //         ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
+    // //         ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
+    // //         ->leftJoin('transactions', function ($join) {
+    // //             $join->on('transaction_details.transaction_id', '=', 'transactions.id')
+    // //                 ->where('transactions.status', '=', 'completed');
+    // //         })
+    // //         ->where('products.status', 'active')
+    // //         ->groupBy(
+    // //             'products.id', 'products.category_id', 'products.code', 'products.name',
+    // //             'products.image', 'products.variant_images', 'products.variant_video',
+    // //             'products.price', 'products.discount_price', 'products.stock',
+    // //             'products.weight', 'products.length', 'products.width', 'products.height',
+    // //             'products.material', 'products.strap_length', 'products.color',
+    // //             'products.description', 'products.design', 'products.status',
+    // //             'products.is_notified', 'products.created_at', 'products.updated_at'
+    // //         )
+    // //         ->get();
+
+    // //     if ($products->isEmpty()) {
+    // //         return [];
+    // //     }
+
+    // //     // Hitung batas "Laris" (Bestseller).
+    // //     $avgSold = $products->avg('total_sold') ?: 1;
+    // //     $avgPrice = $products->avg('price') ?: 100000;
+
+    // //     // 2. DISKRETISASI DATA
+    // //     $dataset = [];
+    // //     $predictData = [];
+
+    // //     foreach ($products as $p) {
+    // //         $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
+    // //         $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
+    // //         $hasDiscount = $p->discount_price ? 'Yes' : 'No';
+    // //         $categoryName = $p->category->name ?? 'Unknown';
+
+    // //         $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
+
+    // //         $features = [
+    // //             'category' => $categoryName,
+    // //             'price_level' => $priceCategory,
+    // //             'is_discounted' => $hasDiscount,
+    // //             'stock_status' => $stockCategory,
+    // //             'label' => $label
+    // //         ];
+
+    // //         $dataset[] = $features;
+    // //         $predictData[$p->id] = [
+    // //             'product' => $p,
+    // //             'features' => $features
+    // //         ];
+    // //     }
+
+    // //     // 3. PROSES PEMBELAJARAN MESIN (TRAINING)
+    // //     $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
+    // //     $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
+
+    // //     // 4. PROSES PREDIKSI & PENYUSUNAN RESPONSE UNTUK VUE
+    // //     $results = [];
+
+    // //     foreach ($predictData as $id => $data) {
+    // //         $product = $data['product'];
+    // //         $features = $data['features'];
+
+    // //         $prediction = $c45Service->predict($decisionTree, $features);
+    // //         $statusLabel = $prediction['label'];
+    // //         $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
+
+    // //         if ($statusLabel === 'Laris') {
+    // //             // [PERBAIKAN] Pastikan path image digabung dengan APP_URL
+    // //             $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    // //             $imageUrl = $product->image ? $baseUrlFixed . '/storage/' . $product->image : '';
+
+    // //             $results[] = [
+    // //                 'id' => $product->id,
+    // //                 'name' => $product->name,
+    // //                 'image' => $imageUrl, // Path gambar yang sudah utuh
+    // //                 'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
+    // //                 'label' => 'High Potential (C4.5)',
+    // //                 'color' => 'text-green-600',
+    // //                 'score' => random_int(75, 100) // Nilai persentase (score)
+    // //             ];
+    // //         }
+    // //     }
+
+    // //     // if (empty($results)) {
+    // //     //     // Jika kosong, pakai fallback data historis
+    // //     //     $fallback = $this->fetchPopularProductsData();
+    // //     //     $formattedFallback = [];
+
+    // //     //     // Format ulang fallback agar sesuai struktur list C4.5 di Vue
+    // //     //     foreach($fallback as $item) {
+    // //     //         // Cari detail produknya untuk mengambil gambar
+    // //     //         $prod = Product::where('name', $item['name'])->first();
+    // //     //         $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    // //     //         $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
+
+    // //     //         $formattedFallback[] = [
+    // //     //             'id' => random_int(1000, 9999), // Dummy ID
+    // //     //             'name' => $item['name'],
+    // //     //             'image' => $img,
+    // //     //             'reasons' => 'Based purely on historical top sales (Fallback Mode).',
+    // //     //             'label' => 'Historical Best',
+    // //     //             'color' => 'text-blue-600',
+    // //     //             'score' => 99
+    // //     //         ];
+    // //     //     }
+    // //     //     return $formattedFallback;
+    // //     // }
+
+    // //     if (empty($results)) {
+    // //         // Jika kosong, pakai fallback data historis
+    // //         $fallback = $this->fetchPopularProductsData();
+    // //         $formattedFallback = [];
+
+    // //         foreach($fallback as $index => $item) {
+    // //             // Cari detail produknya untuk mengambil gambar dan ID asli
+    // //             $prod = Product::where('name', $item['name'])->first();
+    // //             $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    // //             $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
+
+    // //             // [PERBAIKAN] Buat persentase skor menurun berdasarkan peringkat
+    // //             // Juara 1: 96%, Juara 2: 89%, Juara 3: 84%, dst.
+    // //             $dynamicScore = 96 - ($index * random_int(5, 8));
+
+    // //             $formattedFallback[] = [
+    // //                 'id' => $prod ? $prod->id : random_int(1000, 9999),
+    // //                 'name' => $item['name'],
+    // //                 'image' => $img,
+    // //                 // Menampilkan angka historis yang sesungguhnya agar masuk akal
+    // //                 'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
+    // //                 'label' => 'Historical Best',
+    // //                 'color' => 'text-blue-600',
+    // //                 'score' => max(60, $dynamicScore) // Cegah skor di bawah 60%
+    // //             ];
+    // //         }
+    // //         return $formattedFallback;
+    // //     }
+
+    // //     // Urutkan berdasarkan score terbesar
+    // //     usort($results, function ($a, $b) {
+    // //         return $b['score'] <=> $a['score'];
+    // //     });
+
+    // //     return array_slice($results, 0, 10);
+    // // }
+
+    // private function fetchPredictedBestsellersData(C45Service $c45Service)
+    // {
+    //     // 1. AMBIL SEMUA PRODUK UNTUK DATA TRAINING & PREDIKSI
+    //     $products = Product::with('category')
+    //         ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
+    //         ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
+    //         ->leftJoin('transactions', function ($join) {
+    //             $join->on('transaction_details.transaction_id', '=', 'transactions.id')
+    //                 ->where('transactions.status', '=', 'completed');
+    //         })
+    //         ->where('products.status', 'active')
+    //         ->groupBy(
+    //             'products.id', 'products.category_id', 'products.code', 'products.name',
+    //             'products.image', 'products.variant_images', 'products.variant_video',
+    //             'products.price', 'products.discount_price', 'products.stock',
+    //             'products.weight', 'products.length', 'products.width', 'products.height',
+    //             'products.material', 'products.strap_length', 'products.color',
+    //             'products.description', 'products.design', 'products.status',
+    //             'products.is_notified', 'products.created_at', 'products.updated_at'
+    //         )
+    //         ->get();
+
+    //     if ($products->isEmpty()) {
+    //         return [];
+    //     }
+
+    //     // Hitung batas "Laris" (Bestseller).
+    //     $avgSold = $products->avg('total_sold') ?: 1;
+    //     $avgPrice = $products->avg('price') ?: 100000;
+
+    //     // 2. DISKRETISASI DATA
+    //     $dataset = [];
+    //     $predictData = [];
+
+    //     foreach ($products as $p) {
+    //         $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
+    //         $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
+    //         $hasDiscount = $p->discount_price ? 'Yes' : 'No';
+    //         $categoryName = $p->category->name ?? 'Unknown';
+
+    //         $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
+
+    //         $features = [
+    //             'category' => $categoryName,
+    //             'price_level' => $priceCategory,
+    //             'is_discounted' => $hasDiscount,
+    //             'stock_status' => $stockCategory,
+    //             'label' => $label
+    //         ];
+
+    //         $dataset[] = $features;
+    //         $predictData[$p->id] = [
+    //             'product' => $p,
+    //             'features' => $features
+    //         ];
+    //     }
+
+    //     // 3. PROSES PEMBELAJARAN MESIN (TRAINING)
+    //     $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
+    //     $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
+
+    //     // 4. PROSES PREDIKSI & PENYUSUNAN RESPONSE UNTUK VUE
+    //     $results = [];
+
+    //     // [PERBAIKAN] Helper function internal untuk membersihkan URL Gambar
+    //     $formatImageUrl = function($imagePath) {
+    //         if (!$imagePath) return '';
+    //         // Jika sudah ada http, langsung kembalikan aslinya
+    //         if (str_starts_with($imagePath, 'http')) {
+    //             return $imagePath;
+    //         }
+    //         // Jika belum ada, baru kita pasangkan base url-nya
+    //         $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    //         return $baseUrlFixed . '/storage/' . $imagePath;
+    //     };
+
+    //     foreach ($predictData as $id => $data) {
+    //         $product = $data['product'];
+    //         $features = $data['features'];
+
+    //         $prediction = $c45Service->predict($decisionTree, $features);
+    //         $statusLabel = $prediction['label'];
+    //         $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
+
+    //         if ($statusLabel === 'Laris') {
+    //             $results[] = [
+    //                 'id' => $product->id,
+    //                 'name' => $product->name,
+    //                 'image' => $formatImageUrl($product->image), // Panggil fungsi pembersih URL
+    //                 'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
+    //                 'label' => 'High Potential (C4.5)',
+    //                 'color' => 'text-green-600',
+    //                 'score' => random_int(75, 100)
+    //             ];
+    //         }
+    //     }
+
+    //     if (empty($results)) {
+    //         // Jika kosong, pakai fallback data historis
+    //         $fallback = $this->fetchPopularProductsData();
+    //         $formattedFallback = [];
+
+    //         foreach($fallback as $index => $item) {
+    //             $prod = Product::where('name', $item['name'])->first();
+    //             $dynamicScore = 96 - ($index * random_int(5, 8));
+
+    //             $formattedFallback[] = [
+    //                 'id' => $prod ? $prod->id : random_int(1000, 9999),
+    //                 'name' => $item['name'],
+    //                 'image' => $prod ? $formatImageUrl($prod->image) : '', // Panggil fungsi pembersih URL
+    //                 'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
+    //                 'label' => 'Historical Best',
+    //                 'color' => 'text-blue-600',
+    //                 'score' => max(60, $dynamicScore)
+    //             ];
+    //         }
+    //         return $formattedFallback;
+    //     }
+
+    //     // Urutkan berdasarkan score terbesar
+    //     usort($results, function ($a, $b) {
+    //         return $b['score'] <=> $a['score'];
+    //     });
+
+    //     return array_slice($results, 0, 10);
+    // }
+
+    // private function fetchRecentActivitiesData()
+    // {
+    //     return Transaction::with('user:id,first_name,last_name,email')
+    //         ->select('id', 'order_id', 'user_id', 'total_amount', 'status', 'created_at')
+    //         ->latest()
+    //         ->limit(5)
+    //         ->get()
+    //         ->map(function ($transaction) {
+    //             return [
+    //                 'id' => $transaction->id,
+    //                 'order_id' => $transaction->order_id,
+    //                 'customer' => $transaction->user ? $transaction->user->first_name . ' ' . $transaction->user->last_name : 'Guest',
+    //                 'amount' => $transaction->total_amount,
+    //                 'status' => $transaction->status,
+    //                 'time_ago' => $transaction->created_at->diffForHumans()
+    //             ];
+    //         })->toArray();
+    // }
+
+    // private function fetchAverageDailyRevenueData()
+    // {
+    //     $dailyAverages = Transaction::where('status', 'completed')
+    //         ->select(
+    //             DB::raw('AVG(total_amount) as average_revenue'),
+    //             DB::raw('DAYOFWEEK(created_at) as day_of_week')
+    //         )
+    //         ->groupBy('day_of_week')
+    //         ->get();
+
+    //     $chartData = [
+    //         1 => ['day' => 'Mon', 'average' => 0],
+    //         2 => ['day' => 'Tue', 'average' => 0],
+    //         3 => ['day' => 'Wed', 'average' => 0],
+    //         4 => ['day' => 'Thu', 'average' => 0],
+    //         5 => ['day' => 'Fri', 'average' => 0],
+    //         6 => ['day' => 'Sat', 'average' => 0],
+    //         7 => ['day' => 'Sun', 'average' => 0],
+    //     ];
+
+    //     foreach ($dailyAverages as $data) {
+    //         $dbDay = $data->day_of_week;
+    //         $mappedDay = $dbDay == 1 ? 7 : $dbDay - 1;
+    //         $chartData[$mappedDay]['average'] = (float) $data->average_revenue;
+    //     }
+
+    //     return array_values($chartData);
+    // }
+
     // =========================================================================
-    // [BARU] MASTER ENDPOINT (SOLUSI ERROR MAX_USER_CONNECTIONS)
+    // MASTER ENDPOINT (SOLUSI ERROR MAX_USER_CONNECTIONS)
     // =========================================================================
     public function getDashboardMasterData(C45Service $c45Service)
     {
-        // Hanya menggunakan 1 koneksi database untuk mengambil semua data ini
         return response()->json([
-            'stats'      => $this->fetchStatsData(),
-            'revenue'    => $this->fetchRevenueChartData(),
-            'popular'    => $this->fetchPopularProductsData(),
-            'predicted'  => $this->fetchPredictedBestsellersData($c45Service),
-            'activities' => $this->fetchRecentActivitiesData(),
-            'daily'      => $this->fetchAverageDailyRevenueData(),
+            'stats'           => $this->fetchStatsData(),
+            'revenue'         => $this->fetchRevenueChartData(),
+            'popular'         => $this->fetchPopularProductsData(),
+            'predicted'       => $this->fetchPredictedBestsellersData($c45Service),
+            'activities'      => $this->fetchRecentActivitiesData(),
+            'daily'           => $this->fetchAverageDailyRevenueData(),
+            
+            // [BARU] 3 Data Analitik Tambahan
+            'returned'        => $this->fetchMostReturnedProducts(),
+            'peak_hours'      => $this->fetchPeakOrderHours(),
+            'top_affiliators' => $this->fetchTopAffiliators(),
         ]);
     }
 
-
     // =========================================================================
-    // PRIVATE HELPER METHODS (MENGEMBALIKAN ARRAY, BUKAN JSON RESPONSE)
+    // PRIVATE HELPER METHODS
     // =========================================================================
 
     private function fetchStatsData()
@@ -124,239 +621,8 @@ class DashboardController extends Controller
             ->toArray();
     }
 
-    // private function fetchPredictedBestsellersData(C45Service $c45Service)
-    // {
-    //     $products = Product::with('category')
-    //         ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
-    //         ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
-    //         ->leftJoin('transactions', function ($join) {
-    //             $join->on('transaction_details.transaction_id', '=', 'transactions.id')
-    //                 ->where('transactions.status', '=', 'completed');
-    //         })
-    //         ->where('products.status', 'active')
-    //         ->groupBy('products.id')
-    //         ->get();
-
-    //     if ($products->isEmpty()) {
-    //         return [];
-    //     }
-
-    //     $avgSold = $products->avg('total_sold') ?: 1;
-    //     $avgPrice = $products->avg('price') ?: 100000;
-
-    //     $dataset = [];
-    //     $predictData = [];
-
-    //     foreach ($products as $p) {
-    //         $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
-    //         $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
-    //         $hasDiscount = $p->discount_price ? 'Yes' : 'No';
-    //         $categoryName = $p->category->name ?? 'Unknown';
-
-    //         $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
-
-    //         $features = [
-    //             'category' => $categoryName,
-    //             'price_level' => $priceCategory,
-    //             'is_discounted' => $hasDiscount,
-    //             'stock_status' => $stockCategory,
-    //             'label' => $label
-    //         ];
-
-    //         $dataset[] = $features;
-    //         $predictData[$p->id] = [
-    //             'product' => $p,
-    //             'features' => $features
-    //         ];
-    //     }
-
-    //     $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
-    //     $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
-
-    //     $results = [];
-
-    //     foreach ($predictData as $id => $data) {
-    //         $product = $data['product'];
-    //         $features = $data['features'];
-
-    //         $prediction = $c45Service->predict($decisionTree, $features);
-    //         $statusLabel = $prediction['label'];
-    //         $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
-
-    //         if ($statusLabel === 'Laris') {
-    //             $results[] = [
-    //                 'id' => $product->id,
-    //                 'name' => $product->name,
-    //                 'image' => $product->image,
-    //                 'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
-    //                 'label' => 'High Potential (C4.5)',
-    //                 'color' => 'text-green-600',
-    //                 'score' => random_int(75, 100)
-    //             ];
-    //         }
-    //     }
-
-    //     if (empty($results)) {
-    //         return $this->fetchPopularProductsData();
-    //     }
-
-    //     return array_slice($results, 0, 100);
-    // }
-
-    // private function fetchPredictedBestsellersData(C45Service $c45Service)
-    // {
-    //     // 1. AMBIL SEMUA PRODUK UNTUK DATA TRAINING & PREDIKSI
-    //     $products = Product::with('category')
-    //         ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
-    //         ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
-    //         ->leftJoin('transactions', function ($join) {
-    //             $join->on('transaction_details.transaction_id', '=', 'transactions.id')
-    //                 ->where('transactions.status', '=', 'completed');
-    //         })
-    //         ->where('products.status', 'active')
-    //         ->groupBy(
-    //             'products.id', 'products.category_id', 'products.code', 'products.name',
-    //             'products.image', 'products.variant_images', 'products.variant_video',
-    //             'products.price', 'products.discount_price', 'products.stock',
-    //             'products.weight', 'products.length', 'products.width', 'products.height',
-    //             'products.material', 'products.strap_length', 'products.color',
-    //             'products.description', 'products.design', 'products.status',
-    //             'products.is_notified', 'products.created_at', 'products.updated_at'
-    //         )
-    //         ->get();
-
-    //     if ($products->isEmpty()) {
-    //         return [];
-    //     }
-
-    //     // Hitung batas "Laris" (Bestseller).
-    //     $avgSold = $products->avg('total_sold') ?: 1;
-    //     $avgPrice = $products->avg('price') ?: 100000;
-
-    //     // 2. DISKRETISASI DATA
-    //     $dataset = [];
-    //     $predictData = [];
-
-    //     foreach ($products as $p) {
-    //         $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
-    //         $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
-    //         $hasDiscount = $p->discount_price ? 'Yes' : 'No';
-    //         $categoryName = $p->category->name ?? 'Unknown';
-
-    //         $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
-
-    //         $features = [
-    //             'category' => $categoryName,
-    //             'price_level' => $priceCategory,
-    //             'is_discounted' => $hasDiscount,
-    //             'stock_status' => $stockCategory,
-    //             'label' => $label
-    //         ];
-
-    //         $dataset[] = $features;
-    //         $predictData[$p->id] = [
-    //             'product' => $p,
-    //             'features' => $features
-    //         ];
-    //     }
-
-    //     // 3. PROSES PEMBELAJARAN MESIN (TRAINING)
-    //     $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
-    //     $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
-
-    //     // 4. PROSES PREDIKSI & PENYUSUNAN RESPONSE UNTUK VUE
-    //     $results = [];
-
-    //     foreach ($predictData as $id => $data) {
-    //         $product = $data['product'];
-    //         $features = $data['features'];
-
-    //         $prediction = $c45Service->predict($decisionTree, $features);
-    //         $statusLabel = $prediction['label'];
-    //         $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
-
-    //         if ($statusLabel === 'Laris') {
-    //             // [PERBAIKAN] Pastikan path image digabung dengan APP_URL
-    //             $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-    //             $imageUrl = $product->image ? $baseUrlFixed . '/storage/' . $product->image : '';
-
-    //             $results[] = [
-    //                 'id' => $product->id,
-    //                 'name' => $product->name,
-    //                 'image' => $imageUrl, // Path gambar yang sudah utuh
-    //                 'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
-    //                 'label' => 'High Potential (C4.5)',
-    //                 'color' => 'text-green-600',
-    //                 'score' => random_int(75, 100) // Nilai persentase (score)
-    //             ];
-    //         }
-    //     }
-
-    //     // if (empty($results)) {
-    //     //     // Jika kosong, pakai fallback data historis
-    //     //     $fallback = $this->fetchPopularProductsData();
-    //     //     $formattedFallback = [];
-
-    //     //     // Format ulang fallback agar sesuai struktur list C4.5 di Vue
-    //     //     foreach($fallback as $item) {
-    //     //         // Cari detail produknya untuk mengambil gambar
-    //     //         $prod = Product::where('name', $item['name'])->first();
-    //     //         $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-    //     //         $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
-
-    //     //         $formattedFallback[] = [
-    //     //             'id' => random_int(1000, 9999), // Dummy ID
-    //     //             'name' => $item['name'],
-    //     //             'image' => $img,
-    //     //             'reasons' => 'Based purely on historical top sales (Fallback Mode).',
-    //     //             'label' => 'Historical Best',
-    //     //             'color' => 'text-blue-600',
-    //     //             'score' => 99
-    //     //         ];
-    //     //     }
-    //     //     return $formattedFallback;
-    //     // }
-
-    //     if (empty($results)) {
-    //         // Jika kosong, pakai fallback data historis
-    //         $fallback = $this->fetchPopularProductsData();
-    //         $formattedFallback = [];
-
-    //         foreach($fallback as $index => $item) {
-    //             // Cari detail produknya untuk mengambil gambar dan ID asli
-    //             $prod = Product::where('name', $item['name'])->first();
-    //             $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-    //             $img = $prod && $prod->image ? $baseUrlFixed . '/storage/' . $prod->image : '';
-
-    //             // [PERBAIKAN] Buat persentase skor menurun berdasarkan peringkat
-    //             // Juara 1: 96%, Juara 2: 89%, Juara 3: 84%, dst.
-    //             $dynamicScore = 96 - ($index * random_int(5, 8));
-
-    //             $formattedFallback[] = [
-    //                 'id' => $prod ? $prod->id : random_int(1000, 9999),
-    //                 'name' => $item['name'],
-    //                 'image' => $img,
-    //                 // Menampilkan angka historis yang sesungguhnya agar masuk akal
-    //                 'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
-    //                 'label' => 'Historical Best',
-    //                 'color' => 'text-blue-600',
-    //                 'score' => max(60, $dynamicScore) // Cegah skor di bawah 60%
-    //             ];
-    //         }
-    //         return $formattedFallback;
-    //     }
-
-    //     // Urutkan berdasarkan score terbesar
-    //     usort($results, function ($a, $b) {
-    //         return $b['score'] <=> $a['score'];
-    //     });
-
-    //     return array_slice($results, 0, 10);
-    // }
-
     private function fetchPredictedBestsellersData(C45Service $c45Service)
     {
-        // 1. AMBIL SEMUA PRODUK UNTUK DATA TRAINING & PREDIKSI
         $products = Product::with('category')
             ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
             ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
@@ -365,26 +631,16 @@ class DashboardController extends Controller
                     ->where('transactions.status', '=', 'completed');
             })
             ->where('products.status', 'active')
-            ->groupBy(
-                'products.id', 'products.category_id', 'products.code', 'products.name',
-                'products.image', 'products.variant_images', 'products.variant_video',
-                'products.price', 'products.discount_price', 'products.stock',
-                'products.weight', 'products.length', 'products.width', 'products.height',
-                'products.material', 'products.strap_length', 'products.color',
-                'products.description', 'products.design', 'products.status',
-                'products.is_notified', 'products.created_at', 'products.updated_at'
-            )
+            ->groupBy('products.id') 
             ->get();
 
         if ($products->isEmpty()) {
             return [];
         }
 
-        // Hitung batas "Laris" (Bestseller).
         $avgSold = $products->avg('total_sold') ?: 1;
         $avgPrice = $products->avg('price') ?: 100000;
 
-        // 2. DISKRETISASI DATA
         $dataset = [];
         $predictData = [];
 
@@ -411,21 +667,16 @@ class DashboardController extends Controller
             ];
         }
 
-        // 3. PROSES PEMBELAJARAN MESIN (TRAINING)
         $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
         $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
 
-        // 4. PROSES PREDIKSI & PENYUSUNAN RESPONSE UNTUK VUE
         $results = [];
 
-        // [PERBAIKAN] Helper function internal untuk membersihkan URL Gambar
         $formatImageUrl = function($imagePath) {
             if (!$imagePath) return '';
-            // Jika sudah ada http, langsung kembalikan aslinya
             if (str_starts_with($imagePath, 'http')) {
                 return $imagePath;
             }
-            // Jika belum ada, baru kita pasangkan base url-nya
             $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
             return $baseUrlFixed . '/storage/' . $imagePath;
         };
@@ -442,7 +693,7 @@ class DashboardController extends Controller
                 $results[] = [
                     'id' => $product->id,
                     'name' => $product->name,
-                    'image' => $formatImageUrl($product->image), // Panggil fungsi pembersih URL
+                    'image' => $formatImageUrl($product->image), 
                     'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
                     'label' => 'High Potential (C4.5)',
                     'color' => 'text-green-600',
@@ -452,7 +703,6 @@ class DashboardController extends Controller
         }
 
         if (empty($results)) {
-            // Jika kosong, pakai fallback data historis
             $fallback = $this->fetchPopularProductsData();
             $formattedFallback = [];
 
@@ -463,7 +713,7 @@ class DashboardController extends Controller
                 $formattedFallback[] = [
                     'id' => $prod ? $prod->id : random_int(1000, 9999),
                     'name' => $item['name'],
-                    'image' => $prod ? $formatImageUrl($prod->image) : '', // Panggil fungsi pembersih URL
+                    'image' => $prod ? $formatImageUrl($prod->image) : '',
                     'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
                     'label' => 'Historical Best',
                     'color' => 'text-blue-600',
@@ -473,12 +723,11 @@ class DashboardController extends Controller
             return $formattedFallback;
         }
 
-        // Urutkan berdasarkan score terbesar
         usort($results, function ($a, $b) {
             return $b['score'] <=> $a['score'];
         });
 
-        return array_slice($results, 0, 10);
+        return array_slice($results, 0, 100);
     }
 
     private function fetchRecentActivitiesData()
@@ -527,6 +776,84 @@ class DashboardController extends Controller
         }
 
         return array_values($chartData);
+    }
+
+    // =========================================================================
+    // [BARU] FUNGSI ANALITIK TAMBAHAN
+    // =========================================================================
+
+    // 1. Mendapatkan daftar produk yang paling sering dikembalikan (Retur / Refund)
+    private function fetchMostReturnedProducts()
+    {
+        return TransactionDetail::select('products.name', 'products.image', DB::raw('SUM(transaction_details.quantity) as total_returned'))
+            ->join('products', 'products.id', '=', 'transaction_details.product_id')
+            ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+            // Cek status yang mengindikasikan retur/pengembalian
+            ->whereIn('transactions.status', ['refund_requested', 'refund_approved', 'refunded', 'returned', 'issues'])
+            ->groupBy('products.name', 'products.image')
+            ->orderBy('total_returned', 'DESC')
+            ->limit(5)
+            ->get()
+            ->map(function ($item) {
+                $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+                $imgUrl = $item->image && !str_starts_with($item->image, 'http') ? $baseUrlFixed . '/storage/' . $item->image : $item->image;
+                
+                return [
+                    'name' => $item->name,
+                    'image' => $imgUrl,
+                    'total_returned' => (int) $item->total_returned
+                ];
+            })
+            ->toArray();
+    }
+
+    // 2. Mendapatkan Jam Puncak Pesanan Masuk (Peak Order Hours)
+    private function fetchPeakOrderHours()
+    {
+        $hourlyData = Transaction::select(
+                DB::raw('HOUR(created_at) as hour'),
+                DB::raw('COUNT(id) as total_orders')
+            )
+            ->groupBy('hour')
+            ->orderBy('hour', 'ASC')
+            ->get()
+            ->keyBy('hour')
+            ->toArray();
+
+        $formatted = [];
+        // Pastikan array mencakup 24 jam penuh agar chart tidak terpotong
+        for ($i = 0; $i < 24; $i++) {
+            $formatted[] = [
+                'hour' => str_pad($i, 2, '0', STR_PAD_LEFT) . ':00',
+                'orders' => isset($hourlyData[$i]) ? $hourlyData[$i]['total_orders'] : 0
+            ];
+        }
+
+        return $formatted;
+    }
+
+    // 3. Affiliator / Customer Paling Efisien (Sering order atau mendatangkan omset terbesar)
+    private function fetchTopAffiliators()
+    {
+        return Transaction::select('users.first_name', 'users.last_name', 'users.email', 'users.profile_image', 'users.usertype', DB::raw('SUM(transactions.total_amount) as total_generated'), DB::raw('COUNT(transactions.id) as total_orders'))
+            ->join('users', 'users.id', '=', 'transactions.user_id')
+            ->where('transactions.status', 'completed')
+            ->whereIn('users.usertype', ['user', 'reseller']) // Ambil user dan reseller
+            ->groupBy('users.id', 'users.first_name', 'users.last_name', 'users.email', 'users.profile_image', 'users.usertype')
+            ->orderBy('total_generated', 'DESC')
+            ->limit(5)
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'name' => $user->first_name . ' ' . $user->last_name,
+                    'email' => $user->email,
+                    'image' => $user->profile_image,
+                    'usertype' => $user->usertype,
+                    'total_generated' => $user->total_generated,
+                    'total_orders' => $user->total_orders
+                ];
+            })
+            ->toArray();
     }
 
     // =========================================================================

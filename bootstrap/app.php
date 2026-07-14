@@ -24,6 +24,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use App\Http\Middleware\SentryUserContext;
 use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -42,6 +43,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // [BARU] Daftarkan middleware Role untuk RBAC (Role-Based Access Control)
             'role' => \App\Http\Middleware\RoleMiddleware::class,
             'module' => \App\Http\Middleware\RoleMiddleware::class,
+        ]);
+
+        $middleware->api(append: [
+            SentryUserContext::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
