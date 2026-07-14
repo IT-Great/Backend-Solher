@@ -13,6 +13,7 @@
         "league/flysystem-aws-s3-v3": "^3.0",
         "predis/predis": "^3.4",
         "pusher/pusher-php-server": "^7.2",
+        "sentry/sentry-laravel": "^4.26",
         "stripe/stripe-php": "^20.2",
         "xendit/xendit-php": "^7.0"
     },
