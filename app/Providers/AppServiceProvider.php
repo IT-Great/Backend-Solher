@@ -33,11 +33,12 @@ class AppServiceProvider extends ServiceProvider
         // 2. Mencegah Update Massal tanpa fillable (Mass Assignment Exception)
         Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
 
-        // 3. Log Peringatan Jika Ada Query yang Sangat Lambat (Slow Query Monitor)
-        // Misalnya query memakan waktu lebih dari 500ms (setengah detik)
-        DB::handleExceedingCumulativeQueryDuration();
-        DB::whenQueryingForLongerThan(500, function ($connection, $event) {
-            Log::warning("Slow Database Query Detected [{$event->time}ms]: {$event->sql}");
+        // 3. Log Peringatan Jika Ada Query yang Sangat Lambat (Di atas 500ms)
+        // Menggunakan DB::listen yang dijamin 100% kompatibel dan aman
+        DB::listen(function ($query) {
+            if ($query->time > 500) {
+                Log::warning("Slow Database Query Detected [{$query->time}ms]: {$query->sql}");
+            }
         });
 
         if ($this->app->environment('production')) {
