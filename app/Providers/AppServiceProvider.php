@@ -6,6 +6,9 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -22,6 +25,21 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // 1. Mencegah Lazy Loading (N+1 Problem)
+        // Jika aplikasi dijalankan di mode lokal (bukan production),
+        // Laravel akan memunculkan error mencolok jika ada N+1 query.
+        Model::preventLazyLoading(! app()->isProduction());
+
+        // 2. Mencegah Update Massal tanpa fillable (Mass Assignment Exception)
+        Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
+
+        // 3. Log Peringatan Jika Ada Query yang Sangat Lambat (Slow Query Monitor)
+        // Misalnya query memakan waktu lebih dari 500ms (setengah detik)
+        DB::handleExceedingCumulativeQueryDuration();
+        DB::whenQueryingForLongerThan(500, function ($connection, $event) {
+            Log::warning("Slow Database Query Detected [{$event->time}ms]: {$event->sql}");
+        });
+
         if ($this->app->environment('production')) {
             \URL::forceScheme('https');
         }
