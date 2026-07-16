@@ -317,6 +317,79 @@ use App\Http\Controllers\Controller;
 
 class CartController extends Controller
 {
+    // private function calculateCartTotals($cartItems, $currency = 'IDR')
+    // {
+    //     $totalPrice = 0;
+    //     $totalDiscount = 0;
+
+    //     $groupedByCategory = $cartItems->groupBy(function ($item) {
+    //         return $item->product->category_id;
+    //     });
+
+    //     foreach ($groupedByCategory as $categoryId => $items) {
+    //         $category = $items->first()->product->category;
+
+    //         // [PERBAIKAN] Parsing String JSON dari Database menjadi Array dengan aman
+    //         $rawBundlePrice = $category->bundle_price;
+    //         $bundlePromo = is_string($rawBundlePrice) ? json_decode($rawBundlePrice, true) : ($rawBundlePrice ?? []);
+    //         if (is_numeric($bundlePromo)) {
+    //             $bundlePromo = ['IDR' => $bundlePromo]; // Fallback untuk data lama
+    //         }
+
+    //         $bundleQty = $category->bundle_qty;
+    //         $bundleStartDate = $category->bundle_start_date;
+    //         $bundleEndDate = $category->bundle_end_date;
+
+    //         $now = now();
+    //         $isPromoActive = $bundleQty && $bundlePromo &&
+    //             (!$bundleStartDate || $now >= $bundleStartDate) &&
+    //             (!$bundleEndDate || $now <= $bundleEndDate);
+
+    //         $totalQtyInCategory = $items->sum('quantity');
+
+    //         if ($isPromoActive && $totalQtyInCategory >= $bundleQty) {
+
+    //             $activeBundlePrice = $bundlePromo[$currency] ?? ($bundlePromo['IDR'] ?? 0);
+
+    //             $bundleCount = floor($totalQtyInCategory / $bundleQty);
+    //             $remainderQty = $totalQtyInCategory % $bundleQty;
+
+    //             $totalPrice += ($bundleCount * $activeBundlePrice);
+
+    //             $sortedItems = $items->sortBy(function ($item) use ($currency) {
+    //                 return $this->resolveProductPrice($item->product, $currency);
+    //             });
+
+    //             $remainderAssigned = 0;
+    //             foreach ($sortedItems as $item) {
+    //                 if ($remainderAssigned < $remainderQty) {
+    //                     $takeQty = min($item->quantity, $remainderQty - $remainderAssigned);
+    //                     $normalPrice = $this->resolveProductPrice($item->product, $currency);
+
+    //                     $totalPrice += ($takeQty * $normalPrice);
+    //                     $remainderAssigned += $takeQty;
+    //                 }
+    //             }
+
+    //             $originalPriceSum = 0;
+    //             foreach ($items as $item) {
+    //                 $originalPriceSum += ($item->quantity * $this->resolveProductPrice($item->product, $currency));
+    //             }
+    //             $totalDiscount += max(0, $originalPriceSum - $totalPrice);
+
+    //         } else {
+    //             foreach ($items as $item) {
+    //                 $totalPrice += ($item->quantity * $this->resolveProductPrice($item->product, $currency));
+    //             }
+    //         }
+    //     }
+
+    //     return [
+    //         'total_price' => $totalPrice,
+    //         'total_discount' => $totalDiscount,
+    //     ];
+    // }
+
     private function calculateCartTotals($cartItems, $currency = 'IDR')
     {
         $totalPrice = 0;
@@ -328,12 +401,21 @@ class CartController extends Controller
 
         foreach ($groupedByCategory as $categoryId => $items) {
             $category = $items->first()->product->category;
+            if (!$category) continue;
 
-            // [PERBAIKAN] Parsing String JSON dari Database menjadi Array dengan aman
+            // [PERBAIKAN SUPER AMAN]
             $rawBundlePrice = $category->bundle_price;
-            $bundlePromo = is_string($rawBundlePrice) ? json_decode($rawBundlePrice, true) : ($rawBundlePrice ?? []);
+
+            // Atasi Double-Encoded JSON string dari DB
+            if (is_string($rawBundlePrice)) {
+                $decoded = json_decode($rawBundlePrice, true);
+                $bundlePromo = is_string($decoded) ? json_decode($decoded, true) : $decoded;
+            } else {
+                $bundlePromo = $rawBundlePrice ?? [];
+            }
+
             if (is_numeric($bundlePromo)) {
-                $bundlePromo = ['IDR' => $bundlePromo]; // Fallback untuk data lama
+                $bundlePromo = ['IDR' => $bundlePromo];
             }
 
             $bundleQty = $category->bundle_qty;
@@ -348,7 +430,7 @@ class CartController extends Controller
             $totalQtyInCategory = $items->sum('quantity');
 
             if ($isPromoActive && $totalQtyInCategory >= $bundleQty) {
-
+                // Tarik harga bundle, jika kosong ambil IDR
                 $activeBundlePrice = $bundlePromo[$currency] ?? ($bundlePromo['IDR'] ?? 0);
 
                 $bundleCount = floor($totalQtyInCategory / $bundleQty);
@@ -375,6 +457,7 @@ class CartController extends Controller
                 foreach ($items as $item) {
                     $originalPriceSum += ($item->quantity * $this->resolveProductPrice($item->product, $currency));
                 }
+
                 $totalDiscount += max(0, $originalPriceSum - $totalPrice);
 
             } else {

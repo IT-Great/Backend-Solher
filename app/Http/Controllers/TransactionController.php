@@ -1386,8 +1386,20 @@ class TransactionController extends Controller
                     $category = $items->first()->product->category;
 
                     // [PERBAIKAN] Parsing String JSON secara aman
+                    // $rawBundlePrice = $category->bundle_price;
+                    // $bundlePromo = is_string($rawBundlePrice) ? json_decode($rawBundlePrice, true) : ($rawBundlePrice ?? []);
+                    // if (is_numeric($bundlePromo)) {
+                    //     $bundlePromo = ['IDR' => $bundlePromo];
+                    // }
+
                     $rawBundlePrice = $category->bundle_price;
-                    $bundlePromo = is_string($rawBundlePrice) ? json_decode($rawBundlePrice, true) : ($rawBundlePrice ?? []);
+                    if (is_string($rawBundlePrice)) {
+                        $decoded = json_decode($rawBundlePrice, true);
+                        $bundlePromo = is_string($decoded) ? json_decode($decoded, true) : $decoded;
+                    } else {
+                        $bundlePromo = $rawBundlePrice ?? [];
+                    }
+
                     if (is_numeric($bundlePromo)) {
                         $bundlePromo = ['IDR' => $bundlePromo];
                     }
