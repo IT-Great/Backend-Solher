@@ -39,8 +39,8 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Validation\Rule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CategoryRequest extends FormRequest
 {
@@ -49,6 +49,26 @@ class CategoryRequest extends FormRequest
         return true;
     }
 
+    // public function rules(): array
+    // {
+    //     $categoryId = $this->route('id');
+
+    //     return [
+    //         'code' => [
+    //             'required', 'string', 'max:50',
+    //             Rule::unique('categories', 'code')->ignore($categoryId),
+    //         ],
+    //         'name' => 'required|string|max:255',
+    //         'description' => 'nullable|string',
+
+    //         // [BARU] Aturan ketat untuk Bundle Promo
+    //         'bundle_qty' => 'nullable|integer|min:2',
+    //         'bundle_price' => 'nullable|numeric|min:0|required_with:bundle_qty',
+    //         'bundle_start_date' => 'nullable|date',
+    //         'bundle_end_date' => 'nullable|date|after_or_equal:bundle_start_date',
+    //     ];
+    // }
+
     public function rules(): array
     {
         $categoryId = $this->route('id');
@@ -56,14 +76,14 @@ class CategoryRequest extends FormRequest
         return [
             'code' => [
                 'required', 'string', 'max:50',
-                Rule::unique('categories', 'code')->ignore($categoryId),
+                Rule::unique('categories', 'code')->ignore($categoryId)
             ],
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
 
-            // [BARU] Aturan ketat untuk Bundle Promo
             'bundle_qty' => 'nullable|integer|min:2',
-            'bundle_price' => 'nullable|numeric|min:0|required_with:bundle_qty',
+            // [PERBAIKAN] Validasi untuk JSON Array Multi-Currency
+            'bundle_price' => 'nullable|array',
             'bundle_start_date' => 'nullable|date',
             'bundle_end_date' => 'nullable|date|after_or_equal:bundle_start_date',
         ];

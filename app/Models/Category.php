@@ -28,6 +28,7 @@ class Category extends Model
     protected $casts = [
         'bundle_start_date' => 'datetime',
         'bundle_end_date' => 'datetime',
+        'bundle_price' => 'array',
     ];
 
     public function products(): HasMany
