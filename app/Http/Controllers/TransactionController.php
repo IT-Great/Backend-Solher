@@ -951,6 +951,396 @@ class TransactionController extends Controller
     // }
 
     // --- USER ACTIONS ---
+    // public function checkout(Request $request)
+    // {
+    //     try {
+    //         $request->validate([
+    //             'address_id' => 'required',
+    //             'shipping_method' => 'required|in:free,biteship',
+    //             'use_points' => 'nullable|integer|min:0',
+    //             'cart_ids' => 'required|array',
+    //             'cart_ids.*' => 'exists:carts,id',
+    //             'shipping_cost' => 'nullable|numeric',
+    //             'courier_company' => 'nullable|string',
+    //             'courier_type' => 'nullable|string',
+    //             'delivery_type' => 'nullable|string',
+    //             'currency' => 'required|string',
+    //             'referral_code' => 'nullable|string',
+    //         ]);
+
+    //         $user = $request->user();
+
+    //         // [PERBAIKAN] Pastikan Category ikut diload untuk membaca Bundle
+    //         $cartItems = Cart::with('product.category')
+    //             ->where('user_id', $user->id)
+    //             ->whereIn('id', $request->cart_ids)
+    //             ->get();
+
+    //         if ($cartItems->isEmpty()) {
+    //             return response()->json(['message' => 'No items selected for checkout'], 400);
+    //         }
+
+    //         $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
+
+    //             $lockedUser = User::lockForUpdate()->find($user->id);
+    //             $currency = $request->currency;
+
+    //             // =====================================================================
+    //             // [LOGIKA BARU] MENGHITUNG TOTAL BARANG MENGGUNAKAN ATURAN BUNDLE CATEGORY
+    //             // =====================================================================
+    //             $totalAmount = 0;
+    //             $gatewayItems = []; // Array rinci yang akan dilempar ke Xendit/PayPal
+
+    //             $groupedByCategory = $cartItems->groupBy(function ($item) {
+    //                 return $item->product->category_id;
+    //             });
+
+    //             foreach ($groupedByCategory as $categoryId => $items) {
+    //                 $category = $items->first()->product->category;
+
+    //                 $bundlePromo = $category->bundle_price;
+    //                 $bundleQty = $category->bundle_qty;
+    //                 $bundleStartDate = $category->bundle_start_date;
+    //                 $bundleEndDate = $category->bundle_end_date;
+
+    //                 $now = now();
+    //                 $isPromoActive = $bundleQty && $bundlePromo &&
+    //                     (!$bundleStartDate || $now >= $bundleStartDate) &&
+    //                     (!$bundleEndDate || $now <= $bundleEndDate);
+
+    //                 $totalQtyInCategory = $items->sum('quantity');
+
+    //                 if ($isPromoActive && $totalQtyInCategory >= $bundleQty) {
+    //                     $activeBundlePrice = $bundlePromo[$currency] ?? ($bundlePromo['IDR'] ?? 0);
+    //                     $bundleCount = floor($totalQtyInCategory / $bundleQty);
+    //                     $remainderQty = $totalQtyInCategory % $bundleQty;
+
+    //                     $totalAmount += ($bundleCount * $activeBundlePrice);
+
+    //                     // Masukkan Item Bundle ke gateway
+    //                     $gatewayItems[] = [
+    //                         'name' => "Bundle Promo: {$category->name} ($bundleCount Pakets)",
+    //                         'quantity' => $bundleCount,
+    //                         'price' => (int) $activeBundlePrice,
+    //                         'category' => 'BUNDLE_PRODUCT'
+    //                     ];
+
+    //                     $sortedItems = $items->sortBy(function ($item) use ($currency) {
+    //                         $prices = is_string($item->product->prices) ? json_decode($item->product->prices, true) : ($item->product->prices ?? []);
+    //                         return $prices[$currency] ?? $item->product->price;
+    //                     });
+
+    //                     $remainderAssigned = 0;
+    //                     foreach ($sortedItems as $item) {
+    //                         if ($remainderAssigned < $remainderQty) {
+    //                             $takeQty = min($item->quantity, $remainderQty - $remainderAssigned);
+
+    //                             $prices = is_string($item->product->prices) ? json_decode($item->product->prices, true) : ($item->product->prices ?? []);
+    //                             $discountPrices = is_string($item->product->discount_prices) ? json_decode($item->product->discount_prices, true) : ($item->product->discount_prices ?? []);
+    //                             $basePrice = $prices[$currency] ?? $item->product->price;
+    //                             $discountPrice = $discountPrices[$currency] ?? $item->product->discount_price;
+
+    //                             $normalPrice = (!empty($discountPrice) && (!$item->product->discount_start || $now >= $item->product->discount_start) && (!$item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
+
+    //                             $totalAmount += ($takeQty * $normalPrice);
+    //                             $remainderAssigned += $takeQty;
+
+    //                             $productName = $item->product->name . (!empty($item->color) ? ' - '.$item->color : '');
+    //                             $gatewayItems[] = [
+    //                                 'name' => $productName . " (Normal Price)",
+    //                                 'quantity' => $takeQty,
+    //                                 'price' => (int) $normalPrice,
+    //                                 'category' => 'PHYSICAL_PRODUCT'
+    //                             ];
+    //                         }
+    //                     }
+
+    //                 } else {
+    //                     // Tidak ada bundle
+    //                     foreach ($items as $item) {
+    //                         $prices = is_string($item->product->prices) ? json_decode($item->product->prices, true) : ($item->product->prices ?? []);
+    //                         $discountPrices = is_string($item->product->discount_prices) ? json_decode($item->product->discount_prices, true) : ($item->product->discount_prices ?? []);
+    //                         $basePrice = $prices[$currency] ?? $item->product->price;
+    //                         $discountPrice = $discountPrices[$currency] ?? $item->product->discount_price;
+
+    //                         $normalPrice = (!empty($discountPrice) && (!$item->product->discount_start || $now >= $item->product->discount_start) && (!$item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
+
+    //                         $totalAmount += ($item->quantity * $normalPrice);
+
+    //                         $productName = $item->product->name . (!empty($item->color) ? ' - '.$item->color : '');
+    //                         $gatewayItems[] = [
+    //                             'name' => $productName,
+    //                             'quantity' => $item->quantity,
+    //                             'price' => (int) $normalPrice,
+    //                             'category' => 'PHYSICAL_PRODUCT'
+    //                         ];
+    //                     }
+    //                 }
+    //             }
+    //             // =====================================================================
+
+
+    //             // [KODE VOUCHER / PROMO CLAIM / POINT SAMA PERSIS DENGAN KODE ASLI ANDA]
+    //             $promoDiscountAmount = 0;
+    //             $appliedPromoCode = null;
+
+    //             if (! empty($request->promo_code)) {
+    //                 $promoCode = strtoupper(trim($request->promo_code));
+
+    //                 if ($promoCode === 'SOLHERMEMBER') {
+    //                     if (! $lockedUser->is_membership) { throw new \Exception('Voucher ini eksklusif hanya untuk pengguna dengan status VIP Member.'); }
+    //                     if ($lockedUser->has_used_member_voucher) { throw new \Exception('Anda sudah pernah menggunakan voucher member VIP ini sebelumnya.'); }
+
+    //                     // Perhatian: Ini mungkin harus dikonversi ke kurs jika currency bukan IDR,
+    //                     // Namun untuk penyederhanaan, kita asumsikan voucher member 500k IDR berjalan baik.
+    //                     $promoDiscountAmount = ($currency === 'IDR') ? 500000 : 35; // Misal $35 jika USD
+    //                     $appliedPromoCode = 'SOLHERMEMBER';
+
+    //                     $lockedUser->update(['has_used_member_voucher' => true]);
+    //                 } else {
+    //                     $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
+
+    //                     if (! $promoClaim) { throw new \Exception('Kode Promo tidak valid untuk akun email ini.'); }
+    //                     if ($promoClaim->is_used) { throw new \Exception('Kode Promo sudah pernah digunakan.'); }
+
+    //                     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount); // Anda mungkin perlu mengatur ini juga ke MultiCurrency di tabel PromoClaim
+    //                     $appliedPromoCode = $promoClaim->promo_code;
+
+    //                     $promoClaim->update(['is_used' => true, 'used_at' => now()]);
+    //                 }
+    //             }
+
+    //             $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
+
+    //             $orderId = 'SOL-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
+    //             $earnedPoints = $lockedUser->is_membership ? floor($totalAmount / 100000) : 0;
+    //             $pointsUsed = 0;
+    //             $pointDiscountAmount = 0;
+
+    //             if ($request->use_points > 0 && $lockedUser->is_membership) {
+    //                 $pointsUsed = min($request->use_points, $lockedUser->point);
+    //                 $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
+    //                 $pointDiscountAmount = $maxUsableDiscount;
+    //                 $actualPointsDeducted = floor($maxUsableDiscount / 1000);
+    //                 $pointsUsed = $actualPointsDeducted;
+
+    //                 if ($pointsUsed > 0) {
+    //                     $lockedUser->decrement('point', $pointsUsed);
+    //                 }
+    //             }
+
+    //             $totalQuantity = $cartItems->sum('quantity') ?: 1;
+    //             $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+    //             $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+    //             $affiliateId = null;
+    //             $commissionEarned = 0;
+    //             $commissionStatus = null;
+
+    //             if (!empty($request->referral_code)) {
+    //                 $affiliateUser = User::where('referral_code', $request->referral_code)->where('is_affiliate', true)->first();
+    //                 if ($affiliateUser && $affiliateUser->id !== $lockedUser->id) {
+    //                     $affiliateId = $affiliateUser->id;
+    //                     $commissionRate = $affiliateUser->commission_rate ?? 5.00;
+    //                     $commissionEarned = $totalAmount * ($commissionRate / 100);
+    //                     $commissionStatus = 'pending';
+    //                 }
+    //             }
+
+    //             $transaction = Transaction::create([
+    //                 'user_id' => $lockedUser->id,
+    //                 'address_id' => $request->address_id,
+    //                 'shipping_method' => $request->shipping_method,
+    //                 'shipping_cost' => $totalShippingCost,
+    //                 'courier_company' => $request->shipping_method === 'free' ? 'Internal' : $request->courier_company,
+    //                 'courier_type' => $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type,
+    //                 'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+    //                 'order_id' => $orderId,
+    //                 'total_amount' => $totalAmount,
+    //                 'affiliate_id' => $affiliateId,
+    //                 'commission_earned' => $commissionEarned,
+    //                 'commission_status' => $commissionStatus,
+    //                 'status' => 'pending',
+    //                 'point' => $earnedPoints,
+    //                 'points_used' => $pointsUsed,
+    //                 'promo_code' => $appliedPromoCode,
+    //                 'promo_discount' => $promoDiscountAmount,
+    //                 'currency_code' => $currency,
+    //             ]);
+
+    //             // Simpan Transaction Detail dan kurangi Stock
+    //             foreach ($cartItems as $item) {
+    //                 $product = Product::lockForUpdate()->find($item->product_id);
+    //                 if ($product->stock < $item->quantity) {
+    //                     throw new \Exception("Stock {$product->name} insufficient");
+    //                 }
+
+    //                 // Meskipun ini bundle, kita simpan harga satuannya ke tabel histori dengan hitungan rata-rata bodoh agar tabel tidak error.
+    //                 // (Gateway Items di atas sudah mengatasi hitungan asli untuk Stripe/Xendit)
+    //                 $prices = is_string($product->prices) ? json_decode($product->prices, true) : ($product->prices ?? []);
+    //                 $basePrice = $prices[$currency] ?? $product->price;
+
+    //                 TransactionDetail::create([
+    //                     'transaction_id' => $transaction->id,
+    //                     'product_id' => $item->product_id,
+    //                     'quantity' => $item->quantity,
+    //                     'price' => $basePrice,
+    //                     'color' => $item->color,
+    //                 ]);
+
+    //                 $remainingQuantityToDeduct = $item->quantity;
+    //                 $totalBatchQuantity = ProductStock::where('product_id', $product->id)->sum('quantity');
+    //                 $legacyStock = $product->stock - $totalBatchQuantity;
+
+    //                 if ($legacyStock > 0) {
+    //                     $takeFromLegacy = min($remainingQuantityToDeduct, $legacyStock);
+    //                     ProductStock::create([
+    //                         'product_id' => $product->id,
+    //                         'batch_code' => 'SYS-LEGACY-'.now()->format('YmdHis').'-'.strtoupper(Str::random(4)),
+    //                         'quantity' => 0,
+    //                         'initial_quantity' => $takeFromLegacy,
+    //                     ]);
+    //                     $remainingQuantityToDeduct -= $takeFromLegacy;
+    //                 }
+
+    //                 if ($remainingQuantityToDeduct > 0) {
+    //                     $activeBatches = ProductStock::where('product_id', $product->id)->where('quantity', '>', 0)->orderBy('created_at', 'asc')->lockForUpdate()->get();
+    //                     foreach ($activeBatches as $batch) {
+    //                         if ($remainingQuantityToDeduct <= 0) break;
+    //                         if ($batch->quantity >= $remainingQuantityToDeduct) {
+    //                             $batch->decrement('quantity', $remainingQuantityToDeduct);
+    //                             $remainingQuantityToDeduct = 0;
+    //                         } else {
+    //                             $remainingQuantityToDeduct -= $batch->quantity;
+    //                             $batch->update(['quantity' => 0]);
+    //                         }
+    //                     }
+    //                 }
+
+    //                 if ($remainingQuantityToDeduct > 0) {
+    //                     throw new \Exception("System error: Stock batch mismatch for '{$product->name}'.");
+    //                 }
+    //                 $product->decrement('stock', $item->quantity);
+    //             }
+
+    //             return [
+    //                 'transaction' => $transaction,
+    //                 'gatewayItems' => $gatewayItems, // Ini hasil hitungan BUNDLE yang kita lempar!
+    //                 'totalAmount' => $totalAmount,
+    //                 'totalShippingCost' => $totalShippingCost,
+    //                 'pointDiscountAmount' => $pointDiscountAmount,
+    //                 'pointsUsed' => $pointsUsed,
+    //                 'totalQuantity' => $totalQuantity,
+    //                 'promoCode' => $appliedPromoCode,
+    //                 'promoDiscountAmount' => $promoDiscountAmount,
+    //                 'currency' => $currency,
+    //             ];
+    //         }); // <-- DB TRANSACTION SELESAI & LOCK DILEPAS DI SINI!
+
+    //         // 2. PANGGIL API PIHAK KETIGA DENGAN AMAN DI LUAR TRANSAKSI
+    //         try {
+    //             $externalId = 'PAY-'.$transactionData['transaction']->order_id;
+
+    //             if (isset($transactionData['promoDiscountAmount']) && $transactionData['promoDiscountAmount'] > 0) {
+    //                 $transactionData['gatewayItems'][] = [
+    //                     'name' => 'Promo Code: '.$transactionData['promoCode'],
+    //                     'quantity' => 1,
+    //                     'price' => -(int) $transactionData['promoDiscountAmount'],
+    //                     'category' => 'DISCOUNT',
+    //                 ];
+    //             }
+
+    //             if ($transactionData['pointDiscountAmount'] > 0) {
+    //                 $transactionData['gatewayItems'][] = [
+    //                     'name' => 'Loyalty Point Discount ('.$transactionData['pointsUsed'].' Pts)',
+    //                     'quantity' => 1,
+    //                     'price' => -(int) $transactionData['pointDiscountAmount'],
+    //                     'category' => 'DISCOUNT',
+    //                 ];
+    //             }
+
+    //             if ($transactionData['totalShippingCost'] > 0) {
+    //                 $baseShippingRate = $transactionData['totalShippingCost'] / $transactionData['totalQuantity'];
+    //                 $transactionData['gatewayItems'][] = [
+    //                     'name' => 'Shipping Cost ('.$request->courier_company.')',
+    //                     'quantity' => (int) $transactionData['totalQuantity'],
+    //                     'price' => (int) $baseShippingRate,
+    //                     'category' => 'SHIPPING_FEE',
+    //                 ];
+    //             }
+
+    //             $finalAmount = (int) $transactionData['totalAmount']
+    //                          + $transactionData['totalShippingCost']
+    //                          - $transactionData['pointDiscountAmount']
+    //                          - ($transactionData['promoDiscountAmount'] ?? 0);
+
+    //             // PENYESUAIAN KURS JIKA PAYMENT GATEWAY ANDA MENGHARUSKAN KONVERSI DI AKHIR
+    //             // Jika PayPal/Stripe langsung menerima USD murni tanpa konversi dari IDR base, maka komentar blok ini.
+    //             // Jika transaksi dihitung pakai Rupiah, lalu dikonversi ke USD sesaat sebelum tembak Stripe, gunakan blok ini:
+    //             /* $currencyCode = strtoupper($transactionData['currency']);
+    //             if ($currencyCode !== 'IDR') {
+    //                 $rates = Cache::get('exchange_rates', []);
+    //                 $exchangeRate = $rates[$currencyCode] ?? 1;
+    //                 $finalAmount = round($finalAmount * $exchangeRate, 2);
+    //                 foreach ($transactionData['gatewayItems'] as &$item) {
+    //                     $item['price'] = round($item['price'] * $exchangeRate, 2);
+    //                 }
+    //                 unset($item);
+    //             }
+    //             */
+
+    //             $currency = $transactionData['currency'] ?? 'IDR';
+    //             $paymentGateway = PaymentFactory::make($currency);
+
+    //             $frontendSuccessUrl = config('app.frontend_url')
+    //                 .'/payment-success?external_id='.$externalId
+    //                 .'&order_id='.$transactionData['transaction']->order_id;
+
+    //             $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id='.$externalId.'&order_id='.$transactionData['transaction']->order_id);
+
+    //             $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
+
+    //             $checkoutUrl = $paymentGateway->createInvoice([
+    //                 'order_id' => $transactionData['transaction']->order_id,
+    //                 'external_id' => $externalId,
+    //                 'payer_email' => $user->email,
+    //                 'amount' => $finalAmount,
+    //                 'currency' => $currency,
+    //                 'items' => $transactionData['gatewayItems'],
+    //                 'success_redirect_url' => $dynamicSuccessUrl,
+    //                 'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
+    //             ]);
+
+    //             Payment::create([
+    //                 'transaction_id' => $transactionData['transaction']->id,
+    //                 'external_id' => $externalId,
+    //                 'checkout_url' => $checkoutUrl,
+    //                 'amount' => $transactionData['transaction']->total_amount,
+    //                 'status' => 'pending',
+    //             ]);
+
+    //             Cart::where('user_id', $user->id)->whereIn('id', $request->cart_ids)->delete();
+
+    //             foreach ($cartItems as $item) {
+    //                 Cache::tags(['catalog'])->forget("products.detail.{$item->product_id}");
+    //             }
+
+    //             return response()->json(['checkout_url' => $checkoutUrl], 201);
+
+    //         } catch (\Exception $e) {
+    //             report($e);
+    //             Log::error('Payment Gateway Invoice Creation Failed: '.$e->getMessage());
+    //             app(TransactionController::class)->cancelOrder($request, $transactionData['transaction']->id);
+    //             return response()->json(['message' => 'Payment gateway error. Please try again. Error: '.$e->getMessage()], 500);
+    //         }
+
+    //     } catch (\Throwable $e) {
+    //         report($e);
+    //         Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+    //         return response()->json(['message' => 'Internal Server Error: '.$e->getMessage()], 500);
+    //     }
+    // }
+
     public function checkout(Request $request)
     {
         try {
@@ -970,7 +1360,6 @@ class TransactionController extends Controller
 
             $user = $request->user();
 
-            // [PERBAIKAN] Pastikan Category ikut diload untuk membaca Bundle
             $cartItems = Cart::with('product.category')
                 ->where('user_id', $user->id)
                 ->whereIn('id', $request->cart_ids)
@@ -984,12 +1373,10 @@ class TransactionController extends Controller
 
                 $lockedUser = User::lockForUpdate()->find($user->id);
                 $currency = $request->currency;
+                $now = now();
 
-                // =====================================================================
-                // [LOGIKA BARU] MENGHITUNG TOTAL BARANG MENGGUNAKAN ATURAN BUNDLE CATEGORY
-                // =====================================================================
                 $totalAmount = 0;
-                $gatewayItems = []; // Array rinci yang akan dilempar ke Xendit/PayPal
+                $gatewayItems = [];
 
                 $groupedByCategory = $cartItems->groupBy(function ($item) {
                     return $item->product->category_id;
@@ -998,12 +1385,17 @@ class TransactionController extends Controller
                 foreach ($groupedByCategory as $categoryId => $items) {
                     $category = $items->first()->product->category;
 
-                    $bundlePromo = $category->bundle_price;
+                    // [PERBAIKAN] Parsing String JSON secara aman
+                    $rawBundlePrice = $category->bundle_price;
+                    $bundlePromo = is_string($rawBundlePrice) ? json_decode($rawBundlePrice, true) : ($rawBundlePrice ?? []);
+                    if (is_numeric($bundlePromo)) {
+                        $bundlePromo = ['IDR' => $bundlePromo];
+                    }
+
                     $bundleQty = $category->bundle_qty;
                     $bundleStartDate = $category->bundle_start_date;
                     $bundleEndDate = $category->bundle_end_date;
 
-                    $now = now();
                     $isPromoActive = $bundleQty && $bundlePromo &&
                         (!$bundleStartDate || $now >= $bundleStartDate) &&
                         (!$bundleEndDate || $now <= $bundleEndDate);
@@ -1017,7 +1409,6 @@ class TransactionController extends Controller
 
                         $totalAmount += ($bundleCount * $activeBundlePrice);
 
-                        // Masukkan Item Bundle ke gateway
                         $gatewayItems[] = [
                             'name' => "Bundle Promo: {$category->name} ($bundleCount Pakets)",
                             'quantity' => $bundleCount,
@@ -1025,9 +1416,12 @@ class TransactionController extends Controller
                             'category' => 'BUNDLE_PRODUCT'
                         ];
 
-                        $sortedItems = $items->sortBy(function ($item) use ($currency) {
+                        $sortedItems = $items->sortBy(function ($item) use ($currency, $now) {
                             $prices = is_string($item->product->prices) ? json_decode($item->product->prices, true) : ($item->product->prices ?? []);
-                            return $prices[$currency] ?? $item->product->price;
+                            $discountPrices = is_string($item->product->discount_prices) ? json_decode($item->product->discount_prices, true) : ($item->product->discount_prices ?? []);
+                            $basePrice = $prices[$currency] ?? $item->product->price;
+                            $discountPrice = $discountPrices[$currency] ?? $item->product->discount_price;
+                            return (!empty($discountPrice) && (!$item->product->discount_start || $now >= $item->product->discount_start) && (!$item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
                         });
 
                         $remainderAssigned = 0;
@@ -1056,7 +1450,6 @@ class TransactionController extends Controller
                         }
 
                     } else {
-                        // Tidak ada bundle
                         foreach ($items as $item) {
                             $prices = is_string($item->product->prices) ? json_decode($item->product->prices, true) : ($item->product->prices ?? []);
                             $discountPrices = is_string($item->product->discount_prices) ? json_decode($item->product->discount_prices, true) : ($item->product->discount_prices ?? []);
@@ -1077,10 +1470,7 @@ class TransactionController extends Controller
                         }
                     }
                 }
-                // =====================================================================
 
-
-                // [KODE VOUCHER / PROMO CLAIM / POINT SAMA PERSIS DENGAN KODE ASLI ANDA]
                 $promoDiscountAmount = 0;
                 $appliedPromoCode = null;
 
@@ -1091,8 +1481,6 @@ class TransactionController extends Controller
                         if (! $lockedUser->is_membership) { throw new \Exception('Voucher ini eksklusif hanya untuk pengguna dengan status VIP Member.'); }
                         if ($lockedUser->has_used_member_voucher) { throw new \Exception('Anda sudah pernah menggunakan voucher member VIP ini sebelumnya.'); }
 
-                        // Perhatian: Ini mungkin harus dikonversi ke kurs jika currency bukan IDR,
-                        // Namun untuk penyederhanaan, kita asumsikan voucher member 500k IDR berjalan baik.
                         $promoDiscountAmount = ($currency === 'IDR') ? 500000 : 35; // Misal $35 jika USD
                         $appliedPromoCode = 'SOLHERMEMBER';
 
@@ -1103,7 +1491,7 @@ class TransactionController extends Controller
                         if (! $promoClaim) { throw new \Exception('Kode Promo tidak valid untuk akun email ini.'); }
                         if ($promoClaim->is_used) { throw new \Exception('Kode Promo sudah pernah digunakan.'); }
 
-                        $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount); // Anda mungkin perlu mengatur ini juga ke MultiCurrency di tabel PromoClaim
+                        $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
                         $appliedPromoCode = $promoClaim->promo_code;
 
                         $promoClaim->update(['is_used' => true, 'used_at' => now()]);
@@ -1168,15 +1556,12 @@ class TransactionController extends Controller
                     'currency_code' => $currency,
                 ]);
 
-                // Simpan Transaction Detail dan kurangi Stock
                 foreach ($cartItems as $item) {
                     $product = Product::lockForUpdate()->find($item->product_id);
                     if ($product->stock < $item->quantity) {
                         throw new \Exception("Stock {$product->name} insufficient");
                     }
 
-                    // Meskipun ini bundle, kita simpan harga satuannya ke tabel histori dengan hitungan rata-rata bodoh agar tabel tidak error.
-                    // (Gateway Items di atas sudah mengatasi hitungan asli untuk Stripe/Xendit)
                     $prices = is_string($product->prices) ? json_decode($product->prices, true) : ($product->prices ?? []);
                     $basePrice = $prices[$currency] ?? $product->price;
 
@@ -1225,7 +1610,7 @@ class TransactionController extends Controller
 
                 return [
                     'transaction' => $transaction,
-                    'gatewayItems' => $gatewayItems, // Ini hasil hitungan BUNDLE yang kita lempar!
+                    'gatewayItems' => $gatewayItems,
                     'totalAmount' => $totalAmount,
                     'totalShippingCost' => $totalShippingCost,
                     'pointDiscountAmount' => $pointDiscountAmount,
@@ -1235,9 +1620,8 @@ class TransactionController extends Controller
                     'promoDiscountAmount' => $promoDiscountAmount,
                     'currency' => $currency,
                 ];
-            }); // <-- DB TRANSACTION SELESAI & LOCK DILEPAS DI SINI!
+            });
 
-            // 2. PANGGIL API PIHAK KETIGA DENGAN AMAN DI LUAR TRANSAKSI
             try {
                 $externalId = 'PAY-'.$transactionData['transaction']->order_id;
 
@@ -1273,21 +1657,6 @@ class TransactionController extends Controller
                              + $transactionData['totalShippingCost']
                              - $transactionData['pointDiscountAmount']
                              - ($transactionData['promoDiscountAmount'] ?? 0);
-
-                // PENYESUAIAN KURS JIKA PAYMENT GATEWAY ANDA MENGHARUSKAN KONVERSI DI AKHIR
-                // Jika PayPal/Stripe langsung menerima USD murni tanpa konversi dari IDR base, maka komentar blok ini.
-                // Jika transaksi dihitung pakai Rupiah, lalu dikonversi ke USD sesaat sebelum tembak Stripe, gunakan blok ini:
-                /* $currencyCode = strtoupper($transactionData['currency']);
-                if ($currencyCode !== 'IDR') {
-                    $rates = Cache::get('exchange_rates', []);
-                    $exchangeRate = $rates[$currencyCode] ?? 1;
-                    $finalAmount = round($finalAmount * $exchangeRate, 2);
-                    foreach ($transactionData['gatewayItems'] as &$item) {
-                        $item['price'] = round($item['price'] * $exchangeRate, 2);
-                    }
-                    unset($item);
-                }
-                */
 
                 $currency = $transactionData['currency'] ?? 'IDR';
                 $paymentGateway = PaymentFactory::make($currency);
