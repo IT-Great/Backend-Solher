@@ -83,7 +83,7 @@ class CategoryRequest extends FormRequest
 
             'bundle_qty' => 'nullable|integer|min:2',
             // [PERBAIKAN] Validasi untuk JSON Array Multi-Currency
-            'bundle_price' => 'nullable|array',
+            'bundle_price' => 'nullable|array|required_with:bundle_qty',
             'bundle_start_date' => 'nullable|date',
             'bundle_end_date' => 'nullable|date|after_or_equal:bundle_start_date',
         ];
