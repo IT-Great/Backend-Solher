@@ -1003,8 +1003,8 @@ class TransactionController extends Controller
 
                     $bundleQty = $category->bundle_qty;
                     $isPromoActive = $bundleQty && $bundlePromo &&
-                        (!$category->bundle_start_date || $now >= $category->bundle_start_date) &&
-                        (!$category->bundle_end_date || $now <= $category->bundle_end_date);
+                        (! $category->bundle_start_date || $now >= $category->bundle_start_date) &&
+                        (! $category->bundle_end_date || $now <= $category->bundle_end_date);
 
                     $totalQtyInCategory = $items->sum('quantity');
 
@@ -1019,7 +1019,7 @@ class TransactionController extends Controller
                             'name' => "Bundle Promo: {$category->name} ($bundleCount Pakets)",
                             'quantity' => $bundleCount,
                             'price' => (int) $activeBundlePrice,
-                            'category' => 'BUNDLE_PRODUCT'
+                            'category' => 'BUNDLE_PRODUCT',
                         ];
 
                         $sortedItems = $items->sortBy(function ($item) use ($currency, $now) {
@@ -1027,7 +1027,8 @@ class TransactionController extends Controller
                             $discountPrices = is_string($item->product->discount_prices) ? json_decode($item->product->discount_prices, true) : ($item->product->discount_prices ?? []);
                             $basePrice = $prices[$currency] ?? $item->product->price;
                             $discountPrice = $discountPrices[$currency] ?? $item->product->discount_price;
-                            return (!empty($discountPrice) && (!$item->product->discount_start || $now >= $item->product->discount_start) && (!$item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
+
+                            return (! empty($discountPrice) && (! $item->product->discount_start || $now >= $item->product->discount_start) && (! $item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
                         });
 
                         $remainderAssigned = 0;
@@ -1039,17 +1040,17 @@ class TransactionController extends Controller
                                 $discountPrices = is_string($item->product->discount_prices) ? json_decode($item->product->discount_prices, true) : ($item->product->discount_prices ?? []);
                                 $basePrice = $prices[$currency] ?? $item->product->price;
                                 $discountPrice = $discountPrices[$currency] ?? $item->product->discount_price;
-                                $normalPrice = (!empty($discountPrice) && (!$item->product->discount_start || $now >= $item->product->discount_start) && (!$item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
+                                $normalPrice = (! empty($discountPrice) && (! $item->product->discount_start || $now >= $item->product->discount_start) && (! $item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
 
                                 $totalAmount += ($takeQty * $normalPrice);
                                 $remainderAssigned += $takeQty;
 
-                                $productName = $item->product->name . (!empty($item->color) ? ' - '.$item->color : '');
+                                $productName = $item->product->name.(! empty($item->color) ? ' - '.$item->color : '');
                                 $gatewayItems[] = [
-                                    'name' => $productName . " (Normal Price)",
+                                    'name' => $productName.' (Normal Price)',
                                     'quantity' => $takeQty,
                                     'price' => (int) $normalPrice,
-                                    'category' => 'PHYSICAL_PRODUCT'
+                                    'category' => 'PHYSICAL_PRODUCT',
                                 ];
                             }
                         }
@@ -1060,16 +1061,16 @@ class TransactionController extends Controller
                             $discountPrices = is_string($item->product->discount_prices) ? json_decode($item->product->discount_prices, true) : ($item->product->discount_prices ?? []);
                             $basePrice = $prices[$currency] ?? $item->product->price;
                             $discountPrice = $discountPrices[$currency] ?? $item->product->discount_price;
-                            $normalPrice = (!empty($discountPrice) && (!$item->product->discount_start || $now >= $item->product->discount_start) && (!$item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
+                            $normalPrice = (! empty($discountPrice) && (! $item->product->discount_start || $now >= $item->product->discount_start) && (! $item->product->discount_end || $now <= $item->product->discount_end)) ? $discountPrice : $basePrice;
 
                             $totalAmount += ($item->quantity * $normalPrice);
 
-                            $productName = $item->product->name . (!empty($item->color) ? ' - '.$item->color : '');
+                            $productName = $item->product->name.(! empty($item->color) ? ' - '.$item->color : '');
                             $gatewayItems[] = [
                                 'name' => $productName,
                                 'quantity' => $item->quantity,
                                 'price' => (int) $normalPrice,
-                                'category' => 'PHYSICAL_PRODUCT'
+                                'category' => 'PHYSICAL_PRODUCT',
                             ];
                         }
                     }
@@ -1082,8 +1083,12 @@ class TransactionController extends Controller
                     $promoCode = strtoupper(trim($request->promo_code));
 
                     if ($promoCode === 'SOLHERMEMBER') {
-                        if (! $lockedUser->is_membership) { throw new \Exception('Voucher ini eksklusif hanya untuk pengguna dengan status VIP Member.'); }
-                        if ($lockedUser->has_used_member_voucher) { throw new \Exception('Anda sudah pernah menggunakan voucher member VIP ini sebelumnya.'); }
+                        if (! $lockedUser->is_membership) {
+                            throw new \Exception('Voucher ini eksklusif hanya untuk pengguna dengan status VIP Member.');
+                        }
+                        if ($lockedUser->has_used_member_voucher) {
+                            throw new \Exception('Anda sudah pernah menggunakan voucher member VIP ini sebelumnya.');
+                        }
 
                         $promoDiscountAmount = ($currency === 'IDR') ? 500000 : 35; // Misal $35 jika USD
                         $appliedPromoCode = 'SOLHERMEMBER';
@@ -1092,8 +1097,18 @@ class TransactionController extends Controller
                     } else {
                         $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
 
-                        if (! $promoClaim) { throw new \Exception('Kode Promo tidak valid untuk akun email ini.'); }
-                        if ($promoClaim->is_used) { throw new \Exception('Kode Promo sudah pernah digunakan.'); }
+                        if (! $promoClaim) {
+                            throw new \Exception('Kode Promo tidak valid untuk akun email ini.');
+                        }
+                        if ($promoClaim->is_used) {
+                            throw new \Exception('Kode Promo sudah pernah digunakan.');
+                        }
+
+                        $minPurchase = ($currency === 'IDR') ? 499000 : 35; // Sesuaikan angka 35 dengan rate Anda
+                        if ($totalAmount < $minPurchase) {
+                            $currencyText = ($currency === 'IDR') ? 'Rp 499.000' : '$'.$minPurchase;
+                            throw new \Exception("Minimum purchase to use this promo is {$currencyText}");
+                        }
 
                         $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
                         $appliedPromoCode = $promoClaim->promo_code;
@@ -1129,7 +1144,7 @@ class TransactionController extends Controller
                 $commissionEarned = 0;
                 $commissionStatus = null;
 
-                if (!empty($request->referral_code)) {
+                if (! empty($request->referral_code)) {
                     $affiliateUser = User::where('referral_code', $request->referral_code)->where('is_affiliate', true)->first();
                     if ($affiliateUser && $affiliateUser->id !== $lockedUser->id) {
                         $affiliateId = $affiliateUser->id;
@@ -1195,7 +1210,9 @@ class TransactionController extends Controller
                     if ($remainingQuantityToDeduct > 0) {
                         $activeBatches = ProductStock::where('product_id', $product->id)->where('quantity', '>', 0)->orderBy('created_at', 'asc')->lockForUpdate()->get();
                         foreach ($activeBatches as $batch) {
-                            if ($remainingQuantityToDeduct <= 0) break;
+                            if ($remainingQuantityToDeduct <= 0) {
+                                break;
+                            }
                             if ($batch->quantity >= $remainingQuantityToDeduct) {
                                 $batch->decrement('quantity', $remainingQuantityToDeduct);
                                 $remainingQuantityToDeduct = 0;
@@ -1262,6 +1279,29 @@ class TransactionController extends Controller
                              - $transactionData['pointDiscountAmount']
                              - ($transactionData['promoDiscountAmount'] ?? 0);
 
+                $currencyCode = strtoupper($transactionData['currency']);
+
+                if ($currencyCode !== 'IDR') {
+                    // Ambil data kurs dari cache
+                    $rates = Cache::get('exchange_rates', []);
+                    $exchangeRate = $rates[$currencyCode] ?? 1;
+
+                    // 1. Konversi Grand Total
+                    $finalAmount = round($finalAmount * $exchangeRate, 2);
+
+                    // 2. Konversi harga per item untuk gateway
+                    foreach ($transactionData['gatewayItems'] as &$item) {
+                        $item['price'] = round($item['price'] * $exchangeRate, 2);
+                    }
+                    unset($item);
+                }
+
+                Log::info('PAYMENT GATEWAY CALCULATION', [
+                    'order_id' => $transactionData['transaction']->order_id,
+                    'currency' => $transactionData['currency'],
+                    'GRAND_TOTAL_FINAL' => $finalAmount,
+                ]);
+
                 $currency = $transactionData['currency'] ?? 'IDR';
                 $paymentGateway = PaymentFactory::make($currency);
 
@@ -1304,12 +1344,14 @@ class TransactionController extends Controller
                 report($e);
                 Log::error('Payment Gateway Invoice Creation Failed: '.$e->getMessage());
                 app(TransactionController::class)->cancelOrder($request, $transactionData['transaction']->id);
+
                 return response()->json(['message' => 'Payment gateway error. Please try again. Error: '.$e->getMessage()], 500);
             }
 
         } catch (\Throwable $e) {
             report($e);
             Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+
             return response()->json(['message' => 'Internal Server Error: '.$e->getMessage()], 500);
         }
     }
@@ -1388,6 +1430,7 @@ class TransactionController extends Controller
                 }
             } catch (\Exception $e) {
                 report($e);
+
                 return response()->json(['message' => 'Failed to verify logistics status with Biteship.'], 500);
             }
 
@@ -1870,6 +1913,7 @@ class TransactionController extends Controller
             return response()->json($data);
         } catch (\Exception $e) {
             report($e);
+
             return response()->json(['message' => 'Failed to retrieve tracking data: '.$e->getMessage()], 500);
         }
     }
@@ -2017,6 +2061,7 @@ class TransactionController extends Controller
             return response()->json($data);
         } catch (\Exception $e) {
             report($e);
+
             return response()->json(['message' => 'Failed to retrieve tracking data: '.$e->getMessage()], 500);
         }
     }
@@ -2051,6 +2096,7 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Gagal mengambil resi dari Biteship: '.$response->body()], 400);
         } catch (\Exception $e) {
             report($e);
+
             return response()->json(['message' => 'Terjadi kesalahan sistem: '.$e->getMessage()], 500);
         }
     }
@@ -2109,7 +2155,7 @@ class TransactionController extends Controller
                 if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
                     $updates['commission_status'] = 'settled'; // Status komisi jadi Selesai
 
-                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+                    $affiliateUser = User::find($transaction->affiliate_id);
                     if ($affiliateUser) {
                         // Tambahkan uang ke dompet afiliator sesuai perhitungan saat checkout
                         $affiliateUser->increment('commission_balance', $transaction->commission_earned);
