@@ -721,8 +721,48 @@ Route::middleware(['auth:sanctum', 'role:users'])->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'role:subscribers'])->group(function () {
+    // Route::get('/admin/subscribers', function () {
+    //     return response()->json(Subscriber::latest()->get());
+    // });
+
+    // Endpoint Get Data (Sudah Ada)
     Route::get('/admin/subscribers', function () {
         return response()->json(Subscriber::latest()->get());
+    });
+
+    // 👇 ENDPOINT BARU UNTUK EXPORT CSV 👇
+    Route::get('/admin/subscribers/export', function () {
+        $subscribers = Subscriber::latest()->get();
+
+        $headers = [
+            "Content-type"        => "text/csv",
+            "Content-Disposition" => "attachment; filename=solher_subscribers_" . date('Y-m-d_His') . ".csv",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ];
+
+        $columns = ['ID', 'Email', 'Account Type', 'Status', 'Subscribed At'];
+
+        $callback = function() use($subscribers, $columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns); // Tulis Header Kolom
+
+            foreach ($subscribers as $sub) {
+                $row = [
+                    $sub->id,
+                    $sub->email,
+                    $sub->is_registered ? 'Registered Member' : 'Guest',
+                    $sub->is_active ? 'Active' : 'Unsubscribed',
+                    $sub->created_at->format('Y-m-d H:i:s')
+                ];
+                fputcsv($file, $row); // Tulis isi per baris
+            }
+
+            fclose($file);
+        };
+
+        return Response::stream($callback, 200, $headers);
     });
 });
 
