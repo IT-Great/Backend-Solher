@@ -881,3 +881,19 @@ Route::get('/exchange-rates', function () {
 });
 
 Route::middleware('auth:sanctum')->post('/reviews', [ReviewController::class, 'store']);
+
+// Mengambil semua review (beserta relasi user & product)
+Route::get('/admin/reviews', function () {
+    return response()->json(
+        \App\Models\Review::with(['user', 'product'])->latest()->get()
+    );
+});
+
+// Fitur Toggle Hide/Show Review
+Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
+    $review = \App\Models\Review::findOrFail($id);
+    $review->update(['is_approved' => !$review->is_approved]);
+
+    $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
+    return response()->json(['message' => "Review berhasil $status."]);
+});
