@@ -580,12 +580,14 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductStockController;
 use App\Http\Controllers\PromoController;
+use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\S3UploadController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransferReceivePaymentController;
 use App\Http\Controllers\WishlistController;
 use App\Models\Subscriber;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Cache;
@@ -877,3 +879,5 @@ Route::get('/exchange-rates', function () {
         ],
     ], 200);
 });
+
+Route::middleware('auth:sanctum')->post('/reviews', [ReviewController::class, 'store']);
