@@ -80,7 +80,7 @@ class TransactionControllerTest extends TestCase
 
         // Buat 2 Batch Stok yang sudah bolong (Tidak penuh)
         // Batch 1: Dulu isinya 5, sekarang habis (0)
-        $batch1 = ProductStock::create([
+        $batch1 = ProductStock::forceCreate([
             'product_id' => $this->product->id,
             'batch_code' => 'BATCH-OLD',
             'quantity' => 0,
@@ -89,7 +89,7 @@ class TransactionControllerTest extends TestCase
         ]);
 
         // Batch 2: Dulu isinya 10, sekarang sisa 2 (Ada ruang kosong 8)
-        $batch2 = ProductStock::create([
+        $batch2 = ProductStock::forceCreate([
             'product_id' => $this->product->id,
             'batch_code' => 'BATCH-NEW',
             'quantity' => 2,
@@ -153,7 +153,7 @@ class TransactionControllerTest extends TestCase
 
         // Kosongkan sebagian stok untuk melihat apakah kembalinya benar
         $this->product->update(['stock' => 8]);
-        ProductStock::create([
+        ProductStock::forceCreate([
             'product_id' => $this->product->id,
             'batch_code' => 'BATCH-TX',
             'quantity' => 8,
