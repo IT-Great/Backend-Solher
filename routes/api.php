@@ -562,338 +562,338 @@
 //     ], 200);
 // });
 
-// use App\Http\Controllers\AddressController;
-// use App\Http\Controllers\AffiliateController;
-// use App\Http\Controllers\AuditLogController;
-// use App\Http\Controllers\AuthController;
-// use App\Http\Controllers\CartController;
-// use App\Http\Controllers\CategoryCoaController;
-// use App\Http\Controllers\CategoryController;
-// use App\Http\Controllers\ChatController;
-// use App\Http\Controllers\CoaController;
-// use App\Http\Controllers\ContactController;
-// use App\Http\Controllers\DashboardController;
-// use App\Http\Controllers\EventController;
-// use App\Http\Controllers\HomeController;
-// use App\Http\Controllers\InvoiceController;
-// use App\Http\Controllers\PaymentController;
-// use App\Http\Controllers\ProductController;
-// use App\Http\Controllers\ProductStockController;
-// use App\Http\Controllers\PromoController;
-// use App\Http\Controllers\ReviewController;
-// use App\Http\Controllers\S3UploadController;
-// use App\Http\Controllers\TransactionController;
-// use App\Http\Controllers\TransferReceivePaymentController;
-// use App\Http\Controllers\WishlistController;
-// use App\Models\Subscriber;
-// use Illuminate\Http\Request;
-// use Illuminate\Http\Response;
-// use Illuminate\Support\Facades\Artisan;
-// use Illuminate\Support\Facades\Broadcast;
-// use Illuminate\Support\Facades\Cache;
-// use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AddressController;
+use App\Http\Controllers\AffiliateController;
+use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\CategoryCoaController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\CoaController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EventController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductStockController;
+use App\Http\Controllers\PromoController;
+use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\S3UploadController;
+use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\TransferReceivePaymentController;
+use App\Http\Controllers\WishlistController;
+use App\Models\Subscriber;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 
-// Broadcast::routes(['middleware' => ['auth:sanctum']]);
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
-// // =========================================================================
-// // PUBLIC & USER ROUTES (TIDAK ADA PERUBAHAN)
-// // =========================================================================
+// =========================================================================
+// PUBLIC & USER ROUTES (TIDAK ADA PERUBAHAN)
+// =========================================================================
 
-// Route::get('/home/find-product', [HomeController::class, 'getProductBySearch']);
-// Route::get('/home/category/{code}', [HomeController::class, 'getProductsByCategory']);
-// Route::get('/products', [ProductController::class, 'index']);
-// Route::get('/products/inactive', [ProductController::class, 'inactiveProducts']);
-// Route::get('/products/{id}', [ProductController::class, 'show']);
-// Route::get('/guest/categories', [CategoryController::class, 'index']);
-// Route::get('/events', [EventController::class, 'indexPublic']);
+Route::get('/home/find-product', [HomeController::class, 'getProductBySearch']);
+Route::get('/home/category/{code}', [HomeController::class, 'getProductsByCategory']);
+Route::get('/products', [ProductController::class, 'index']);
+Route::get('/products/inactive', [ProductController::class, 'inactiveProducts']);
+Route::get('/products/{id}', [ProductController::class, 'show']);
+Route::get('/guest/categories', [CategoryController::class, 'index']);
+Route::get('/events', [EventController::class, 'indexPublic']);
 
-// Route::middleware('throttle:auth-limiter')->group(function () {
-//     Route::post('/register', [AuthController::class, 'register']);
-//     Route::post('/login', [AuthController::class, 'login']);
-//     Route::post('/admin/login', [AuthController::class, 'adminLogin']);
-// });
+Route::middleware('throttle:auth-limiter')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/admin/login', [AuthController::class, 'adminLogin']);
+});
 
-// Route::middleware('throttle:otp-limiter')->group(function () {
-//     Route::post('/forgot-password/send-code', [AuthController::class, 'sendResetCode']);
-//     Route::post('/forgot-password/verify-code', [AuthController::class, 'verifyResetCode']);
-//     Route::post('/forgot-password/reset', [AuthController::class, 'resetPassword']);
-//     Route::post('/admin/forgot-password/send-code', [AuthController::class, 'adminSendResetCode']);
-//     Route::post('/admin/forgot-password/verify-code', [AuthController::class, 'adminVerifyResetCode']);
-//     Route::post('/admin/forgot-password/reset', [AuthController::class, 'adminResetPassword']);
-// });
+Route::middleware('throttle:otp-limiter')->group(function () {
+    Route::post('/forgot-password/send-code', [AuthController::class, 'sendResetCode']);
+    Route::post('/forgot-password/verify-code', [AuthController::class, 'verifyResetCode']);
+    Route::post('/forgot-password/reset', [AuthController::class, 'resetPassword']);
+    Route::post('/admin/forgot-password/send-code', [AuthController::class, 'adminSendResetCode']);
+    Route::post('/admin/forgot-password/verify-code', [AuthController::class, 'adminVerifyResetCode']);
+    Route::post('/admin/forgot-password/reset', [AuthController::class, 'adminResetPassword']);
+});
 
-// Route::post('/contact', [ContactController::class, 'store']);
-// Route::post('/subscribe', [ContactController::class, 'subscribe']);
-// Route::post('/biteship/callback', [TransactionController::class, 'biteshipCallback']);
-// Route::post('/payments/callback', [PaymentController::class, 'xenditCallback']);
-// Route::post('/payments/stripe-webhook', [PaymentController::class, 'stripeWebhook']);
-// Route::post('/payments/paypal-webhook', [PaymentController::class, 'paypalWebhook']);
-// Route::get('/payments/paypal-capture', [PaymentController::class, 'capturePayPal']);
-// Route::post('/promo/claim', [PromoController::class, 'claim']);
+Route::post('/contact', [ContactController::class, 'store']);
+Route::post('/subscribe', [ContactController::class, 'subscribe']);
+Route::post('/biteship/callback', [TransactionController::class, 'biteshipCallback']);
+Route::post('/payments/callback', [PaymentController::class, 'xenditCallback']);
+Route::post('/payments/stripe-webhook', [PaymentController::class, 'stripeWebhook']);
+Route::post('/payments/paypal-webhook', [PaymentController::class, 'paypalWebhook']);
+Route::get('/payments/paypal-capture', [PaymentController::class, 'capturePayPal']);
+Route::post('/promo/claim', [PromoController::class, 'claim']);
 
-// Route::middleware('auth:sanctum')->group(function () {
-//     Route::get('/user', function (Request $request) { return $request->user(); });
-//     Route::post('/user/update-info', [AuthController::class, 'updateProfileInfo']);
-//     Route::post('/user/update-image', [AuthController::class, 'updateImage']);
-//     Route::post('/user/update-password', [AuthController::class, 'updatePassword']);
-//     Route::post('/user/toggle-membership', [AuthController::class, 'toggleMembership']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/user', function (Request $request) { return $request->user(); });
+    Route::post('/user/update-info', [AuthController::class, 'updateProfileInfo']);
+    Route::post('/user/update-image', [AuthController::class, 'updateImage']);
+    Route::post('/user/update-password', [AuthController::class, 'updatePassword']);
+    Route::post('/user/toggle-membership', [AuthController::class, 'toggleMembership']);
 
-//     Route::get('/wishlists', [WishlistController::class, 'index']);
-//     Route::post('/wishlists/toggle', [WishlistController::class, 'toggle']);
-//     Route::get('/user/contact-history', [ContactController::class, 'userHistory']);
+    Route::get('/wishlists', [WishlistController::class, 'index']);
+    Route::post('/wishlists/toggle', [WishlistController::class, 'toggle']);
+    Route::get('/user/contact-history', [ContactController::class, 'userHistory']);
 
-//     Route::get('/addresses', [AddressController::class, 'index']);
-//     Route::post('/addresses', [AddressController::class, 'store']);
-//     Route::put('/addresses/{id}', [AddressController::class, 'update']);
-//     Route::delete('/addresses/{id}', [AddressController::class, 'destroy']);
+    Route::get('/addresses', [AddressController::class, 'index']);
+    Route::post('/addresses', [AddressController::class, 'store']);
+    Route::put('/addresses/{id}', [AddressController::class, 'update']);
+    Route::delete('/addresses/{id}', [AddressController::class, 'destroy']);
 
-//     Route::get('/carts', [CartController::class, 'index']);
-//     Route::post('/carts', [CartController::class, 'store']);
-//     Route::put('/carts/{id}', [CartController::class, 'update']);
-//     Route::delete('/carts/{id}', [CartController::class, 'destroy']);
+    Route::get('/carts', [CartController::class, 'index']);
+    Route::post('/carts', [CartController::class, 'store']);
+    Route::put('/carts/{id}', [CartController::class, 'update']);
+    Route::delete('/carts/{id}', [CartController::class, 'destroy']);
 
-//     Route::get('/transactions', [TransactionController::class, 'index']);
-//     Route::get('/transactions/{id}', [TransactionController::class, 'show']);
-//     Route::post('/transactions/{id}/cancel', [TransactionController::class, 'cancelOrder']);
-//     Route::post('/transactions/{id}/confirm', [TransactionController::class, 'confirmComplete']);
-//     Route::post('/transactions/{id}/refund-request', [TransactionController::class, 'requestRefund']);
-//     Route::post('/transactions/{id}/refund-process', [TransactionController::class, 'processRefundUser']);
-//     Route::get('/transactions/{id}/tracking', [TransactionController::class, 'trackOrder']);
-//     Route::post('/transactions/tracking/bulk', [TransactionController::class, 'bulkTrackOrders']);
+    Route::get('/transactions', [TransactionController::class, 'index']);
+    Route::get('/transactions/{id}', [TransactionController::class, 'show']);
+    Route::post('/transactions/{id}/cancel', [TransactionController::class, 'cancelOrder']);
+    Route::post('/transactions/{id}/confirm', [TransactionController::class, 'confirmComplete']);
+    Route::post('/transactions/{id}/refund-request', [TransactionController::class, 'requestRefund']);
+    Route::post('/transactions/{id}/refund-process', [TransactionController::class, 'processRefundUser']);
+    Route::get('/transactions/{id}/tracking', [TransactionController::class, 'trackOrder']);
+    Route::post('/transactions/tracking/bulk', [TransactionController::class, 'bulkTrackOrders']);
 
-//     Route::middleware('throttle:checkout-limiter')->group(function () {
-//         Route::post('/checkout', [TransactionController::class, 'checkout']);
-//         Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
-//     });
+    Route::middleware('throttle:checkout-limiter')->group(function () {
+        Route::post('/checkout', [TransactionController::class, 'checkout']);
+        Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
+    });
 
-//     Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
-//     Route::post('/promo/verify', [PromoController::class, 'verify']);
+    Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
+    Route::post('/promo/verify', [PromoController::class, 'verify']);
 
-//     Route::prefix('affiliate')->group(function () {
-//         Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
-//         Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
-//         Route::post('/apply', [AffiliateController::class, 'apply']);
-//     });
-// });
+    Route::prefix('affiliate')->group(function () {
+        Route::get('/dashboard', [AffiliateController::class, 'dashboard']);
+        Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
+        Route::post('/apply', [AffiliateController::class, 'apply']);
+    });
+});
 
-// // =========================================================================
-// // ADMIN & STAFF AREA (DYNAMIC MATRIX RBAC APPLIED)
-// // =========================================================================
+// =========================================================================
+// ADMIN & STAFF AREA (DYNAMIC MATRIX RBAC APPLIED)
+// =========================================================================
 
-// // --- PROFIL GLOBAL: Semua staff boleh akses ---
-// Route::middleware(['auth:sanctum', 'role:all_staff'])->prefix('admin')->group(function () {
-//     Route::get('/', function (Request $request) { return $request->user(); });
-//     Route::post('/update-info', [AuthController::class, 'updateAdminProfileInfo']);
-//     Route::post('/update-image', [AuthController::class, 'updateAdminImage']);
-//     Route::post('/update-password', [AuthController::class, 'updateAdminPassword']);
+// --- PROFIL GLOBAL: Semua staff boleh akses ---
+Route::middleware(['auth:sanctum', 'role:all_staff'])->prefix('admin')->group(function () {
+    Route::get('/', function (Request $request) { return $request->user(); });
+    Route::post('/update-info', [AuthController::class, 'updateAdminProfileInfo']);
+    Route::post('/update-image', [AuthController::class, 'updateAdminImage']);
+    Route::post('/update-password', [AuthController::class, 'updateAdminPassword']);
 
-//     // Semua staff perlu bisa GET policy untuk logic UI tombol/menu
-//     Route::get('/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'getPolicies']);
-// });
+    // Semua staff perlu bisa GET policy untuk logic UI tombol/menu
+    Route::get('/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'getPolicies']);
+});
 
-// // --- SYSTEM POLICY (Hanya Superadmin via POST, atau yang punya hak) ---
-// Route::middleware(['auth:sanctum', 'role:system_policy'])->prefix('admin')->group(function () {
-//     Route::post('/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'savePolicies']);
-// });
+// --- SYSTEM POLICY (Hanya Superadmin via POST, atau yang punya hak) ---
+Route::middleware(['auth:sanctum', 'role:system_policy'])->prefix('admin')->group(function () {
+    Route::post('/access-policies', [\App\Http\Controllers\AccessPolicyController::class, 'savePolicies']);
+});
 
-// // --- DASHBOARD ---
-// Route::middleware(['auth:sanctum', 'role:dashboard'])->prefix('admin/dashboard')->group(function () {
-//     Route::get('/master-data', [DashboardController::class, 'getDashboardMasterData']);
-//     Route::get('/stats', [DashboardController::class, 'getStats']);
-//     Route::get('/revenue-chart', [DashboardController::class, 'getRevenueChart']);
-//     Route::get('/popular-products', [DashboardController::class, 'getPopularProducts']);
-//     Route::get('/predicted-bestsellers', [DashboardController::class, 'getPredictedBestsellers']);
-//     Route::get('/recent-activities', [DashboardController::class, 'getRecentActivities']);
-//     Route::get('/daily-average', [DashboardController::class, 'getAverageDailyRevenue']);
-// });
+// --- DASHBOARD ---
+Route::middleware(['auth:sanctum', 'role:dashboard'])->prefix('admin/dashboard')->group(function () {
+    Route::get('/master-data', [DashboardController::class, 'getDashboardMasterData']);
+    Route::get('/stats', [DashboardController::class, 'getStats']);
+    Route::get('/revenue-chart', [DashboardController::class, 'getRevenueChart']);
+    Route::get('/popular-products', [DashboardController::class, 'getPopularProducts']);
+    Route::get('/predicted-bestsellers', [DashboardController::class, 'getPredictedBestsellers']);
+    Route::get('/recent-activities', [DashboardController::class, 'getRecentActivities']);
+    Route::get('/daily-average', [DashboardController::class, 'getAverageDailyRevenue']);
+});
 
-// // --- KATEGORI ---
-// Route::middleware(['auth:sanctum', 'role:categories'])->group(function () {
-//     Route::get('/categories', [CategoryController::class, 'index']);
-//     Route::post('/categories', [CategoryController::class, 'store']);
-//     Route::put('/categories/{id}', [CategoryController::class, 'update']);
-//     Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
-//     Route::get('/categories/{id}', [CategoryController::class, 'show']);
-// });
+// --- KATEGORI ---
+Route::middleware(['auth:sanctum', 'role:categories'])->group(function () {
+    Route::get('/categories', [CategoryController::class, 'index']);
+    Route::post('/categories', [CategoryController::class, 'store']);
+    Route::put('/categories/{id}', [CategoryController::class, 'update']);
+    Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
+    Route::get('/categories/{id}', [CategoryController::class, 'show']);
+});
 
-// // --- USER & SUBSCRIBER ---
-// Route::middleware(['auth:sanctum', 'role:users'])->group(function () {
-//     Route::get('/admin/users', [AuthController::class, 'getAllUsers']);
-//     Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
-// });
+// --- USER & SUBSCRIBER ---
+Route::middleware(['auth:sanctum', 'role:users'])->group(function () {
+    Route::get('/admin/users', [AuthController::class, 'getAllUsers']);
+    Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
+});
 
-// Route::middleware(['auth:sanctum', 'role:subscribers'])->group(function () {
-//     // Route::get('/admin/subscribers', function () {
-//     //     return response()->json(Subscriber::latest()->get());
-//     // });
+Route::middleware(['auth:sanctum', 'role:subscribers'])->group(function () {
+    // Route::get('/admin/subscribers', function () {
+    //     return response()->json(Subscriber::latest()->get());
+    // });
 
-//     // Endpoint Get Data (Sudah Ada)
-//     Route::get('/admin/subscribers', function () {
-//         return response()->json(Subscriber::latest()->get());
-//     });
+    // Endpoint Get Data (Sudah Ada)
+    Route::get('/admin/subscribers', function () {
+        return response()->json(Subscriber::latest()->get());
+    });
 
-//     // 👇 ENDPOINT BARU UNTUK EXPORT CSV 👇
-//     Route::get('/admin/subscribers/export', function () {
-//         $subscribers = Subscriber::latest()->get();
+    // 👇 ENDPOINT BARU UNTUK EXPORT CSV 👇
+    Route::get('/admin/subscribers/export', function () {
+        $subscribers = Subscriber::latest()->get();
 
-//         $headers = [
-//             "Content-type"        => "text/csv",
-//             "Content-Disposition" => "attachment; filename=solher_subscribers_" . date('Y-m-d_His') . ".csv",
-//             "Pragma"              => "no-cache",
-//             "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-//             "Expires"             => "0"
-//         ];
+        $headers = [
+            "Content-type"        => "text/csv",
+            "Content-Disposition" => "attachment; filename=solher_subscribers_" . date('Y-m-d_His') . ".csv",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ];
 
-//         $columns = ['ID', 'Email', 'Account Type', 'Status', 'Subscribed At'];
+        $columns = ['ID', 'Email', 'Account Type', 'Status', 'Subscribed At'];
 
-//         $callback = function() use($subscribers, $columns) {
-//             $file = fopen('php://output', 'w');
-//             fputcsv($file, $columns); // Tulis Header Kolom
+        $callback = function() use($subscribers, $columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns); // Tulis Header Kolom
 
-//             foreach ($subscribers as $sub) {
-//                 $row = [
-//                     $sub->id,
-//                     $sub->email,
-//                     $sub->is_registered ? 'Registered Member' : 'Guest',
-//                     $sub->is_active ? 'Active' : 'Unsubscribed',
-//                     $sub->created_at->format('Y-m-d H:i:s')
-//                 ];
-//                 fputcsv($file, $row); // Tulis isi per baris
-//             }
+            foreach ($subscribers as $sub) {
+                $row = [
+                    $sub->id,
+                    $sub->email,
+                    $sub->is_registered ? 'Registered Member' : 'Guest',
+                    $sub->is_active ? 'Active' : 'Unsubscribed',
+                    $sub->created_at->format('Y-m-d H:i:s')
+                ];
+                fputcsv($file, $row); // Tulis isi per baris
+            }
 
-//             fclose($file);
-//         };
+            fclose($file);
+        };
 
-//         return Response::stream($callback, 200, $headers);
-//     });
-// });
+        return Response::stream($callback, 200, $headers);
+    });
+});
 
-// // --- MESSAGES ---
-// Route::middleware(['auth:sanctum', 'role:messages'])->prefix('admin/messages')->group(function () {
-//     Route::get('/', [ContactController::class, 'getInboundMessages']);
-//     Route::get('/unread-count', [ContactController::class, 'getUnreadCount']);
-//     Route::get('/{id}', [ContactController::class, 'showAdminMessage']);
-//     Route::post('/{id}/respond', [ContactController::class, 'respondMessage']);
-// });
+// --- MESSAGES ---
+Route::middleware(['auth:sanctum', 'role:messages'])->prefix('admin/messages')->group(function () {
+    Route::get('/', [ContactController::class, 'getInboundMessages']);
+    Route::get('/unread-count', [ContactController::class, 'getUnreadCount']);
+    Route::get('/{id}', [ContactController::class, 'showAdminMessage']);
+    Route::post('/{id}/respond', [ContactController::class, 'respondMessage']);
+});
 
-// // --- PRODUK ---
-// Route::middleware(['auth:sanctum', 'role:products'])->prefix('products')->group(function () {
-//     Route::post('/', [ProductController::class, 'store']);
-//     Route::put('/{id}', [ProductController::class, 'update']);
-//     Route::delete('/{id}', [ProductController::class, 'destroy']);
-//     // Fitur restore dihitung sebagai update
-//     Route::put('/{id}/restore', [ProductController::class, 'restore'])->middleware('role:products,update');
-//     Route::delete('/{id}/force', [ProductController::class, 'forceDelete']);
-// });
-// Route::post('/admin/s3/presign', [S3UploadController::class, 'presign'])->middleware('auth:sanctum', 'role:products,create');
+// --- PRODUK ---
+Route::middleware(['auth:sanctum', 'role:products'])->prefix('products')->group(function () {
+    Route::post('/', [ProductController::class, 'store']);
+    Route::put('/{id}', [ProductController::class, 'update']);
+    Route::delete('/{id}', [ProductController::class, 'destroy']);
+    // Fitur restore dihitung sebagai update
+    Route::put('/{id}/restore', [ProductController::class, 'restore'])->middleware('role:products,update');
+    Route::delete('/{id}/force', [ProductController::class, 'forceDelete']);
+});
+Route::post('/admin/s3/presign', [S3UploadController::class, 'presign'])->middleware('auth:sanctum', 'role:products,create');
 
-// // --- AUDIT LOGS ---
-// Route::middleware(['auth:sanctum', 'role:audit_logs'])->group(function () {
-//     Route::get('/admin/audit-logs', [AuditLogController::class, 'index']);
-// });
+// --- AUDIT LOGS ---
+Route::middleware(['auth:sanctum', 'role:audit_logs'])->group(function () {
+    Route::get('/admin/audit-logs', [AuditLogController::class, 'index']);
+});
 
-// // --- EVENTS ---
-// Route::middleware(['auth:sanctum', 'role:events'])->prefix('admin/events')->group(function () {
-//     Route::get('/', [EventController::class, 'index']);
-//     Route::get('/{id}', [EventController::class, 'show']);
-//     Route::post('/', [EventController::class, 'store']);
-//     Route::put('/{id}', [EventController::class, 'update']);
-//     Route::delete('/{id}', [EventController::class, 'destroy']);
-// });
+// --- EVENTS ---
+Route::middleware(['auth:sanctum', 'role:events'])->prefix('admin/events')->group(function () {
+    Route::get('/', [EventController::class, 'index']);
+    Route::get('/{id}', [EventController::class, 'show']);
+    Route::post('/', [EventController::class, 'store']);
+    Route::put('/{id}', [EventController::class, 'update']);
+    Route::delete('/{id}', [EventController::class, 'destroy']);
+});
 
-// // --- AFFILIATES ---
-// Route::middleware(['auth:sanctum', 'role:affiliates'])->prefix('admin/affiliates')->group(function () {
-//     Route::get('/dashboard', [AffiliateController::class, 'index']);
-//     // Tombol Approve adalah update status
-//     Route::post('/withdrawals/{id}/approve', [AffiliateController::class, 'approve'])->middleware('role:affiliates,update');
-//     Route::post('/applications/{id}/approve', [AffiliateController::class, 'approveApplication'])->middleware('role:affiliates,update');
-// });
+// --- AFFILIATES ---
+Route::middleware(['auth:sanctum', 'role:affiliates'])->prefix('admin/affiliates')->group(function () {
+    Route::get('/dashboard', [AffiliateController::class, 'index']);
+    // Tombol Approve adalah update status
+    Route::post('/withdrawals/{id}/approve', [AffiliateController::class, 'approve'])->middleware('role:affiliates,update');
+    Route::post('/applications/{id}/approve', [AffiliateController::class, 'approveApplication'])->middleware('role:affiliates,update');
+});
 
-// // --- PRODUCT STOCKS ---
-// Route::middleware(['auth:sanctum', 'role:stocks'])->prefix('admin/product-stocks')->group(function () {
-//     Route::get('/', [ProductStockController::class, 'index']);
-//     // Tambah stock dihitung update karena memodifikasi tabel pivot/stok produk
-//     Route::post('/{productId}', [ProductStockController::class, 'store'])->middleware('role:stocks,update');
-// });
+// --- PRODUCT STOCKS ---
+Route::middleware(['auth:sanctum', 'role:stocks'])->prefix('admin/product-stocks')->group(function () {
+    Route::get('/', [ProductStockController::class, 'index']);
+    // Tambah stock dihitung update karena memodifikasi tabel pivot/stok produk
+    Route::post('/{productId}', [ProductStockController::class, 'store'])->middleware('role:stocks,update');
+});
 
-// // --- TRANSACTIONS ---
-// Route::middleware(['auth:sanctum', 'role:transactions'])->prefix('admin/transactions')->group(function () {
-//     Route::get('/', [TransactionController::class, 'allTransactions']);
-//     Route::get('/{id}', [TransactionController::class, 'adminShow']);
-//     Route::get('/{id}/tracking', [TransactionController::class, 'adminTrackOrder']);
-//     Route::get('/{id}/print-label', [TransactionController::class, 'printLabel']);
-//     // Update tracking resi divalidasi sebagai aksi update
-//     Route::post('/tracking/bulk', [TransactionController::class, 'adminBulkTrackOrders'])->middleware('role:transactions,update');
-// });
+// --- TRANSACTIONS ---
+Route::middleware(['auth:sanctum', 'role:transactions'])->prefix('admin/transactions')->group(function () {
+    Route::get('/', [TransactionController::class, 'allTransactions']);
+    Route::get('/{id}', [TransactionController::class, 'adminShow']);
+    Route::get('/{id}/tracking', [TransactionController::class, 'adminTrackOrder']);
+    Route::get('/{id}/print-label', [TransactionController::class, 'printLabel']);
+    // Update tracking resi divalidasi sebagai aksi update
+    Route::post('/tracking/bulk', [TransactionController::class, 'adminBulkTrackOrders'])->middleware('role:transactions,update');
+});
 
-// // --- SALES REPORT ---
-// Route::middleware(['auth:sanctum', 'role:sales_report'])->prefix('admin')->group(function () {
-//     Route::get('/sales-report', [TransactionController::class, 'salesReport']);
-// });
+// --- SALES REPORT ---
+Route::middleware(['auth:sanctum', 'role:sales_report'])->prefix('admin')->group(function () {
+    Route::get('/sales-report', [TransactionController::class, 'salesReport']);
+});
 
-// // --- ACCOUNTING MODULES ---
-// Route::middleware(['auth:sanctum', 'role:accounting_mod'])->prefix('admin')->group(function () {
-//     // Aksi persetujuan dinilai sebagai update
-//     Route::post('/transactions/{id}/refund-approve', [TransactionController::class, 'approveRefund'])->middleware('role:accounting_mod,update');
-//     Route::post('/transactions/{id}/refund-reject', [TransactionController::class, 'rejectRefund'])->middleware('role:accounting_mod,update');
+// --- ACCOUNTING MODULES ---
+Route::middleware(['auth:sanctum', 'role:accounting_mod'])->prefix('admin')->group(function () {
+    // Aksi persetujuan dinilai sebagai update
+    Route::post('/transactions/{id}/refund-approve', [TransactionController::class, 'approveRefund'])->middleware('role:accounting_mod,update');
+    Route::post('/transactions/{id}/refund-reject', [TransactionController::class, 'rejectRefund'])->middleware('role:accounting_mod,update');
 
-//     Route::apiResource('category-coas', CategoryCoaController::class);
-//     Route::apiResource('coas', CoaController::class);
-//     Route::post('coas/{id}/post', [CoaController::class, 'postCoa'])->middleware('role:accounting_mod,update');
-//     Route::apiResource('payments', TransferReceivePaymentController::class);
+    Route::apiResource('category-coas', CategoryCoaController::class);
+    Route::apiResource('coas', CoaController::class);
+    Route::post('coas/{id}/post', [CoaController::class, 'postCoa'])->middleware('role:accounting_mod,update');
+    Route::apiResource('payments', TransferReceivePaymentController::class);
 
-//     Route::get('suppliers', [InvoiceController::class, 'indexSupplier']);
-//     Route::post('suppliers', [InvoiceController::class, 'storeSupplier']);
-//     Route::put('suppliers/{id}', [InvoiceController::class, 'updateSupplier']);
-//     Route::delete('suppliers/{id}', [InvoiceController::class, 'deleteSupplier']);
+    Route::get('suppliers', [InvoiceController::class, 'indexSupplier']);
+    Route::post('suppliers', [InvoiceController::class, 'storeSupplier']);
+    Route::put('suppliers/{id}', [InvoiceController::class, 'updateSupplier']);
+    Route::delete('suppliers/{id}', [InvoiceController::class, 'deleteSupplier']);
 
-//     Route::get('invoices', [InvoiceController::class, 'indexInvoice']);
-//     Route::post('invoices', [InvoiceController::class, 'storeInvoice']);
-//     Route::put('invoices/{id}', [InvoiceController::class, 'updateInvoice']);
-//     Route::post('invoices/{id}/pay', [InvoiceController::class, 'processPayment'])->middleware('role:accounting_mod,update');
-//     Route::delete('invoices/{id}', [InvoiceController::class, 'deleteInvoice']);
-// });
+    Route::get('invoices', [InvoiceController::class, 'indexInvoice']);
+    Route::post('invoices', [InvoiceController::class, 'storeInvoice']);
+    Route::put('invoices/{id}', [InvoiceController::class, 'updateInvoice']);
+    Route::post('invoices/{id}/pay', [InvoiceController::class, 'processPayment'])->middleware('role:accounting_mod,update');
+    Route::delete('invoices/{id}', [InvoiceController::class, 'deleteInvoice']);
+});
 
-// // =========================================================================
-// // CHAT & CURRENCY (GLOBAL ADMIN & USER)
-// // =========================================================================
-// Route::middleware('auth:sanctum')->group(function () {
-//     Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
-//     Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
-//     Route::post('/chat/send', [ChatController::class, 'sendMessage']);
-//     Route::post('/chat/read/{id}', [ChatController::class, 'markAsRead']);
-//     Route::post('/chat/typing', [ChatController::class, 'typing']);
-// });
+// =========================================================================
+// CHAT & CURRENCY (GLOBAL ADMIN & USER)
+// =========================================================================
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
+    Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
+    Route::post('/chat/send', [ChatController::class, 'sendMessage']);
+    Route::post('/chat/read/{id}', [ChatController::class, 'markAsRead']);
+    Route::post('/chat/typing', [ChatController::class, 'typing']);
+});
 
-// Route::get('/exchange-rates', function () {
-//     if (! Cache::has('exchange_rates')) {
-//         Artisan::call('currency:update-rates');
-//     }
-//     $rates = Cache::get('exchange_rates', ['IDR' => 1]);
-//     return response()->json([
-//         'status' => 'success',
-//         'base' => 'IDR',
-//         'data' => [
-//             'rates' => $rates,
-//             'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString(),
-//         ],
-//     ], 200);
-// });
+Route::get('/exchange-rates', function () {
+    if (! Cache::has('exchange_rates')) {
+        Artisan::call('currency:update-rates');
+    }
+    $rates = Cache::get('exchange_rates', ['IDR' => 1]);
+    return response()->json([
+        'status' => 'success',
+        'base' => 'IDR',
+        'data' => [
+            'rates' => $rates,
+            'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString(),
+        ],
+    ], 200);
+});
 
-// Route::middleware('auth:sanctum')->post('/reviews', [ReviewController::class, 'store']);
+Route::middleware('auth:sanctum')->post('/reviews', [ReviewController::class, 'store']);
 
-// // Mengambil semua review (beserta relasi user & product)
-// Route::get('/admin/reviews', function () {
-//     return response()->json(
-//         \App\Models\Review::with(['user', 'product'])->latest()->get()
-//     );
-// });
+// Mengambil semua review (beserta relasi user & product)
+Route::get('/admin/reviews', function () {
+    return response()->json(
+        \App\Models\Review::with(['user', 'product'])->latest()->get()
+    );
+});
 
-// // Fitur Toggle Hide/Show Review
-// Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
-//     $review = \App\Models\Review::findOrFail($id);
-//     $review->update(['is_approved' => !$review->is_approved]);
+// Fitur Toggle Hide/Show Review
+Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
+    $review = \App\Models\Review::findOrFail($id);
+    $review->update(['is_approved' => !$review->is_approved]);
 
-//     $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
-//     return response()->json(['message' => "Review berhasil $status."]);
-// });
+    $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
+    return response()->json(['message' => "Review berhasil $status."]);
+});
