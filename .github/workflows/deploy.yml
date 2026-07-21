@@ -6,7 +6,40 @@ on:
       - master # Ubah ke 'master' jika branch utama Anda bernama master
 
 jobs:
+  # ==========================================
+  # JOB 1: JALANKAN PENGUJIAN OTOMATIS
+  # ==========================================
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2' # Sesuaikan dengan versi PHP Laravel Anda (8.1 / 8.2 / 8.3)
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, libxml, openssl
+
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Prepare Environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Run Feature Tests (with SQLite in-memory)
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:" # Menggunakan RAM sebagai database sementara agar cepat
+        run: php artisan test
+
+  # ==========================================
+  # JOB 2: DEPLOY KE VPS (JIKA TEST SUKSES)
+  # ==========================================
   deploy:
+    needs: test # INI KUNCINYA! Deploy akan menunggu Job 'test' selesai dan sukses.
     runs-on: ubuntu-latest
 
     steps:
