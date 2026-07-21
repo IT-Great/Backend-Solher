@@ -22,7 +22,7 @@ jobs:
             cd /var/www/html/solher-backend
 
             # 2. Tarik update terbaru
-            git pull origin main
+            git pull
 
             # 3. Update library PHP
             composer install --no-interaction --prefer-dist --optimize-autoloader
