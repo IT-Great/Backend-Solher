@@ -314,7 +314,6 @@ class PaymentControllerTest extends TestCase
             'user_id' => $this->user->id,
             'first_name_address' => 'Steve',
             'last_name_address' => 'Jobs',
-            'phone_address' => '08123456789',
             'address_location' => 'Jalan Apel No. 1',
             'region' => 'Tegalsari',
             'city' => 'Surabaya',
@@ -327,8 +326,8 @@ class PaymentControllerTest extends TestCase
 
         // 3. Buat Produk & Stok
         $this->category = Category::create([
-            'category_code' => 'CAT-' . \Str::random(5),
-            'category_name' => 'Payment Bags',
+            'code' => 'CAT-' . \Str::random(5),
+            'name' => 'Payment Bags',
         ]);
 
         $this->product = Product::create([

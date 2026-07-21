@@ -53,8 +53,8 @@ class TransactionControllerTest extends TestCase
 
         // 2. Buat Kategori
         $this->category = Category::create([
-            'category_code' => 'CAT-' . \Str::random(5),
-            'category_name' => 'Luxury Bags',
+            'code' => 'CAT-' . \Str::random(5),
+            'name' => 'Luxury Bags',
         ]);
 
         // 3. Buat Produk Utama

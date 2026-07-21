@@ -36,8 +36,8 @@ class CartControllerTest extends TestCase
 
         // 2. Buat Kategori
         $this->category = Category::create([
-            'category_code' => 'CAT-' . \Str::random(5),
-            'category_name' => 'Test Bags',
+            'code' => 'CAT-' . \Str::random(5),
+            'name' => 'Test Bags',
         ]);
 
         // 3. Buat Produk A (Stock 10, ada diskon)
