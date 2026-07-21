@@ -34,7 +34,8 @@ class User extends Authenticatable
         'is_membership',
         'has_used_member_voucher',
         'point',
-        'is_subscribed'
+        'is_subscribed',
+        'captcha_token'
     ];
 
     /**

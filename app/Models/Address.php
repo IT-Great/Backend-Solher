@@ -18,7 +18,8 @@ class Address extends Model
         'postal_code',
         'latitude',
         'longitude',
-        'is_default'
+        'is_default',
+        'phone_address'
     ];
 
     protected $casts = [

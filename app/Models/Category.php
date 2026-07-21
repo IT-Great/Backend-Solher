@@ -20,6 +20,7 @@ class Category extends Model
     use Auditable;
 
     protected $fillable = [
+        'category_code', 'category_name', 'meta',
         'code', 'name', 'description',
         'bundle_qty', 'bundle_price', 'bundle_start_date', 'bundle_end_date'
     ];
