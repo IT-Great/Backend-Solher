@@ -3,7 +3,7 @@ name: Deploy Laravel Backend
 on:
   push:
     branches:
-      - main # Ubah ke 'master' jika branch utama Anda bernama master
+      - master # Ubah ke 'master' jika branch utama Anda bernama master
 
 jobs:
   deploy:
