@@ -9,8 +9,53 @@ jobs:
   # ==========================================
   # JOB 1: JALANKAN PENGUJIAN OTOMATIS
   # ==========================================
+  # test:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v3
+
+  #     - name: Setup PHP
+  #       uses: shivammathur/setup-php@v2
+  #       with:
+  #         php-version: '8.2' # Sesuaikan dengan versi PHP Laravel Anda (8.1 / 8.2 / 8.3)
+  #         extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, libxml, openssl
+
+  #     - name: Install Composer Dependencies
+  #       run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+  #     - name: Prepare Environment
+  #       run: |
+  #         cp .env.example .env
+  #         php artisan key:generate
+
+  #     - name: Run Feature Tests (with SQLite in-memory)
+  #       env:
+  #         DB_CONNECTION: sqlite
+  #         DB_DATABASE: ":memory:" # Menggunakan RAM sebagai database sementara agar cepat
+  #       run: php artisan test
+
+  # ==========================================
+  # JOB 1: JALANKAN PENGUJIAN OTOMATIS
+  # ==========================================
   test:
     runs-on: ubuntu-latest
+
+    # 1. Buat Server MySQL Virtual Sementara di GitHub
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: laravel_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -ppassword"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -18,8 +63,8 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2' # Sesuaikan dengan versi PHP Laravel Anda (8.1 / 8.2 / 8.3)
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_sqlite, dom, filter, libxml, openssl
+          php-version: '8.2'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, dom, filter, libxml, openssl
 
       - name: Install Composer Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
@@ -29,11 +74,18 @@ jobs:
           cp .env.example .env
           php artisan key:generate
 
-      - name: Run Feature Tests (with SQLite in-memory)
+      # 2. Hubungkan ke MySQL, Lakukan Migrate, lalu Test!
+      - name: Run Migrations and Feature Tests
         env:
-          DB_CONNECTION: sqlite
-          DB_DATABASE: ":memory:" # Menggunakan RAM sebagai database sementara agar cepat
-        run: php artisan test
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: laravel_test
+          DB_USERNAME: root
+          DB_PASSWORD: password
+        run: |
+          php artisan migrate
+          php artisan test
 
   # ==========================================
   # JOB 2: DEPLOY KE VPS (JIKA TEST SUKSES)
