@@ -19,6 +19,8 @@ class GenerateAiReply implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public $tries = 3; // 👈 TAMBAHKAN BARIS INI (Maksimal 3 kali percobaan)
+
     public $receiverId; // ID pelanggan
 
     public $userMessage; // Teks dari pelanggan
@@ -269,10 +271,27 @@ class GenerateAiReply implements ShouldQueue
             ]);
 
             // Jika API membalas dengan sukses
+            // if ($response->successful()) {
+            //     $aiReplyText = $response->json('candidates.0.content.parts.0.text');
+
+            //     // 7. Simpan balasan AI ke Database
+            //     $aiMessage = Message::create([
+            //         'sender_id' => $aiUserId,
+            //         'receiver_id' => $this->receiverId,
+            //         'message' => $aiReplyText,
+            //         'is_read' => false,
+            //     ]);
+
+            //     // 8. Pancarkan balasan kembali ke Frontend (Vue)
+            //     broadcast(new MessageSent($aiMessage))->toOthers();
+            // } else {
+            //     Log::error('Gemini API Error: '.$response->body());
+            // }
+
+            // Jika API membalas dengan sukses
             if ($response->successful()) {
                 $aiReplyText = $response->json('candidates.0.content.parts.0.text');
 
-                // 7. Simpan balasan AI ke Database
                 $aiMessage = Message::create([
                     'sender_id' => $aiUserId,
                     'receiver_id' => $this->receiverId,
@@ -280,10 +299,18 @@ class GenerateAiReply implements ShouldQueue
                     'is_read' => false,
                 ]);
 
-                // 8. Pancarkan balasan kembali ke Frontend (Vue)
                 broadcast(new MessageSent($aiMessage))->toOthers();
+
+            // 👈 TAMBAHKAN BLOK ELSEIF INI
+            } elseif ($response->status() === 503 || $response->status() === 429) {
+                \Illuminate\Support\Facades\Log::warning('Server Gemini sibuk. Mencoba ulang dalam 10 detik...');
+
+                // Lempar kembali Job ini ke dalam antrean, dan tunda selama 10 detik
+                $this->release(10);
+
             } else {
-                Log::error('Gemini API Error: '.$response->body());
+                // Jika error selain server sibuk (misal 404 atau salah API Key)
+                \Illuminate\Support\Facades\Log::error('Gemini API Error: ' . $response->body());
             }
 
         } catch (\Exception $e) {
