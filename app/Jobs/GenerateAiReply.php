@@ -95,7 +95,7 @@ class GenerateAiReply implements ShouldQueue
     public function handle()
     {
         // 1. Ambil ID AI (Sesuaikan dengan ID AI di database Anda)
-        $aiUserId = 99;
+        $aiUserId = 811;
 
         // 2. Pancarkan status "Typing..." agar UI Vue terlihat realistis
         broadcast(new UserTyping($aiUserId, $this->receiverId))->toOthers();
