@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Events\MessageSent;
 use App\Events\UserTyping;
 use App\Models\Message;
+use App\Models\Product;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -96,20 +97,74 @@ class GenerateAiReply implements ShouldQueue
 
     public function handle()
     {
-        // 1. Ambil ID AI (Sesuaikan dengan ID AI di database Anda)
-        $aiUserId = 811;
+        //         // 1. Ambil ID AI (Sesuaikan dengan ID AI di database Anda)
+        //         $aiUserId = 811;
 
-        // 2. Pancarkan status "Typing..." agar UI Vue terlihat realistis
+        //         // 2. Pancarkan status "Typing..." agar UI Vue terlihat realistis
+        //         broadcast(new UserTyping($aiUserId, $this->receiverId))->toOthers();
+
+        //         // 3. Bangun System Prompt (Instruksi Utama AI)
+        //         $systemPrompt = 'Kamu adalah Customer Service yang ramah bernama Solher AI.
+        // Gunakan bahasa Indonesia yang santai, sopan, dan hangat.
+        // Tugas utamamu adalah membantu pelanggan dan menjual produk tas dari toko Solher.
+        // Saat ini kami menjual berbagai kategori tas, antara lain: Tas Selempang (Sling Bag), Ransel (Backpack), Totebag, dan Handbag.
+        // Jika ada yang bertanya rekomendasi, tanyakan dulu tas tersebut akan digunakan untuk acara apa (misal: kuliah, kerja, atau hangout).
+        // Kebijakan Pengembalian: Maksimal 7 hari sejak barang diterima dengan kondisi tag/segel utuh.
+        // Flow Pembelian: Pelanggan bisa langsung menambahkan produk ke keranjang belanja dan melakukan checkout di website.';
+
+        $aiUserId = 811; // Sesuaikan ID AI Anda
+
         broadcast(new UserTyping($aiUserId, $this->receiverId))->toOthers();
 
-        // 3. Bangun System Prompt (Instruksi Utama AI)
-        $systemPrompt = 'Kamu adalah Customer Service yang ramah bernama Solher AI.
-Gunakan bahasa Indonesia yang santai, sopan, dan hangat.
-Tugas utamamu adalah membantu pelanggan dan menjual produk tas dari toko Solher.
-Saat ini kami menjual berbagai kategori tas, antara lain: Tas Selempang (Sling Bag), Ransel (Backpack), Totebag, dan Handbag.
-Jika ada yang bertanya rekomendasi, tanyakan dulu tas tersebut akan digunakan untuk acara apa (misal: kuliah, kerja, atau hangout).
-Kebijakan Pengembalian: Maksimal 7 hari sejak barang diterima dengan kondisi tag/segel utuh.
-Flow Pembelian: Pelanggan bisa langsung menambahkan produk ke keranjang belanja dan melakukan checkout di website.';
+        // ====================================================================
+        // 1. PENCARIAN CERDAS KE DATABASE (Mini-RAG)
+        // ====================================================================
+        // Kita pecah pesan pelanggan menjadi kata kunci
+        $keywords = explode(' ', $this->userMessage);
+
+        // Panggil model Produk Anda (Sesuaikan 'App\Models\Product' dengan nama model asli Anda)
+        $query = Product::query();
+
+        foreach ($keywords as $word) {
+            // Hanya cari kata yang lumayan panjang untuk menghindari kata hubung (di, ke, dari)
+            if (strlen($word) > 3) {
+                $query->orWhere('name', 'LIKE', '%'.$word.'%')
+                      // Asumsi Anda punya kolom 'category' dan 'description'
+                    ->orWhere('category', 'LIKE', '%'.$word.'%')
+                    ->orWhere('description', 'LIKE', '%'.$word.'%');
+            }
+        }
+
+        // Ambil maksimal 5 produk paling relevan agar prompt tidak terlalu panjang
+        $relatedProducts = $query->take(5)->get();
+
+        // ====================================================================
+        // 2. RAKIT DATA DATABASE MENJADI TEKS UNTUK DIBACA AI
+        // ====================================================================
+        $databaseContext = "DATA PRODUK SOLHER SAAT INI (REAL-TIME):\n";
+
+        if ($relatedProducts->isEmpty()) {
+            $databaseContext .= "- Tidak ada data produk spesifik yang ditarik untuk pertanyaan ini.\n";
+        } else {
+            foreach ($relatedProducts as $item) {
+                // Sesuaikan nama field ($item->name, $item->price, dll) dengan kolom database Anda
+                $harga = number_format($item->price, 0, ',', '.');
+                $databaseContext .= "- Nama: {$item->name} | Kategori: {$item->category} | Harga: Rp {$harga} | Stok: {$item->stock} | Info: {$item->description}\n";
+            }
+        }
+
+        // ====================================================================
+        // 3. BANGUN SYSTEM PROMPT DINAMIS
+        // ====================================================================
+        $systemPrompt = "Kamu adalah Solher AI, asisten virtual ramah untuk toko Solher.
+        Gunakan bahasa yang hangat, profesional, dan gunakan emoji secukupnya.
+
+        TUGAS UTAMA:
+        Jawab pertanyaan pengguna HANYA berdasarkan 'DATA PRODUK SOLHER SAAT INI' di bawah ini.
+        Jika data produk di bawah kosong atau tidak relevan dengan pertanyaan, katakan dengan sopan bahwa kamu belum menemukan informasi tersebut dan tawarkan bantuan lain.
+        Jangan pernah mengarang harga atau stok!
+
+        ".$databaseContext;
 
         // // 4. Ambil 5 riwayat chat terakhir untuk memberikan konteks ke AI
         // // 👇 BAGIAN INI YANG SEBELUMNYA IKUT TER-COMMENT 👇
