@@ -244,7 +244,7 @@ class ChatController extends Controller
         // ====================================================================
         // 👇 [BARU] DETEKSI JIKA PENERIMA ADALAH AI 👇
         // ====================================================================
-        $aiUserId = 99; // Ganti dengan ID user AI Anda
+        $aiUserId = 811; // Ganti dengan ID user AI Anda
 
         if ($request->receiver_id == $aiUserId && $cleanMessage) {
             // Lemparkan tugas membalas ke Background Job
