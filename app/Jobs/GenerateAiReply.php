@@ -107,8 +107,42 @@ class GenerateAiReply implements ShouldQueue
         Kebijakan Pengembalian: Maksimal 7 hari sejak barang diterima dengan segel utuh.
         Flow Pembelian: Pelanggan bisa langsung checkout melalui keranjang belanja.";
 
-        // 4. Ambil 5 riwayat chat terakhir untuk memberikan konteks ke AI
-        // 👇 BAGIAN INI YANG SEBELUMNYA IKUT TER-COMMENT 👇
+        // // 4. Ambil 5 riwayat chat terakhir untuk memberikan konteks ke AI
+        // // 👇 BAGIAN INI YANG SEBELUMNYA IKUT TER-COMMENT 👇
+        // $history = Message::where(function($q) use ($aiUserId) {
+        //         $q->where('sender_id', $this->receiverId)->where('receiver_id', $aiUserId);
+        //     })
+        //     ->orWhere(function($q) use ($aiUserId) {
+        //         $q->where('sender_id', $aiUserId)->where('receiver_id', $this->receiverId);
+        //     })
+        //     ->orderBy('created_at', 'desc')
+        //     ->take(5)
+        //     ->get()
+        //     ->reverse();
+
+        // // 5. Format Riwayat Chat untuk Gemini API
+        // $geminiContents = [];
+
+        // foreach ($history as $chat) {
+        //     // Di Gemini, role untuk AI adalah 'model', dan pelanggan adalah 'user'
+        //     $role = $chat->sender_id === $aiUserId ? 'model' : 'user';
+
+        //     // Skip pesan kosong (misal hanya kirim gambar tanpa teks) agar API tidak error
+        //     if (!empty($chat->message)) {
+        //         $geminiContents[] = [
+        //             'role' => $role,
+        //             'parts' => [['text' => $chat->message]]
+        //         ];
+        //     }
+        // }
+
+        // Tambahkan pesan terbaru dari pelanggan
+        // $geminiContents[] = [
+        //     'role' => 'user',
+        //     'parts' => [['text' => $this->userMessage]]
+        // ];
+
+        // 4. Ambil 10 riwayat chat terakhir (ditingkatkan agar AI punya konteks utuh)
         $history = Message::where(function($q) use ($aiUserId) {
                 $q->where('sender_id', $this->receiverId)->where('receiver_id', $aiUserId);
             })
@@ -116,31 +150,38 @@ class GenerateAiReply implements ShouldQueue
                 $q->where('sender_id', $aiUserId)->where('receiver_id', $this->receiverId);
             })
             ->orderBy('created_at', 'desc')
-            ->take(5)
+            ->take(10)
             ->get()
             ->reverse();
 
-        // 5. Format Riwayat Chat untuk Gemini API
+        // 5. Format Riwayat Chat untuk Gemini API (Aturan Wajib Selang-Seling)
         $geminiContents = [];
+        $lastRole = '';
 
         foreach ($history as $chat) {
-            // Di Gemini, role untuk AI adalah 'model', dan pelanggan adalah 'user'
+            // Hindari memproses pesan yang kosong
+            if (empty(trim($chat->message))) continue;
+
             $role = $chat->sender_id === $aiUserId ? 'model' : 'user';
 
-            // Skip pesan kosong (misal hanya kirim gambar tanpa teks) agar API tidak error
-            if (!empty($chat->message)) {
+            // Jika role-nya berurutan berulang (misal: user mengetik 3 kali berturut-turut),
+            // Gabungkan pesannya dengan "enter" (\n) alih-alih membuat tumpukan role baru.
+            if ($role === $lastRole) {
+                $lastIndex = count($geminiContents) - 1;
+                $geminiContents[$lastIndex]['parts'][0]['text'] .= "\n" . $chat->message;
+            } else {
+                // Jika role berbeda, buat urutan blok baru yang sah
                 $geminiContents[] = [
                     'role' => $role,
                     'parts' => [['text' => $chat->message]]
                 ];
+                $lastRole = $role;
             }
         }
 
-        // Tambahkan pesan terbaru dari pelanggan
-        $geminiContents[] = [
-            'role' => 'user',
-            'parts' => [['text' => $this->userMessage]]
-        ];
+        // ⚠️ CATATAN PENTING: Kode "$geminiContents[] = ['role' => 'user'..."
+        // yang lama SUDAH DIHAPUS dari sini, karena pesan baru yang diketik pelanggan
+        // secara otomatis sudah terangkut ke dalam query $history di atas.
 
         // 6. Panggil API Google Gemini
         try {
