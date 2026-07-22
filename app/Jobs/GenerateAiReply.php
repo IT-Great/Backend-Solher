@@ -2,22 +2,24 @@
 
 namespace App\Jobs;
 
-use App\Models\Message;
-use App\Models\User;
 use App\Events\MessageSent;
 use App\Events\UserTyping;
+use App\Models\Message;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class GenerateAiReply implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $receiverId; // ID pelanggan
+
     public $userMessage; // Teks dari pelanggan
 
     public function __construct($receiverId, $userMessage)
@@ -101,11 +103,13 @@ class GenerateAiReply implements ShouldQueue
         broadcast(new UserTyping($aiUserId, $this->receiverId))->toOthers();
 
         // 3. Bangun System Prompt (Instruksi Utama AI)
-        $systemPrompt = "Kamu adalah CS yang ramah bernama Solher AI.
-        Gunakan bahasa Indonesia yang santai tapi sopan.
-        Kamu bertugas menjual dan menjawab pertanyaan seputar produk Ethereal Glow Brush.
-        Kebijakan Pengembalian: Maksimal 7 hari sejak barang diterima dengan segel utuh.
-        Flow Pembelian: Pelanggan bisa langsung checkout melalui keranjang belanja.";
+        $systemPrompt = 'Kamu adalah Customer Service yang ramah bernama Solher AI.
+Gunakan bahasa Indonesia yang santai, sopan, dan hangat.
+Tugas utamamu adalah membantu pelanggan dan menjual produk tas dari toko Solher.
+Saat ini kami menjual berbagai kategori tas, antara lain: Tas Selempang (Sling Bag), Ransel (Backpack), Totebag, dan Handbag.
+Jika ada yang bertanya rekomendasi, tanyakan dulu tas tersebut akan digunakan untuk acara apa (misal: kuliah, kerja, atau hangout).
+Kebijakan Pengembalian: Maksimal 7 hari sejak barang diterima dengan kondisi tag/segel utuh.
+Flow Pembelian: Pelanggan bisa langsung menambahkan produk ke keranjang belanja dan melakukan checkout di website.';
 
         // // 4. Ambil 5 riwayat chat terakhir untuk memberikan konteks ke AI
         // // 👇 BAGIAN INI YANG SEBELUMNYA IKUT TER-COMMENT 👇
@@ -143,10 +147,10 @@ class GenerateAiReply implements ShouldQueue
         // ];
 
         // 4. Ambil 10 riwayat chat terakhir (ditingkatkan agar AI punya konteks utuh)
-        $history = Message::where(function($q) use ($aiUserId) {
-                $q->where('sender_id', $this->receiverId)->where('receiver_id', $aiUserId);
-            })
-            ->orWhere(function($q) use ($aiUserId) {
+        $history = Message::where(function ($q) use ($aiUserId) {
+            $q->where('sender_id', $this->receiverId)->where('receiver_id', $aiUserId);
+        })
+            ->orWhere(function ($q) use ($aiUserId) {
                 $q->where('sender_id', $aiUserId)->where('receiver_id', $this->receiverId);
             })
             ->orderBy('created_at', 'desc')
@@ -160,7 +164,9 @@ class GenerateAiReply implements ShouldQueue
 
         foreach ($history as $chat) {
             // Hindari memproses pesan yang kosong
-            if (empty(trim($chat->message))) continue;
+            if (empty(trim($chat->message))) {
+                continue;
+            }
 
             $role = $chat->sender_id === $aiUserId ? 'model' : 'user';
 
@@ -168,12 +174,12 @@ class GenerateAiReply implements ShouldQueue
             // Gabungkan pesannya dengan "enter" (\n) alih-alih membuat tumpukan role baru.
             if ($role === $lastRole) {
                 $lastIndex = count($geminiContents) - 1;
-                $geminiContents[$lastIndex]['parts'][0]['text'] .= "\n" . $chat->message;
+                $geminiContents[$lastIndex]['parts'][0]['text'] .= "\n".$chat->message;
             } else {
                 // Jika role berbeda, buat urutan blok baru yang sah
                 $geminiContents[] = [
                     'role' => $role,
-                    'parts' => [['text' => $chat->message]]
+                    'parts' => [['text' => $chat->message]],
                 ];
                 $lastRole = $role;
             }
@@ -194,17 +200,17 @@ class GenerateAiReply implements ShouldQueue
 
             $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={$apiKey}";
 
-            $response = \Illuminate\Support\Facades\Http::post($url, [
+            $response = Http::post($url, [
                 // Menyematkan instruksi khusus sebagai CS
                 'system_instruction' => [
-                    'parts' => [['text' => $systemPrompt]]
+                    'parts' => [['text' => $systemPrompt]],
                 ],
                 // Riwayat percakapan
                 'contents' => $geminiContents,
                 // Mengatur suhu agar jawaban tidak terlalu halusinasi
                 'generationConfig' => [
-                    'temperature' => 0.4
-                ]
+                    'temperature' => 0.4,
+                ],
             ]);
 
             // Jika API membalas dengan sukses
@@ -222,11 +228,11 @@ class GenerateAiReply implements ShouldQueue
                 // 8. Pancarkan balasan kembali ke Frontend (Vue)
                 broadcast(new MessageSent($aiMessage))->toOthers();
             } else {
-                \Illuminate\Support\Facades\Log::error('Gemini API Error: ' . $response->body());
+                Log::error('Gemini API Error: '.$response->body());
             }
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Job AI Gagal: ' . $e->getMessage());
+            Log::error('Job AI Gagal: '.$e->getMessage());
         }
     }
 }
