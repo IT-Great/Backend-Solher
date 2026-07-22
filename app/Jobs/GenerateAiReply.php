@@ -133,7 +133,11 @@ class GenerateAiReply implements ShouldQueue
                 $query->orWhere('name', 'LIKE', '%'.$word.'%')
                       // Asumsi Anda punya kolom 'category' dan 'description'
                     ->orWhere('material', 'LIKE', '%'.$word.'%')
-                    ->orWhere('description', 'LIKE', '%'.$word.'%');
+                    ->orWhere('description', 'LIKE', '%'.$word.'%')
+                    ->orWhere('description_en', 'LIKE', '%'.$word.'%')
+                    ->orWhere('design', 'LIKE', '%'.$word.'%')
+                    ->orWhere('design_en', 'LIKE', '%'.$word.'%')
+                    ->orWhere('status', 'LIKE', '%'.$word.'%');
             }
         }
 
