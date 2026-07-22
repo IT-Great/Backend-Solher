@@ -224,20 +224,44 @@ class ChatController extends Controller
         // 4. Pancarkan (Broadcast) via WebSockets
         broadcast(new MessageSent($message))->toOthers();
 
-        // ====================================================================
-        // 👇 [BARU] 5. KIRIM EMAIL NOTIFIKASI SECARA BACKGROUND (QUEUE) 👇
-        // ====================================================================
-        try {
-            $receiver = User::find($request->receiver_id);
-            $sender = auth()->user();
+        // // ====================================================================
+        // // 👇 [BARU] 5. KIRIM EMAIL NOTIFIKASI SECARA BACKGROUND (QUEUE) 👇
+        // // ====================================================================
+        // try {
+        //     $receiver = User::find($request->receiver_id);
+        //     $sender = auth()->user();
 
-            if ($receiver && $receiver->email) {
-                // Menggunakan queue() agar pengiriman chat di browser tidak lag
-                Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
+        //     if ($receiver && $receiver->email) {
+        //         // Menggunakan queue() agar pengiriman chat di browser tidak lag
+        //         Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
+        //     }
+        // } catch (\Exception $e) {
+        //     report($e);
+        //     \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
+        // }
+        // // ====================================================================
+
+        // ====================================================================
+        // 👇 [BARU] DETEKSI JIKA PENERIMA ADALAH AI 👇
+        // ====================================================================
+        $aiUserId = 99; // Ganti dengan ID user AI Anda
+
+        if ($request->receiver_id == $aiUserId && $cleanMessage) {
+            // Lemparkan tugas membalas ke Background Job
+            \App\Jobs\GenerateAiReply::dispatch(auth()->id(), $cleanMessage);
+        } else {
+            // Jika dikirim ke manusia biasa, kirim email notifikasi
+            try {
+                $receiver = User::find($request->receiver_id);
+                $sender = auth()->user();
+
+                if ($receiver && $receiver->email) {
+                    Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
+                }
+            } catch (\Exception $e) {
+                report($e);
+                \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
             }
-        } catch (\Exception $e) {
-            report($e);
-            \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
         }
         // ====================================================================
 
