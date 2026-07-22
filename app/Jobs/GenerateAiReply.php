@@ -132,7 +132,7 @@ class GenerateAiReply implements ShouldQueue
             if (strlen($word) > 3) {
                 $query->orWhere('name', 'LIKE', '%'.$word.'%')
                       // Asumsi Anda punya kolom 'category' dan 'description'
-                    ->orWhere('category', 'LIKE', '%'.$word.'%')
+                    ->orWhere('material', 'LIKE', '%'.$word.'%')
                     ->orWhere('description', 'LIKE', '%'.$word.'%');
             }
         }
