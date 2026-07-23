@@ -2028,7 +2028,7 @@ class PaymentController extends Controller
                     ]
                 ]
             ],
-            'test_event_code' => 'TEST4450' // Ganti dengan kode dari Mas Sean
+            // 'test_event_code' => 'TEST4450' // Ganti dengan kode dari Mas Sean
         ];
 
         // 5. Eksekusi HTTP Request secara background agar tidak mengganggu response payment
