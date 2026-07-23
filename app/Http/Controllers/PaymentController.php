@@ -2027,7 +2027,8 @@ class PaymentController extends Controller
                         'contents' => $contents // Data produk
                     ]
                 ]
-            ]
+            ],
+            'test_event_code' => 'TEST4450' // Ganti dengan kode dari Mas Sean
         ];
 
         // 5. Eksekusi HTTP Request secara background agar tidak mengganggu response payment
