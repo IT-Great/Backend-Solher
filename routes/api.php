@@ -854,13 +854,63 @@ Route::middleware(['auth:sanctum', 'role:accounting_mod'])->prefix('admin')->gro
     Route::delete('invoices/{id}', [InvoiceController::class, 'deleteInvoice']);
 });
 
+// // =========================================================================
+// // CHAT & CURRENCY (GLOBAL ADMIN & USER)
+// // =========================================================================
+// Route::middleware('auth:sanctum')->group(function () {
+//     Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
+//     Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
+//     Route::post('/chat/send', [ChatController::class, 'sendMessage']);
+//     Route::post('/chat/read/{id}', [ChatController::class, 'markAsRead']);
+//     Route::post('/chat/typing', [ChatController::class, 'typing']);
+// });
+
+// Route::get('/exchange-rates', function () {
+//     if (! Cache::has('exchange_rates')) {
+//         Artisan::call('currency:update-rates');
+//     }
+//     $rates = Cache::get('exchange_rates', ['IDR' => 1]);
+//     return response()->json([
+//         'status' => 'success',
+//         'base' => 'IDR',
+//         'data' => [
+//             'rates' => $rates,
+//             'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString(),
+//         ],
+//     ], 200);
+// });
+
+// Route::middleware('auth:sanctum')->post('/reviews', [ReviewController::class, 'store']);
+
+// // Mengambil semua review (beserta relasi user & product)
+// Route::get('/admin/reviews', function () {
+//     return response()->json(
+//         \App\Models\Review::with(['user', 'product'])->latest()->get()
+//     );
+// });
+
+// // Fitur Toggle Hide/Show Review
+// Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
+//     $review = \App\Models\Review::findOrFail($id);
+//     $review->update(['is_approved' => !$review->is_approved]);
+
+//     $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
+//     return response()->json(['message' => "Review berhasil $status."]);
+// });
+
 // =========================================================================
 // CHAT & CURRENCY (GLOBAL ADMIN & USER)
 // =========================================================================
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
     Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
-    Route::post('/chat/send', [ChatController::class, 'sendMessage']);
+
+    // 👇 IMPLEMENTASI RATE LIMITING UNTUK CHAT/AI 👇
+    // Batasi 15 request per menit, per user (mencegah spamming API Gemini)
+    Route::middleware('throttle:15,1')->group(function () {
+        Route::post('/chat/send', [ChatController::class, 'sendMessage']);
+    });
+
     Route::post('/chat/read/{id}', [ChatController::class, 'markAsRead']);
     Route::post('/chat/typing', [ChatController::class, 'typing']);
 });
