@@ -28,7 +28,7 @@ class AppServiceProvider extends ServiceProvider
         // 1. Mencegah Lazy Loading (N+1 Problem)
         // Jika aplikasi dijalankan di mode lokal (bukan production),
         // Laravel akan memunculkan error mencolok jika ada N+1 query.
-        Model::preventLazyLoading(app()->isProduction());
+        Model::preventLazyLoading(!app()->isProduction());
 
         // 2. Mencegah Update Massal tanpa fillable (Mass Assignment Exception)
         Model::preventSilentlyDiscardingAttributes(! app()->isProduction());
