@@ -745,8 +745,6 @@
 //     // Tapi karena Anda memindahkannya ke Job, kita akan update Job-nya di bawah).
 // }
 
-<?php
-
 namespace App\Http\Controllers;
 
 use App\Events\MessageRead;
