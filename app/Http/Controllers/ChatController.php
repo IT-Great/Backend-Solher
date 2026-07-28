@@ -144,6 +144,7 @@
 
 namespace App\Http\Controllers;
 
+
 use App\Events\MessageRead;
 use App\Events\MessageSent;
 use App\Events\UserTyping;
