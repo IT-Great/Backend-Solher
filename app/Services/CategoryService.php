@@ -66,8 +66,18 @@ class CategoryService
         return true;
     }
 
+    // protected function clearCache()
+    // {
+    //     Cache::forget($this->cacheKey);
+    // }
+
     protected function clearCache()
     {
+        // 1. Menghapus cache khusus daftar kategori
         Cache::forget($this->cacheKey);
+
+        // 2. [BARU] Menghapus cache seluruh katalog produk
+        // karena harga bundle yang menempel di kategori ikut berubah
+        \Illuminate\Support\Facades\Cache::tags(['catalog'])->flush();
     }
 }

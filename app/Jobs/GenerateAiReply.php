@@ -323,6 +323,359 @@
 //     }
 // }
 
+// namespace App\Jobs;
+
+// use App\Events\MessageSent;
+// use App\Events\UserTyping;
+// use App\Models\Message;
+// use App\Models\Product;
+// use App\Models\User;
+// use Illuminate\Bus\Queueable;
+// use Illuminate\Contracts\Queue\ShouldQueue;
+// use Illuminate\Foundation\Bus\Dispatchable;
+// use Illuminate\Queue\InteractsWithQueue;
+// use Illuminate\Queue\SerializesModels;
+// use Illuminate\Support\Facades\Http;
+// use Illuminate\Support\Facades\Log;
+
+// class GenerateAiReply implements ShouldQueue
+// {
+//     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+//     public $tries = 3;
+
+//     public $receiverId;
+//     public $userMessage;
+
+//     public function __construct($receiverId, $userMessage)
+//     {
+//         $this->receiverId = $receiverId;
+//         $this->userMessage = $userMessage;
+//     }
+
+//     public function handle()
+//     {
+//         $aiUserId = 811; // Sesuaikan ID AI Anda di database Solher
+
+//         // Pancarkan status "Typing..."
+//         broadcast(new UserTyping($aiUserId, $this->receiverId))->toOthers();
+
+//         // ====================================================================
+//         // 1. PENCARIAN CERDAS KE DATABASE (Mini-RAG untuk Produk)
+//         // ====================================================================
+//         $keywords = explode(' ', $this->userMessage);
+//         $query = Product::query();
+
+//         foreach ($keywords as $word) {
+//             if (strlen($word) > 3) {
+//                 $query->orWhere('name', 'LIKE', '%'.$word.'%')
+//                     ->orWhere('material', 'LIKE', '%'.$word.'%')
+//                     ->orWhere('description', 'LIKE', '%'.$word.'%')
+//                     ->orWhere('status', 'LIKE', '%'.$word.'%');
+//             }
+//         }
+
+//         $relatedProducts = $query->take(5)->get();
+
+//         $databaseContext = "DATA PRODUK SOLHER SAAT INI (REAL-TIME):\n";
+//         if ($relatedProducts->isEmpty()) {
+//             $databaseContext .= "- Tidak ada data produk spesifik yang relevan dengan keyword.\n";
+//         } else {
+//             foreach ($relatedProducts as $item) {
+//                 $harga = number_format($item->price, 0, ',', '.');
+//                 $databaseContext .= "- {$item->name} | Rp {$harga} | Stok: {$item->stock} | Info: {$item->description}\n";
+//             }
+//         }
+
+//         // ====================================================================
+//         // 2. INJEKSI PENGETAHUAN HARDCODE (Profil, Banner, Keunggulan)
+//         // ====================================================================
+//         $hardcodedKnowledge = "
+//         PENGETAHUAN PERUSAHAAN (SOLHER):
+//         - Solher adalah brand lokal premium yang berfokus pada tas kulit dengan teknologi 'Anti Bakar' (Fire-Retardant Leather).
+//         - Material: Menggunakan Vegan Leather grade A yang dilapisi cairan tahan api (Fireproof Coating). Tahan percikan api rokok, tidak mudah meleleh, dan awet bertahun-tahun.
+//         - Kategori Produk: Sling Bag (Tas Selempang), Backpack (Ransel), Totebag, dan Handbag.
+//         - Target Market: Pekerja lapangan, pengendara motor, dan mahasiswa yang butuh tas tangguh.
+
+//         PENJELASAN GAMBAR BANNER DI WEBSITE SAAT INI:
+//         1. Banner Utama (Hero): Menampilkan tas 'Solher Defender Backpack' berwarna hitam matte yang sedang disorot cahaya, dengan latar belakang percikan api kecil untuk menonjolkan fitur anti bakarnya. Tagline: 'Tangguh di Segala Medan'.
+//         2. Banner Promo (Tengah): Menampilkan model pria mengendarai motor custom memakai 'Solher Urban Sling Bag'. Teks: 'Diskon 20% Khusus Biker - Gunakan Kode BIKER20'.
+
+//         KEBIJAKAN TOKO:
+//         - Pengembalian: Maksimal 7 hari sejak barang diterima (segel utuh).
+//         - Pengiriman: Mendukung JNE, J&T, SiCepat, dan Instant (Gojek/Grab).
+//         ";
+
+//         // ====================================================================
+//         // 3. BANGUN SYSTEM PROMPT
+//         // ====================================================================
+//         $systemPrompt = "Kamu adalah Solher AI, asisten virtual ramah untuk toko tas Solher. Gunakan bahasa Indonesia yang santai, sopan (panggil pelanggan 'Kak'), dan hangat.
+
+//         TUGAS UTAMA:
+//         Jawab pertanyaan pengguna memadukan 'PENGETAHUAN PERUSAHAAN' dan 'DATA PRODUK SOLHER'. Jika ditanya soal tampilan website atau banner, jelaskan sesuai deskripsi di atas. Jangan mengarang fitur atau harga.
+
+//         " . $hardcodedKnowledge . "\n\n" . $databaseContext;
+
+//         // ====================================================================
+//         // 4. AMBIL RIWAYAT CHAT
+//         // ====================================================================
+//         $history = Message::where(function ($q) use ($aiUserId) {
+//             $q->where('sender_id', $this->receiverId)->where('receiver_id', $aiUserId);
+//         })
+//         ->orWhere(function ($q) use ($aiUserId) {
+//             $q->where('sender_id', $aiUserId)->where('receiver_id', $this->receiverId);
+//         })
+//         ->orderBy('created_at', 'desc')
+//         ->take(10)
+//         ->get()
+//         ->reverse();
+
+//         $geminiContents = [];
+//         $lastRole = '';
+
+//         foreach ($history as $chat) {
+//             if (empty(trim($chat->message))) continue;
+
+//             $role = $chat->sender_id === $aiUserId ? 'model' : 'user';
+
+//             if ($role === $lastRole) {
+//                 $lastIndex = count($geminiContents) - 1;
+//                 $geminiContents[$lastIndex]['parts'][0]['text'] .= "\n".$chat->message;
+//             } else {
+//                 $geminiContents[] = [
+//                     'role' => $role,
+//                     'parts' => [['text' => $chat->message]],
+//                 ];
+//                 $lastRole = $role;
+//             }
+//         }
+
+//         // ====================================================================
+//         // 5. PANGGIL API GOOGLE GEMINI (Menggunakan model resmi 3.5-flash)
+//         // ====================================================================
+//         try {
+//             $apiKey = env('GEMINI_API_KEY');
+
+//             // Perbaikan Model ke versi resmi yang paling stabil dan cepat
+//             $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={$apiKey}";
+
+//             $response = Http::post($url, [
+//                 'system_instruction' => [
+//                     'parts' => [['text' => $systemPrompt]],
+//                 ],
+//                 'contents' => $geminiContents,
+//                 'generationConfig' => [
+//                     'temperature' => 0.4, // Cukup rendah agar tetap faktual soal produk tas
+//                 ],
+//             ]);
+
+//             if ($response->successful()) {
+//                 $aiReplyText = $response->json('candidates.0.content.parts.0.text');
+
+//                 $aiMessage = Message::create([
+//                     'sender_id' => $aiUserId,
+//                     'receiver_id' => $this->receiverId,
+//                     'message' => $aiReplyText,
+//                     'is_read' => false,
+//                 ]);
+
+//                 broadcast(new MessageSent($aiMessage))->toOthers();
+
+//             } elseif ($response->status() === 503 || $response->status() === 429) {
+//                 Log::warning('Server Gemini sibuk. Mencoba ulang dalam 10 detik...');
+//                 $this->release(10);
+//             } else {
+//                 Log::error('Gemini API Error: ' . $response->body());
+//             }
+
+//         } catch (\Exception $e) {
+//             Log::error('Job AI Gagal: '.$e->getMessage());
+//         }
+//     }
+// }
+
+// namespace App\Jobs;
+
+// use App\Events\MessageSent;
+// use App\Events\UserTyping;
+// use App\Models\Message;
+// use App\Models\Product;
+// use App\Models\User;
+// use Illuminate\Bus\Queueable;
+// use Illuminate\Contracts\Queue\ShouldQueue;
+// use Illuminate\Foundation\Bus\Dispatchable;
+// use Illuminate\Queue\InteractsWithQueue;
+// use Illuminate\Queue\SerializesModels;
+// use Illuminate\Support\Facades\Http;
+// use Illuminate\Support\Facades\Log;
+
+// class GenerateAiReply implements ShouldQueue
+// {
+//     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+//     public $tries = 3;
+
+//     public $receiverId;
+//     public $userMessage;
+
+//     public function __construct($receiverId, $userMessage)
+//     {
+//         $this->receiverId = $receiverId;
+//         $this->userMessage = $userMessage;
+//     }
+
+//     public function handle()
+//     {
+//         $aiUserId = 811; // Sesuaikan ID AI Anda di database Solher
+
+//         // Pancarkan status "Typing..."
+//         broadcast(new UserTyping($aiUserId, $this->receiverId))->toOthers();
+
+//         // ====================================================================
+//         // 1. PENCARIAN CERDAS KE DATABASE (Mini-RAG untuk Produk)
+//         // ====================================================================
+//         $keywords = explode(' ', $this->userMessage);
+//         $query = Product::query();
+
+//         foreach ($keywords as $word) {
+//             if (strlen($word) > 3) {
+//                 $query->orWhere('name', 'LIKE', '%'.$word.'%')
+//                     ->orWhere('material', 'LIKE', '%'.$word.'%')
+//                     ->orWhere('description', 'LIKE', '%'.$word.'%')
+//                     ->orWhere('status', 'LIKE', '%'.$word.'%');
+//             }
+//         }
+
+//         $relatedProducts = $query->take(5)->get();
+
+//         $databaseContext = "DATA PRODUK SOLHER SAAT INI (REAL-TIME):\n";
+//         if ($relatedProducts->isEmpty()) {
+//             $databaseContext .= "- Tidak ada data produk spesifik yang relevan dengan keyword.\n";
+//         } else {
+//             foreach ($relatedProducts as $item) {
+//                 $harga = number_format($item->price, 0, ',', '.');
+//                 $databaseContext .= "- {$item->name} | Rp {$harga} | Stok: {$item->stock} | Info: {$item->description}\n";
+//             }
+//         }
+
+//         // ====================================================================
+//         // 2. INJEKSI PENGETAHUAN HARDCODE (Update About Us, CS, & FAQ)
+//         // ====================================================================
+//         $hardcodedKnowledge = "
+//         FILOSOFI & CERITA BRAND (SOLHER):
+//         - Hati dari SOLHER: Sebuah 'Surat Cinta untuk Kualitas'. Solher lahir dari pengamatan bahwa dunia bergerak terlalu cepat, namun keindahan sejati tidaklah tergesa-gesa.
+//         - Kami tidak percaya pada tren sesaat, melainkan pada kepercayaan diri yang tenang dari siluet klasik (timeless luxury) yang akan semakin indah seiring berjalannya waktu.
+//         - Nilai Sentimental: Tas seorang wanita adalah penjaga rahasianya, mimpi-mimpinya, dan kemenangan kecilnya sehari-hari.
+
+//         MATERIAL & PRODUK:
+//         - Setiap karya bermula dari sentuhan tangan para pengrajin yang menjunjung tinggi tradisi.
+//         - Memadukan kulit sapi dengan mutu tertinggi (serta lini Vegan Leather grade A). Kulit dipilih karena tekstur uratnya yang unik, kekuatannya yang lentur, bernapas, dan hidup.
+//         - Teknologi: Dilengkapi teknologi 'Anti Bakar' (Fireproof Coating) sehingga tahan percikan api rokok dan sangat tangguh di lapangan.
+//         - Produksi: Diproduksi di tingkat lokal maupun global dengan mitra yang dipilih sangat hati-hati demi memastikan kualitas tertinggi.
+//         - Kategori: Sling Bag, Backpack, Totebag, dan Handbag.
+
+//         LAYANAN PELANGGAN (CUSTOMER CARE):
+//         - Telepon / WhatsApp: +62 888 388 8585
+//         - Email: care@solherbag.com
+//         - Jam Operasional: Senin - Jumat (08:00 - 17:00 WIB), Sabtu (09:00 - 14:00 WIB). Minggu & Hari Libur Nasional Tutup.
+
+//         KEBIJAKAN TOKO & FAQ:
+//         - Pengiriman: Pesanan diproses sesegera mungkin. Waktu tiba tergantung lokasi. Biaya kirim dihitung otomatis sebelum pembayaran (checkout). Mendukung JNE, J&T, SiCepat, dan Instant.
+//         - Pengembalian Barang (Refund): Kepuasan pelanggan adalah prioritas. Pengembalian maksimal 7 hari sejak diterima (segel harus utuh). Hubungi CS untuk kendala apa pun.
+//         - Pengecualian: Produk yang diberi tanda khusus 'Final Sale' tidak dapat dikembalikan.
+
+//         PENJELASAN GAMBAR BANNER DI WEBSITE SAAT INI:
+//         1. Banner Utama (Hero): Menampilkan tas 'Solher Defender Backpack' hitam matte disorot cahaya dengan latar percikan api. Tagline: 'Tangguh di Segala Medan'.
+//         2. Banner Promo (Tengah): Menampilkan model pria di motor custom memakai 'Solher Urban Sling Bag'. Teks: 'Diskon 20% Khusus Biker - Gunakan Kode BIKER20'.
+//         ";
+
+//         // ====================================================================
+//         // 3. BANGUN SYSTEM PROMPT
+//         // ====================================================================
+//         $systemPrompt = "Kamu adalah Solher AI, asisten virtual representatif dari butik tas kulit premium Solher. Gunakan bahasa Indonesia yang elegan, santai namun tetap profesional, sopan (panggil pelanggan 'Kak' atau 'Anda'), dan hangat. Pahami bahwa brand ini sangat puitis dan menghargai nilai *craftsmanship*.
+
+//         TUGAS UTAMA:
+//         Jawab pertanyaan pengguna secara akurat dengan memadukan 'CERITA BRAND', 'FAQ', dan 'DATA PRODUK SOLHER'. Jika ada yang bertanya tentang kontak, pengembalian, atau jam buka, jawab sesuai data Customer Care. Jika bertanya soal tampilan website atau banner, jelaskan sesuai panduan banner. JANGAN mengarang kebijakan atau harga di luar data yang diberikan.
+
+//         " . $hardcodedKnowledge . "\n\n" . $databaseContext;
+
+//         // ====================================================================
+//         // 4. AMBIL RIWAYAT CHAT
+//         // ====================================================================
+//         $history = Message::where(function ($q) use ($aiUserId) {
+//             $q->where('sender_id', $this->receiverId)->where('receiver_id', $aiUserId);
+//         })
+//         ->orWhere(function ($q) use ($aiUserId) {
+//             $q->where('sender_id', $aiUserId)->where('receiver_id', $this->receiverId);
+//         })
+//         ->orderBy('created_at', 'desc')
+//         ->take(10)
+//         ->get()
+//         ->reverse();
+
+//         $geminiContents = [];
+//         $lastRole = '';
+
+//         foreach ($history as $chat) {
+//             if (empty(trim($chat->message))) continue;
+
+//             $role = $chat->sender_id === $aiUserId ? 'model' : 'user';
+
+//             if ($role === $lastRole) {
+//                 $lastIndex = count($geminiContents) - 1;
+//                 $geminiContents[$lastIndex]['parts'][0]['text'] .= "\n".$chat->message;
+//             } else {
+//                 $geminiContents[] = [
+//                     'role' => $role,
+//                     'parts' => [['text' => $chat->message]],
+//                 ];
+//                 $lastRole = $role;
+//             }
+//         }
+
+//         // ====================================================================
+//         // 5. PANGGIL API GOOGLE GEMINI
+//         // ====================================================================
+//         try {
+//             $apiKey = env('GEMINI_API_KEY');
+
+//             $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={$apiKey}";
+
+//             $response = Http::post($url, [
+//                 'system_instruction' => [
+//                     'parts' => [['text' => $systemPrompt]],
+//                 ],
+//                 'contents' => $geminiContents,
+//                 'generationConfig' => [
+//                     'temperature' => 0.4, // Suhu diatur rendah agar informasi toko tetap akurat
+//                 ],
+//             ]);
+
+//             if ($response->successful()) {
+//                 $aiReplyText = $response->json('candidates.0.content.parts.0.text');
+
+//                 $aiMessage = Message::create([
+//                     'sender_id' => $aiUserId,
+//                     'receiver_id' => $this->receiverId,
+//                     'message' => $aiReplyText,
+//                     'is_read' => false,
+//                 ]);
+
+//                 broadcast(new MessageSent($aiMessage))->toOthers();
+
+//             } elseif ($response->status() === 503 || $response->status() === 429) {
+//                 Log::warning('Server Gemini sibuk. Mencoba ulang dalam 10 detik...');
+//                 $this->release(10);
+//             } else {
+//                 Log::error('Gemini API Error: ' . $response->body());
+//             }
+
+//         } catch (\Exception $e) {
+//             Log::error('Job AI Gagal: '.$e->getMessage());
+//         }
+//     }
+// }
+
 namespace App\Jobs;
 
 use App\Events\MessageSent;
@@ -388,31 +741,54 @@ class GenerateAiReply implements ShouldQueue
         }
 
         // ====================================================================
-        // 2. INJEKSI PENGETAHUAN HARDCODE (Profil, Banner, Keunggulan)
+        // 2. INJEKSI PENGETAHUAN HARDCODE (Update About Us, CS, Kebijakan, FAQ)
         // ====================================================================
         $hardcodedKnowledge = "
-        PENGETAHUAN PERUSAHAAN (SOLHER):
-        - Solher adalah brand lokal premium yang berfokus pada tas kulit dengan teknologi 'Anti Bakar' (Fire-Retardant Leather).
-        - Material: Menggunakan Vegan Leather grade A yang dilapisi cairan tahan api (Fireproof Coating). Tahan percikan api rokok, tidak mudah meleleh, dan awet bertahun-tahun.
-        - Kategori Produk: Sling Bag (Tas Selempang), Backpack (Ransel), Totebag, dan Handbag.
-        - Target Market: Pekerja lapangan, pengendara motor, dan mahasiswa yang butuh tas tangguh.
+        FILOSOFI & CERITA BRAND (SOLHER):
+        - Hati dari SOLHER: Sebuah 'Surat Cinta untuk Kualitas'. Mewakili 'timeless luxury' atau kemewahan tak lekang waktu yang semakin indah seiring berjalannya waktu.
+        - Nilai Sentimental: Tas seorang wanita adalah penjaga rahasianya, mimpi-mimpinya, dan kemenangan kecilnya sehari-hari.
+
+        MATERIAL & TAMPILAN PRODUK:
+        - Kulit sapi mutu tertinggi dan Vegan Leather grade A. Dilengkapi teknologi 'Anti Bakar' (tahan percikan api rokok).
+        - Kategori: Sling Bag, Backpack, Totebag, dan Handbag.
+        - Catatan: Warna pada monitor mungkin tidak sepenuhnya presisi 100% dengan aslinya karena faktor pencahayaan.
+
+        LAYANAN PELANGGAN (CUSTOMER CARE):
+        - Telepon / WhatsApp: +62 888 388 8585 | Email: care@solherbag.com
+        - Jam Operasional: Senin - Jumat (08:00 - 17:00 WIB). Tutup: Minggu & Hari Libur Nasional.
+
+        AKUN, KEAMANAN & PRIVASI:
+        - Pengguna baru memenuhi syarat mendapat bonus selamat datang (Poin Loyalitas) untuk diskon.
+        - Keamanan: Pembayaran 100% aman via payment gateway resmi. Kami TIDAK menyimpan detail kartu kredit di server. Data pribadi dijaga ketat.
+        - Kebijakan Stok: Sistem 'Siapa Cepat, Dia Dapat'. Jika pelanggan terlanjur bayar tapi kehabisan stok, sistem akan memproses auto-refund (pengembalian dana otomatis).
+
+        PENGIRIMAN & PELACAKAN:
+        - Waktu Pemrosesan: 1-2 hari kerja.
+        - Metode Pengiriman: Reguler (2-5 hari), Hari Berikutnya (Next Day), dan Instan (pesan sebelum pukul 14:00 WIB).
+        - Pengambilan di Toko (In-Store Pickup): Gratis biaya kirim. Diambil di stan fisik / toko mitra (seperti Kecilung Kitchen & Resto) saat event khusus (siap dalam 1 hari kerja).
+        - Pelacakan: Lacak real-time via Dasbor Akun di halaman 'Pesanan' (tunggu 1x24 jam untuk pembaruan sistem logistik).
+
+        KEBIJAKAN PENGEMBALIAN (REFUND) & FAQ:
+        - Auto-Refund (Pembatalan): Jika dibatalkan sebelum diproses logistik, dana dan Poin Loyalitas kembali otomatis sepenuhnya.
+        - Refund Manual: Maksimal diajukan 3 HARI sejak barang diterima melalui halaman 'Pesanan'. WAJIB menyertakan Video Unboxing / Foto cacat produk.
+        - Syarat Kelayakan Retur: Barang belum digunakan, kemasan asli utuh (termasuk dust bag & label harga).
+        - Tidak Bisa Diretur (Final Sale): Barang diskon (sale), desain khusus, atau rusak karena perawatan tidak tepat. Biaya pengiriman awal tidak dapat dikembalikan.
 
         PENJELASAN GAMBAR BANNER DI WEBSITE SAAT INI:
-        1. Banner Utama (Hero): Menampilkan tas 'Solher Defender Backpack' berwarna hitam matte yang sedang disorot cahaya, dengan latar belakang percikan api kecil untuk menonjolkan fitur anti bakarnya. Tagline: 'Tangguh di Segala Medan'.
-        2. Banner Promo (Tengah): Menampilkan model pria mengendarai motor custom memakai 'Solher Urban Sling Bag'. Teks: 'Diskon 20% Khusus Biker - Gunakan Kode BIKER20'.
-
-        KEBIJAKAN TOKO:
-        - Pengembalian: Maksimal 7 hari sejak barang diterima (segel utuh).
-        - Pengiriman: Mendukung JNE, J&T, SiCepat, dan Instant (Gojek/Grab).
+        1. Banner Utama (Hero): Menampilkan tas 'Solher Defender Backpack' hitam matte disorot cahaya dengan latar percikan api. Tagline: 'Tangguh di Segala Medan'.
+        2. Banner Promo (Tengah): Menampilkan model pria di motor custom memakai 'Solher Urban Sling Bag'. Teks: 'Diskon 20% Khusus Biker - Gunakan Kode BIKER20'.
         ";
 
         // ====================================================================
         // 3. BANGUN SYSTEM PROMPT
         // ====================================================================
-        $systemPrompt = "Kamu adalah Solher AI, asisten virtual ramah untuk toko tas Solher. Gunakan bahasa Indonesia yang santai, sopan (panggil pelanggan 'Kak'), dan hangat.
+        $systemPrompt = "Kamu adalah Solher AI, asisten virtual representatif dari butik tas kulit premium Solher. Gunakan bahasa Indonesia yang elegan, santai namun tetap profesional, sopan (panggil pelanggan 'Kak' atau 'Anda'), dan hangat. Pahami bahwa brand ini sangat puitis dan menghargai nilai *craftsmanship*.
 
         TUGAS UTAMA:
-        Jawab pertanyaan pengguna memadukan 'PENGETAHUAN PERUSAHAAN' dan 'DATA PRODUK SOLHER'. Jika ditanya soal tampilan website atau banner, jelaskan sesuai deskripsi di atas. Jangan mengarang fitur atau harga.
+        Jawab pertanyaan pengguna secara akurat dengan memadukan 'CERITA BRAND', 'KEBIJAKAN TOKO', dan 'DATA PRODUK SOLHER'.
+        - Jika ada yang bertanya tentang pengiriman, pengembalian dana, privasi, atau jam operasional, jawab dengan tegas dan jelas sesuai panduan.
+        - Ingatkan pelanggan soal 'Video Unboxing' jika mereka bertanya tentang syarat komplain/retur.
+        - Jika bertanya soal website/banner, jelaskan sesuai data yang diberikan. JANGAN mengarang kebijakan yang bertentangan dengan informasi yang disediakan.
 
         " . $hardcodedKnowledge . "\n\n" . $databaseContext;
 
@@ -451,12 +827,11 @@ class GenerateAiReply implements ShouldQueue
         }
 
         // ====================================================================
-        // 5. PANGGIL API GOOGLE GEMINI (Menggunakan model resmi 3.5-flash)
+        // 5. PANGGIL API GOOGLE GEMINI
         // ====================================================================
         try {
             $apiKey = env('GEMINI_API_KEY');
 
-            // Perbaikan Model ke versi resmi yang paling stabil dan cepat
             $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={$apiKey}";
 
             $response = Http::post($url, [
@@ -465,7 +840,7 @@ class GenerateAiReply implements ShouldQueue
                 ],
                 'contents' => $geminiContents,
                 'generationConfig' => [
-                    'temperature' => 0.4, // Cukup rendah agar tetap faktual soal produk tas
+                    'temperature' => 0.4, // Suhu rendah = mematuhi aturan SOP dengan lebih ketat
                 ],
             ]);
 
