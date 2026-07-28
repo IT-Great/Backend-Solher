@@ -439,6 +439,7 @@
 //     // Tapi karena Anda memindahkannya ke Job, kita akan update Job-nya di bawah).
 // }
 
+
 namespace App\Jobs;
 
 use App\Events\MessageSent;
