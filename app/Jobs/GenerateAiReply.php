@@ -869,6 +869,8 @@
 //     }
 // }
 
+<?php
+
 namespace App\Jobs;
 
 use App\Events\MessageSent;
@@ -876,7 +878,6 @@ use App\Events\UserTyping;
 use App\Models\Message;
 use App\Models\Product;
 use App\Models\User;
-use App\Models\Transaction; // [BARU] Import model Transaction
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -884,14 +885,14 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 
 class GenerateAiReply implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3;
-    public $receiverId; // ID Customer
+
+    public $receiverId;
     public $userMessage;
 
     public function __construct($receiverId, $userMessage)
@@ -900,181 +901,163 @@ class GenerateAiReply implements ShouldQueue
         $this->userMessage = $userMessage;
     }
 
-    // Fungsi Lokal Pengecek Database
-    private function cekStatusPesananLokal($userId, $orderId = null)
-    {
-        $query = Transaction::where('user_id', $userId)->latest();
-        if ($orderId) {
-            $query->where('order_id', 'LIKE', '%' . $orderId . '%');
-        }
-        $transaction = $query->first();
-
-        if (!$transaction) {
-            return ['status' => 'error', 'message' => 'Data pesanan tidak ditemukan di sistem.'];
-        }
-
-        $result = [
-            'order_id' => $transaction->order_id,
-            'status_pembayaran' => $transaction->status,
-            'metode_pengiriman' => $transaction->shipping_method,
-            'nomor_resi' => $transaction->tracking_number ?? 'Resi belum tersedia',
-            'status_pengiriman' => $transaction->shipping_status ?? 'Menunggu diproses',
-        ];
-
-        if ($transaction->shipping_method === 'biteship' && $transaction->biteship_order_id) {
-            try {
-                $res = Http::withHeaders(['Authorization' => config('services.biteship.api_key')])
-                    ->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
-
-                if ($res->successful()) {
-                    $biteshipData = $res->json();
-                    $result['status_pengiriman'] = $biteshipData['status'] ?? $transaction->shipping_status;
-                }
-            } catch (\Exception $e) {}
-        }
-        return $result;
-    }
-
     public function handle()
     {
-        // 1. DINAMIS: Cari ID Solher Care yang asli (Bukan Hardcode 811)
-        $supportUser = User::where('email', 'support@solher.com')->first();
-        if (!$supportUser) return;
-        $aiUserId = $supportUser->id; 
+        $aiUserId = 811; // Sesuaikan ID AI Anda di database Solher
 
+        // Pancarkan status "Typing..."
         broadcast(new UserTyping($aiUserId, $this->receiverId))->toOthers();
 
-        // 2. MINI-RAG PRODUK
+        // ====================================================================
+        // 1. PENCARIAN CERDAS KE DATABASE (Mini-RAG untuk Produk)
+        // ====================================================================
         $keywords = explode(' ', $this->userMessage);
         $query = Product::query();
+
         foreach ($keywords as $word) {
             if (strlen($word) > 3) {
-                $query->orWhere('name', 'LIKE', '%'.$word.'%')->orWhere('description', 'LIKE', '%'.$word.'%');
+                $query->orWhere('name', 'LIKE', '%'.$word.'%')
+                    ->orWhere('material', 'LIKE', '%'.$word.'%')
+                    ->orWhere('description', 'LIKE', '%'.$word.'%')
+                    ->orWhere('status', 'LIKE', '%'.$word.'%');
             }
         }
+
         $relatedProducts = $query->take(5)->get();
 
-        $databaseContext = "DATA PRODUK SOLHER:\n";
-        foreach ($relatedProducts as $item) {
-            $harga = number_format($item->price, 0, ',', '.');
-            $databaseContext .= "- {$item->name} | Rp {$harga} | Stok: {$item->stock}\n";
+        $databaseContext = "DATA PRODUK SOLHER SAAT INI (REAL-TIME):\n";
+        if ($relatedProducts->isEmpty()) {
+            $databaseContext .= "- Tidak ada data produk spesifik yang relevan dengan keyword.\n";
+        } else {
+            foreach ($relatedProducts as $item) {
+                $harga = number_format($item->price, 0, ',', '.');
+                $databaseContext .= "- {$item->name} | Rp {$harga} | Stok: {$item->stock} | Info: {$item->description}\n";
+            }
         }
 
+        // ====================================================================
+        // 2. INJEKSI PENGETAHUAN HARDCODE (Update About Us, CS, Kebijakan, FAQ)
+        // ====================================================================
         $hardcodedKnowledge = "
-        INFO: Gycora Essence (Solher). WA: 082273736200. Email: care@solherbag.com.
-        RETUR: Max 3 HARI. Wajib Video Unboxing utuh.
+        FILOSOFI & CERITA BRAND (SOLHER):
+        - Hati dari SOLHER: Sebuah 'Surat Cinta untuk Kualitas'. Mewakili 'timeless luxury' atau kemewahan tak lekang waktu yang semakin indah seiring berjalannya waktu.
+        - Nilai Sentimental: Tas seorang wanita adalah penjaga rahasianya, mimpi-mimpinya, dan kemenangan kecilnya sehari-hari.
+
+        MATERIAL & TAMPILAN PRODUK:
+        - Kulit sapi mutu tertinggi dan Vegan Leather grade A. Dilengkapi teknologi 'Anti Bakar' (tahan percikan api rokok).
+        - Kategori: Sling Bag, Backpack, Totebag, dan Handbag.
+        - Catatan: Warna pada monitor mungkin tidak sepenuhnya presisi 100% dengan aslinya karena faktor pencahayaan.
+
+        LAYANAN PELANGGAN (CUSTOMER CARE):
+        - Telepon / WhatsApp: +62 888 388 8585 | Email: care@solherbag.com
+        - Jam Operasional: Senin - Jumat (08:00 - 17:00 WIB). Tutup: Minggu & Hari Libur Nasional.
+
+        AKUN, KEAMANAN & PRIVASI:
+        - Pengguna baru memenuhi syarat mendapat bonus selamat datang (Poin Loyalitas) untuk diskon.
+        - Keamanan: Pembayaran 100% aman via payment gateway resmi. Kami TIDAK menyimpan detail kartu kredit di server. Data pribadi dijaga ketat.
+        - Kebijakan Stok: Sistem 'Siapa Cepat, Dia Dapat'. Jika pelanggan terlanjur bayar tapi kehabisan stok, sistem akan memproses auto-refund (pengembalian dana otomatis).
+
+        PENGIRIMAN & PELACAKAN:
+        - Waktu Pemrosesan: 1-2 hari kerja.
+        - Metode Pengiriman: Reguler (2-5 hari), Hari Berikutnya (Next Day), dan Instan (pesan sebelum pukul 14:00 WIB).
+        - Pengambilan di Toko (In-Store Pickup): Gratis biaya kirim. Diambil di stan fisik / toko mitra (seperti Kecilung Kitchen & Resto) saat event khusus (siap dalam 1 hari kerja).
+        - Pelacakan: Lacak real-time via Dasbor Akun di halaman 'Pesanan' (tunggu 1x24 jam untuk pembaruan sistem logistik).
+
+        KEBIJAKAN PENGEMBALIAN (REFUND) & FAQ:
+        - Auto-Refund (Pembatalan): Jika dibatalkan sebelum diproses logistik, dana dan Poin Loyalitas kembali otomatis sepenuhnya.
+        - Refund Manual: Maksimal diajukan 3 HARI sejak barang diterima melalui halaman 'Pesanan'. WAJIB menyertakan Video Unboxing / Foto cacat produk.
+        - Syarat Kelayakan Retur: Barang belum digunakan, kemasan asli utuh (termasuk dust bag & label harga).
+        - Tidak Bisa Diretur (Final Sale): Barang diskon (sale), desain khusus, atau rusak karena perawatan tidak tepat. Biaya pengiriman awal tidak dapat dikembalikan.
+
+        PENJELASAN GAMBAR BANNER DI WEBSITE SAAT INI:
+        1. Banner Utama (Hero): Menampilkan tas 'Solher Defender Backpack' hitam matte disorot cahaya dengan latar percikan api. Tagline: 'Tangguh di Segala Medan'.
+        2. Banner Promo (Tengah): Menampilkan model pria di motor custom memakai 'Solher Urban Sling Bag'. Teks: 'Diskon 20% Khusus Biker - Gunakan Kode BIKER20'.
         ";
 
-        $systemPrompt = "Kamu adalah Solher Care, asisten AI. Sapa pengguna 'Kak'.
-        TUGAS MUTLAK:
-        1. Jika pengguna minta bicara dengan admin/manusia, PANGGIL fungsi 'transfer_to_human'.
-        2. Jika pengguna menanyakan STATUS PESANAN/RESI, PANGGIL fungsi 'lacak_pesanan_database' lalu bacakan hasilnya dengan ramah.
-        " . $hardcodedKnowledge . "\n" . $databaseContext;
+        // ====================================================================
+        // 3. BANGUN SYSTEM PROMPT
+        // ====================================================================
+        $systemPrompt = "Kamu adalah Solher AI, asisten virtual representatif dari butik tas kulit premium Solher. Gunakan bahasa Indonesia yang elegan, santai namun tetap profesional, sopan (panggil pelanggan 'Kak' atau 'Anda'), dan hangat. Pahami bahwa brand ini sangat puitis dan menghargai nilai *craftsmanship*.
 
-        // 3. AMBIL RIWAYAT CHAT
+        TUGAS UTAMA:
+        Jawab pertanyaan pengguna secara akurat dengan memadukan 'CERITA BRAND', 'KEBIJAKAN TOKO', dan 'DATA PRODUK SOLHER'.
+        - Jika ada yang bertanya tentang pengiriman, pengembalian dana, privasi, atau jam operasional, jawab dengan tegas dan jelas sesuai panduan.
+        - Ingatkan pelanggan soal 'Video Unboxing' jika mereka bertanya tentang syarat komplain/retur.
+        - Jika bertanya soal website/banner, jelaskan sesuai data yang diberikan. JANGAN mengarang kebijakan yang bertentangan dengan informasi yang disediakan.
+
+        " . $hardcodedKnowledge . "\n\n" . $databaseContext;
+
+        // ====================================================================
+        // 4. AMBIL RIWAYAT CHAT
+        // ====================================================================
         $history = Message::where(function ($q) use ($aiUserId) {
             $q->where('sender_id', $this->receiverId)->where('receiver_id', $aiUserId);
-        })->orWhere(function ($q) use ($aiUserId) {
+        })
+        ->orWhere(function ($q) use ($aiUserId) {
             $q->where('sender_id', $aiUserId)->where('receiver_id', $this->receiverId);
-        })->orderBy('created_at', 'desc')->take(10)->get()->reverse();
+        })
+        ->orderBy('created_at', 'desc')
+        ->take(10)
+        ->get()
+        ->reverse();
 
         $geminiContents = [];
         $lastRole = '';
+
         foreach ($history as $chat) {
             if (empty(trim($chat->message))) continue;
+
             $role = $chat->sender_id === $aiUserId ? 'model' : 'user';
+
             if ($role === $lastRole) {
                 $lastIndex = count($geminiContents) - 1;
                 $geminiContents[$lastIndex]['parts'][0]['text'] .= "\n".$chat->message;
             } else {
-                $geminiContents[] = ['role' => $role, 'parts' => [['text' => $chat->message]]];
+                $geminiContents[] = [
+                    'role' => $role,
+                    'parts' => [['text' => $chat->message]],
+                ];
                 $lastRole = $role;
             }
         }
 
+        // ====================================================================
+        // 5. PANGGIL API GOOGLE GEMINI
+        // ====================================================================
         try {
             $apiKey = env('GEMINI_API_KEY');
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={$apiKey}";
 
-            // DEKLARASI FUNGSI (TOOLS)
-            $tools = [
-                'functionDeclarations' => [
-                    [
-                        'name' => 'transfer_to_human',
-                        'description' => 'Panggil ini jika pengguna terang-terangan minta ngobrol sama manusia/admin asli.'
-                    ],
-                    [
-                        'name' => 'lacak_pesanan_database',
-                        'description' => 'Panggil ini saat pengguna melacak pesanan/resi.',
-                        'parameters' => ['type' => 'OBJECT', 'properties' => ['order_id' => ['type' => 'STRING']]]
-                    ]
-                ]
-            ];
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={$apiKey}";
 
-            $payload = [
-                'system_instruction' => ['parts' => [['text' => $systemPrompt]]],
+            $response = Http::post($url, [
+                'system_instruction' => [
+                    'parts' => [['text' => $systemPrompt]],
+                ],
                 'contents' => $geminiContents,
-                'tools' => [$tools],
-                'generationConfig' => ['temperature' => 0.4],
-            ];
-
-            $response = Http::timeout(30)->post($url, $payload);
+                'generationConfig' => [
+                    'temperature' => 0.4, // Suhu rendah = mematuhi aturan SOP dengan lebih ketat
+                ],
+            ]);
 
             if ($response->successful()) {
-                $data = $response->json();
-                $parts = $data['candidates'][0]['content']['parts'][0] ?? [];
-                $aiReplyText = "";
+                $aiReplyText = $response->json('candidates.0.content.parts.0.text');
 
-                // JIKA AI MEMANGGIL FUNGSI
-                if (isset($parts['functionCall'])) {
-                    $functionCall = $parts['functionCall'];
-                    $functionName = $functionCall['name'];
-                    
-                    if ($functionName === 'transfer_to_human') {
-                        Cache::put('chat_mode_' . $this->receiverId, 'human', now()->addHours(24));
-                        $aiReplyText = "Baik Kak, mohon ditunggu sebentar ya. Saya sedang menghubungkan Kakak dengan Admin manusia kami. Mereka akan segera membalas di obrolan ini 🙏";
-                    } 
-                    elseif ($functionName === 'lacak_pesanan_database') {
-                        $args = $functionCall['args'] ?? [];
-                        $orderIdDicari = $args['order_id'] ?? null;
-                        
-                        $hasilDatabase = $this->cekStatusPesananLokal($this->receiverId, $orderIdDicari);
+                $aiMessage = Message::create([
+                    'sender_id' => $aiUserId,
+                    'receiver_id' => $this->receiverId,
+                    'message' => $aiReplyText,
+                    'is_read' => false,
+                ]);
 
-                        $safeArgs = empty($args) ? new \stdClass() : json_decode(json_encode($args), false);
-                        $safeResponse = json_decode(json_encode(['result' => $hasilDatabase]), false);
+                broadcast(new MessageSent($aiMessage))->toOthers();
 
-                        $geminiContents[] = ['role' => 'model', 'parts' => [['functionCall' => ['name' => $functionName, 'args' => $safeArgs]]]];
-                        $geminiContents[] = ['role' => 'function', 'parts' => [['functionResponse' => ['name' => $functionName, 'response' => $safeResponse]]]];
-
-                        $secondPayload = [
-                            'system_instruction' => ['parts' => [['text' => $systemPrompt]]],
-                            'tools' => [$tools], 
-                            'contents' => $geminiContents,
-                            'generationConfig' => ['temperature' => 0.4],
-                        ];
-
-                        $secondResponse = Http::timeout(30)->post($url, $secondPayload);
-                        if ($secondResponse->successful()) {
-                            $aiReplyText = $secondResponse->json('candidates.0.content.parts.0.text');
-                        } else {
-                            $aiReplyText = "Maaf kak, sistem sedang kesulitan menerjemahkan data pesanan dari database.";
-                        }
-                    }
-                } else {
-                    $aiReplyText = $parts['text'] ?? "Maaf kak, saya gagal memproses pertanyaan ini.";
-                }
-
-                if ($aiReplyText) {
-                    $aiMessage = Message::create([
-                        'sender_id' => $aiUserId,
-                        'receiver_id' => $this->receiverId,
-                        'message' => $aiReplyText,
-                        'is_read' => false,
-                    ]);
-                    broadcast(new MessageSent($aiMessage))->toOthers();
-                }
-
+            } elseif ($response->status() === 503 || $response->status() === 429) {
+                Log::warning('Server Gemini sibuk. Mencoba ulang dalam 10 detik...');
+                $this->release(10);
+            } else {
+                Log::error('Gemini API Error: ' . $response->body());
             }
+
         } catch (\Exception $e) {
             Log::error('Job AI Gagal: '.$e->getMessage());
         }
