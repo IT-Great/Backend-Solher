@@ -246,6 +246,7 @@ class ChatController extends Controller
         // ====================================================================
         $aiUserId = 811; // Ganti dengan ID user AI Anda
 
+        
         if ($request->receiver_id == $aiUserId && $cleanMessage) {
             // Lemparkan tugas membalas ke Background Job
             \App\Jobs\GenerateAiReply::dispatch(auth()->id(), $cleanMessage);
