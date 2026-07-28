@@ -869,8 +869,6 @@
 //     }
 // }
 
-<?php
-
 namespace App\Jobs;
 
 use App\Events\MessageSent;
