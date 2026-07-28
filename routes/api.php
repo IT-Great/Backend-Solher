@@ -903,6 +903,7 @@ Route::middleware(['auth:sanctum', 'role:accounting_mod'])->prefix('admin')->gro
 // =========================================================================
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/chat/admins', [ChatController::class, 'getAdmins']);
+    Route::get('/chat/admins', [ChatController::class, 'getStaffList']);
     Route::get('/chat/messages/{id}', [ChatController::class, 'getMessages']);
 
     // 👇 IMPLEMENTASI RATE LIMITING UNTUK CHAT/AI 👇
