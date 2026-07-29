@@ -142,6 +142,160 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use App\Events\MessageRead;
+// use App\Events\MessageSent;
+// use App\Events\UserTyping;
+// use App\Models\Message;
+// use App\Models\User;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\Mail; // [BARU] Import Mail Facade
+// use App\Mail\ChatMessageNotificationMail; // [BARU] Import Mailable
+
+// class ChatController extends Controller
+// {
+//     // Mengambil daftar admin (hanya Superadmin & Admin) untuk halaman customer
+//     public function getAdmins()
+//     {
+//         $admins = User::whereIn('usertype', ['admin'])
+//             ->orderBy('usertype', 'desc')
+//             ->withCount(['messages as unread_count' => function ($query) {
+//                 $query->where('is_read', false)
+//                     ->where('receiver_id', auth()->id());
+//             }])
+//             ->get();
+
+//         return response()->json($admins);
+//     }
+
+//     public function getMessages($userId)
+//     {
+//         $myId = auth()->id();
+
+//         $messages = Message::where(function ($q) use ($myId, $userId) {
+//             $q->where('sender_id', $myId)->where('receiver_id', $userId);
+//         })->orWhere(function ($q) use ($myId, $userId) {
+//             $q->where('sender_id', $userId)->where('receiver_id', $myId);
+//         })->with('sender', 'receiver')->orderBy('created_at', 'asc')->get();
+
+//         return response()->json($messages);
+//     }
+
+//     public function sendMessage(Request $request)
+//     {
+//         // 1. Validasi
+//         $request->validate([
+//             'receiver_id' => 'required|exists:users,id',
+//             'message' => 'nullable|string',
+//             'attachment' => 'nullable|file|mimes:jpeg,png,jpg,webp,mp4,mov,avi|max:10240',
+//         ]);
+
+//         if (! $request->message && ! $request->hasFile('attachment')) {
+//             return response()->json(['error' => 'Message or attachment is required'], 422);
+//         }
+
+//         $attachmentPath = null;
+//         $attachmentType = null;
+
+//         // 2. Logika Upload File
+//         if ($request->hasFile('attachment')) {
+//             $file = $request->file('attachment');
+//             $mimeType = $file->getMimeType();
+//             $attachmentType = str_contains($mimeType, 'video') ? 'video' : 'image';
+//             $attachmentPath = $file->store('chat_attachments', 'public');
+//         }
+
+//         // Bersihkan nilai message
+//         $cleanMessage = $request->message;
+//         if (trim($cleanMessage) === '') {
+//             $cleanMessage = null;
+//         }
+
+//         // 3. Simpan ke Database
+//         $message = Message::create([
+//             'sender_id' => auth()->id(),
+//             'receiver_id' => $request->receiver_id,
+//             'message' => $cleanMessage,
+//             'attachment' => $attachmentPath ?? null,
+//             'attachment_type' => $attachmentType ?? null,
+//         ]);
+
+//         // 4. Pancarkan (Broadcast) via WebSockets
+//         broadcast(new MessageSent($message))->toOthers();
+
+//         // // ====================================================================
+//         // // 👇 [BARU] 5. KIRIM EMAIL NOTIFIKASI SECARA BACKGROUND (QUEUE) 👇
+//         // // ====================================================================
+//         // try {
+//         //     $receiver = User::find($request->receiver_id);
+//         //     $sender = auth()->user();
+
+//         //     if ($receiver && $receiver->email) {
+//         //         // Menggunakan queue() agar pengiriman chat di browser tidak lag
+//         //         Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
+//         //     }
+//         // } catch (\Exception $e) {
+//         //     report($e);
+//         //     \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
+//         // }
+//         // // ====================================================================
+
+//         // ====================================================================
+//         // 👇 [BARU] DETEKSI JIKA PENERIMA ADALAH AI 👇
+//         // ====================================================================
+//         $aiUserId = 811; // Ganti dengan ID user AI Anda
+
+//         if ($request->receiver_id == $aiUserId && $cleanMessage) {
+//             // Lemparkan tugas membalas ke Background Job
+//             \App\Jobs\GenerateAiReply::dispatch(auth()->id(), $cleanMessage);
+//         } else {
+//             // Jika dikirim ke manusia biasa, kirim email notifikasi
+//             try {
+//                 $receiver = User::find($request->receiver_id);
+//                 $sender = auth()->user();
+
+//                 if ($receiver && $receiver->email) {
+//                     Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
+//                 }
+//             } catch (\Exception $e) {
+//                 report($e);
+//                 \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
+//             }
+//         }
+//         // ====================================================================
+
+//         return response()->json($message->load('sender', 'receiver'));
+//     }
+
+//     // Menandai pesan telah dibaca
+//     public function markAsRead($senderId)
+//     {
+//         $myId = auth()->id();
+
+//         Message::where('sender_id', $senderId)
+//             ->where('receiver_id', $myId)
+//             ->where('is_read', false)
+//             ->update(['is_read' => true]);
+
+//         broadcast(new MessageRead($myId, $senderId))->toOthers();
+
+//         return response()->json(['status' => 'success']);
+//     }
+
+//     // Mengirim sinyal typing
+//     public function typing(Request $request)
+//     {
+//         $request->validate(['receiver_id' => 'required|exists:users,id']);
+
+//         broadcast(new UserTyping(auth()->id(), $request->receiver_id))->toOthers();
+
+//         return response()->json(['status' => 'success']);
+//     }
+// }
+
+// 1 akun untuk AI ChatBot & human CS
+
 namespace App\Http\Controllers;
 
 use App\Events\MessageRead;
@@ -150,41 +304,72 @@ use App\Events\UserTyping;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail; // [BARU] Import Mail Facade
-use App\Mail\ChatMessageNotificationMail; // [BARU] Import Mailable
+use Illuminate\Support\Facades\Mail;
+use App\Mail\ChatMessageNotificationMail;
+use Illuminate\Support\Facades\Cache;
 
 class ChatController extends Controller
 {
-    // Mengambil daftar admin (hanya Superadmin & Admin) untuk halaman customer
+    // 1. Mengambil daftar admin (Unified Inbox Solher Care)
     public function getAdmins()
     {
-        $admins = User::whereIn('usertype', ['admin'])
-            ->orderBy('usertype', 'desc')
-            ->withCount(['messages as unread_count' => function ($query) {
-                $query->where('is_read', false)
-                    ->where('receiver_id', auth()->id());
-            }])
-            ->get();
+        $aiUser = User::firstOrCreate(
+            ['email' => 'ai@solher.com'],
+            ['first_name' => 'Solher', 'last_name' => 'AI', 'password' => bcrypt('password_rahasia_ai_123'), 'usertype' => 'admin', 'phone' => '00000000000']
+        );
 
-        return response()->json($admins);
+        $mainAdmin = User::where('email', '!=', 'ai@solher.com')->whereIn('usertype', ['admin', 'superadmin'])->first();
+
+        if($mainAdmin) {
+            $mainAdmin->first_name = "Solher";
+            $mainAdmin->last_name = "Care";
+            $mainAdmin->usertype = "Official Account";
+
+            // Hitung unread
+            $adminIds = User::whereIn('usertype', ['admin', 'superadmin'])->pluck('id')->toArray();
+            $mainAdmin->unread_count = Message::whereIn('sender_id', $adminIds)
+                ->where('receiver_id', auth()->id())->where('is_read', false)->count();
+
+            return response()->json([$mainAdmin]);
+        }
+
+        return response()->json([$aiUser]);
     }
 
+    // 2. Mengambil histori pesan (Pelanggan & Admin)
     public function getMessages($userId)
     {
         $myId = auth()->id();
+        $me = User::find($myId);
 
-        $messages = Message::where(function ($q) use ($myId, $userId) {
-            $q->where('sender_id', $myId)->where('receiver_id', $userId);
-        })->orWhere(function ($q) use ($myId, $userId) {
-            $q->where('sender_id', $userId)->where('receiver_id', $myId);
-        })->with('sender', 'receiver')->orderBy('created_at', 'asc')->get();
+        $adminIds = User::whereIn('usertype', ['admin', 'superadmin'])->pluck('id')->toArray();
+        $aiUser = User::where('email', 'ai@solher.com')->first();
+        if ($aiUser && !in_array($aiUser->id, $adminIds)) {
+            $adminIds[] = $aiUser->id;
+        }
+
+        $isCustomer = !in_array($me->usertype, ['admin', 'superadmin']);
+
+        if ($isCustomer) {
+            $messages = Message::where(function ($q) use ($myId, $adminIds) {
+                $q->where('sender_id', $myId)->whereIn('receiver_id', $adminIds);
+            })->orWhere(function ($q) use ($myId, $adminIds) {
+                $q->whereIn('sender_id', $adminIds)->where('receiver_id', $myId);
+            })->with('sender')->orderBy('created_at', 'asc')->get();
+        } else {
+            $messages = Message::where(function ($q) use ($userId, $adminIds) {
+                $q->whereIn('sender_id', $adminIds)->where('receiver_id', $userId);
+            })->orWhere(function ($q) use ($userId, $adminIds) {
+                $q->where('sender_id', $userId)->whereIn('receiver_id', $adminIds);
+            })->with('sender')->orderBy('created_at', 'asc')->get();
+        }
 
         return response()->json($messages);
     }
 
+    // 3. Menyimpan Pesan & Logika AI Handoff
     public function sendMessage(Request $request)
     {
-        // 1. Validasi
         $request->validate([
             'receiver_id' => 'required|exists:users,id',
             'message' => 'nullable|string',
@@ -198,7 +383,6 @@ class ChatController extends Controller
         $attachmentPath = null;
         $attachmentType = null;
 
-        // 2. Logika Upload File
         if ($request->hasFile('attachment')) {
             $file = $request->file('attachment');
             $mimeType = $file->getMimeType();
@@ -206,90 +390,49 @@ class ChatController extends Controller
             $attachmentPath = $file->store('chat_attachments', 'public');
         }
 
-        // Bersihkan nilai message
         $cleanMessage = $request->message;
-        if (trim($cleanMessage) === '') {
-            $cleanMessage = null;
-        }
+        if (trim($cleanMessage) === '') $cleanMessage = null;
 
-        // 3. Simpan ke Database
+        $myId = auth()->id();
+        $me = User::find($myId);
+        $receiver = User::find($request->receiver_id);
+
         $message = Message::create([
-            'sender_id' => auth()->id(),
+            'sender_id' => $myId,
             'receiver_id' => $request->receiver_id,
             'message' => $cleanMessage,
             'attachment' => $attachmentPath ?? null,
             'attachment_type' => $attachmentType ?? null,
         ]);
 
-        // 4. Pancarkan (Broadcast) via WebSockets
-        broadcast(new MessageSent($message))->toOthers();
+        broadcast(new MessageSent($message->load('sender')))->toOthers();
 
-        // // ====================================================================
-        // // 👇 [BARU] 5. KIRIM EMAIL NOTIFIKASI SECARA BACKGROUND (QUEUE) 👇
-        // // ====================================================================
-        // try {
-        //     $receiver = User::find($request->receiver_id);
-        //     $sender = auth()->user();
+        // LOGIKA HYBRID: Lempar ke Queue Job jika pengirim = Customer, penerima = Admin/AI
+        $isCustomer = !in_array($me->usertype, ['admin', 'superadmin']);
+        $isReceiverAdmin = in_array($receiver->usertype, ['admin', 'superadmin']) || $receiver->email === 'ai@solher.com';
 
-        //     if ($receiver && $receiver->email) {
-        //         // Menggunakan queue() agar pengiriman chat di browser tidak lag
-        //         Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
-        //     }
-        // } catch (\Exception $e) {
-        //     report($e);
-        //     \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
-        // }
-        // // ====================================================================
-
-        // ====================================================================
-        // 👇 [BARU] DETEKSI JIKA PENERIMA ADALAH AI 👇
-        // ====================================================================
-        $aiUserId = 811; // Ganti dengan ID user AI Anda
-
-        if ($request->receiver_id == $aiUserId && $cleanMessage) {
-            // Lemparkan tugas membalas ke Background Job
-            \App\Jobs\GenerateAiReply::dispatch(auth()->id(), $cleanMessage);
-        } else {
-            // Jika dikirim ke manusia biasa, kirim email notifikasi
-            try {
-                $receiver = User::find($request->receiver_id);
-                $sender = auth()->user();
-
-                if ($receiver && $receiver->email) {
-                    Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($sender, $message));
-                }
-            } catch (\Exception $e) {
-                report($e);
-                \Illuminate\Support\Facades\Log::error('Gagal mengirim email chat: ' . $e->getMessage());
+        if ($isCustomer && $isReceiverAdmin && $cleanMessage) {
+            $chatMode = Cache::get('chat_mode_' . $myId, 'ai');
+            if ($chatMode === 'ai') {
+                // Lempar ke Otak Gemini di Latar Belakang
+                \App\Jobs\GenerateAiReply::dispatch($myId, $cleanMessage);
             }
         }
-        // ====================================================================
 
         return response()->json($message->load('sender', 'receiver'));
     }
 
-    // Menandai pesan telah dibaca
     public function markAsRead($senderId)
     {
-        $myId = auth()->id();
-
-        Message::where('sender_id', $senderId)
-            ->where('receiver_id', $myId)
-            ->where('is_read', false)
-            ->update(['is_read' => true]);
-
-        broadcast(new MessageRead($myId, $senderId))->toOthers();
-
+        Message::where('sender_id', $senderId)->where('receiver_id', auth()->id())
+            ->where('is_read', false)->update(['is_read' => true]);
+        broadcast(new MessageRead(auth()->id(), $senderId))->toOthers();
         return response()->json(['status' => 'success']);
     }
 
-    // Mengirim sinyal typing
     public function typing(Request $request)
     {
-        $request->validate(['receiver_id' => 'required|exists:users,id']);
-
         broadcast(new UserTyping(auth()->id(), $request->receiver_id))->toOthers();
-
         return response()->json(['status' => 'success']);
     }
 }
