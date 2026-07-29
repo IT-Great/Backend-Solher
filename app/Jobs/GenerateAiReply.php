@@ -1199,8 +1199,8 @@ class GenerateAiReply implements ShouldQueue
                         'message' => $aiReplyText,
                         'is_read' => false,
                     ]);
-                    // broadcast(new MessageSent($aiMessage->load('sender')))->toOthers();
-                    broadcast(new MessageSent($aiMessage));
+                    broadcast(new MessageSent($aiMessage->load('sender')))->toOthers();
+                    // broadcast(new MessageSent($aiMessage));
                 }
 
             } elseif ($response->status() === 503 || $response->status() === 429) {
