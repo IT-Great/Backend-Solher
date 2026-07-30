@@ -422,11 +422,46 @@ class ChatController extends Controller
         return response()->json($message->load('sender', 'receiver'));
     }
 
+    // public function markAsRead($senderId)
+    // {
+    //     Message::where('sender_id', $senderId)->where('receiver_id', auth()->id())
+    //         ->where('is_read', false)->update(['is_read' => true]);
+    //     broadcast(new MessageRead(auth()->id(), $senderId))->toOthers();
+    //     return response()->json(['status' => 'success']);
+    // }
+
+    // Fungsi Pintar untuk Menandai Pesan Unified Inbox sebagai Dibaca
     public function markAsRead($senderId)
     {
-        Message::where('sender_id', $senderId)->where('receiver_id', auth()->id())
-            ->where('is_read', false)->update(['is_read' => true]);
-        broadcast(new MessageRead(auth()->id(), $senderId))->toOthers();
+        $myId = auth()->id();
+        $me = User::find($myId);
+
+        // Kumpulkan semua ID yang tergabung dalam "Solher Care" (Semua Admin + AI)
+        $adminIds = User::whereIn('usertype', ['admin', 'superadmin'])->pluck('id')->toArray();
+        $aiUser = User::where('email', 'ai@solher.com')->first();
+        if ($aiUser && !in_array($aiUser->id, $adminIds)) {
+            $adminIds[] = $aiUser->id;
+        }
+
+        $isCustomer = !in_array($me->usertype, ['admin', 'superadmin']);
+
+        if ($isCustomer) {
+            // Jika Pelanggan yang membaca: Tandai SEMUA pesan dari jajaran Solher Care ke dia sebagai terbaca
+            Message::whereIn('sender_id', $adminIds)
+                ->where('receiver_id', $myId)
+                ->where('is_read', false)
+                ->update(['is_read' => true]);
+        } else {
+            // Jika Admin yang membaca: Tandai SEMUA pesan dari Pelanggan ke kotak pos Solher Care sebagai terbaca
+            Message::where('sender_id', $senderId)
+                ->whereIn('receiver_id', $adminIds)
+                ->where('is_read', false)
+                ->update(['is_read' => true]);
+        }
+
+        // Pancarkan event Websocket jika diperlukan oleh sistem lain
+        broadcast(new MessageRead($myId, $senderId))->toOthers();
+
         return response()->json(['status' => 'success']);
     }
 
