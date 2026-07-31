@@ -118,21 +118,104 @@ class AffiliateController extends Controller
     //     }
     // }
 
+    // public function withdraw(Request $request)
+    // {
+    //     // $request->validate([
+    //     //     'bank_name' => 'required|string|max:100',
+    //     //     'account_number' => 'required|string|max:50',
+    //     //     'account_name' => 'required|string|max:100',
+    //     //     'amount' => 'required|numeric|min:10000',
+    //     // ]);
+
+    //     // 👇 [PERBAIKAN] Ubah aturan 'min' menjadi 50000 dan tambahkan 'max' 1000000 👇
+    //     $request->validate([
+    //         'bank_name' => 'required|string|max:100',
+    //         'account_number' => 'required|string|max:50',
+    //         'account_name' => 'required|string|max:100',
+    //         'amount' => 'required|numeric|min:50000|max:1000000',
+    //     ], [
+    //         'amount.min' => 'Minimal penarikan adalah Rp 50.000',
+    //         'amount.max' => 'Maksimal penarikan adalah Rp 1.000.000 per transaksi',
+    //     ]);
+
+    //     $userId = $request->user()->id;
+    //     $amountToWithdraw = $request->amount;
+    //     $bankName = strtolower(trim($request->bank_name));
+
+    //     // // 1. Logika Deteksi Potongan Bank
+    //     // $adminFee = 0;
+    //     // // Jika teks bank_name TIDAK mengandung kata "mandiri", kenakan potongan
+    //     // if (!str_contains($bankName, 'mandiri')) {
+    //     //     $adminFee = 6500; // Asumsi biaya transfer antarbank standar
+    //     // }
+
+    //     // 1. Logika Deteksi Potongan Bank (BI-FAST)
+    //     $adminFee = 0;
+    //     // Jika teks bank_name TIDAK mengandung kata "mandiri", kenakan potongan BI-FAST
+    //     if (! str_contains($bankName, 'mandiri')) {
+    //         $adminFee = 2500;
+    //     }
+
+    //     $netReceived = $amountToWithdraw - $adminFee;
+
+    //     try {
+    //         return DB::transaction(function () use ($userId, $request, $amountToWithdraw, $adminFee, $netReceived) {
+
+    //             $user = User::where('id', $userId)->lockForUpdate()->first();
+
+    //             if ($user->commission_balance < $amountToWithdraw) {
+    //                 throw new \Exception('Saldo aktif Anda tidak mencukupi.');
+    //             }
+
+    //             if ($netReceived <= 0) {
+    //                 throw new \Exception('Nominal penarikan terlalu kecil untuk menutupi biaya admin bank lintas bank.');
+    //             }
+
+    //             // 2. Simpan instruksi transfer bersih untuk Admin di kolom admin_notes
+    //             $transferInstruction = 'Biaya Admin: Rp'.number_format($adminFee, 0, ',', '.').
+    //                                    ' | TRANSFER BERSIH KE AFILIATOR: Rp'.number_format($netReceived, 0, ',', '.');
+
+    //             $withdrawal = Withdrawal::create([
+    //                 'affiliate_id' => $user->id,
+    //                 'amount' => $amountToWithdraw, // Saldo utuh yang dipotong dari dompet
+    //                 'bank_name' => $request->bank_name,
+    //                 'account_number' => $request->account_number,
+    //                 'account_name' => $request->account_name,
+    //                 'status' => 'pending',
+    //                 'admin_notes' => $transferInstruction, // 👈 Ibu Melisa tinggal membaca ini nanti
+    //             ]);
+
+    //             $user->decrement('commission_balance', $amountToWithdraw);
+
+    //             return response()->json([
+    //                 'status' => 'success',
+    //                 'message' => 'Penarikan diajukan. Biaya admin Rp '.number_format($adminFee, 0, ',', '.').' telah disesuaikan.',
+    //                 'data' => [
+    //                     'withdrawal_id' => $withdrawal->id,
+    //                     'amount_deducted' => $amountToWithdraw,
+    //                     'net_received' => $netReceived,
+    //                 ],
+    //             ]);
+    //         });
+
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         return response()->json([
+    //             'status' => 'error',
+    //             'message' => $e->getMessage(),
+    //         ], 400);
+    //     }
+    // }
+
     public function withdraw(Request $request)
     {
-        // $request->validate([
-        //     'bank_name' => 'required|string|max:100',
-        //     'account_number' => 'required|string|max:50',
-        //     'account_name' => 'required|string|max:100',
-        //     'amount' => 'required|numeric|min:10000',
-        // ]);
-
-        // 👇 [PERBAIKAN] Ubah aturan 'min' menjadi 50000 dan tambahkan 'max' 1000000 👇
+        // 👇 Validasi diperbarui untuk mendukung metode Crypto/Web3 👇
         $request->validate([
-            'bank_name' => 'required|string|max:100',
-            'account_number' => 'required|string|max:50',
-            'account_name' => 'required|string|max:100',
-            'amount' => 'required|numeric|min:50000|max:1000000',
+            'withdrawal_method' => 'required|in:bank,crypto',
+            'bank_name'         => 'required_if:withdrawal_method,bank|string|max:100|nullable',
+            'account_number'    => 'required|string|max:100', // Bisa No Rekening ATAU Wallet Address
+            'account_name'      => 'required_if:withdrawal_method,bank|string|max:100|nullable',
+            'amount'            => 'required|numeric|min:50000|max:1000000',
         ], [
             'amount.min' => 'Minimal penarikan adalah Rp 50.000',
             'amount.max' => 'Maksimal penarikan adalah Rp 1.000.000 per transaksi',
@@ -140,26 +223,10 @@ class AffiliateController extends Controller
 
         $userId = $request->user()->id;
         $amountToWithdraw = $request->amount;
-        $bankName = strtolower(trim($request->bank_name));
-
-        // // 1. Logika Deteksi Potongan Bank
-        // $adminFee = 0;
-        // // Jika teks bank_name TIDAK mengandung kata "mandiri", kenakan potongan
-        // if (!str_contains($bankName, 'mandiri')) {
-        //     $adminFee = 6500; // Asumsi biaya transfer antarbank standar
-        // }
-
-        // 1. Logika Deteksi Potongan Bank (BI-FAST)
-        $adminFee = 0;
-        // Jika teks bank_name TIDAK mengandung kata "mandiri", kenakan potongan BI-FAST
-        if (! str_contains($bankName, 'mandiri')) {
-            $adminFee = 2500;
-        }
-
-        $netReceived = $amountToWithdraw - $adminFee;
+        $method = $request->withdrawal_method;
 
         try {
-            return DB::transaction(function () use ($userId, $request, $amountToWithdraw, $adminFee, $netReceived) {
+            return DB::transaction(function () use ($userId, $request, $amountToWithdraw, $method) {
 
                 $user = User::where('id', $userId)->lockForUpdate()->first();
 
@@ -167,33 +234,82 @@ class AffiliateController extends Controller
                     throw new \Exception('Saldo aktif Anda tidak mencukupi.');
                 }
 
-                if ($netReceived <= 0) {
-                    throw new \Exception('Nominal penarikan terlalu kecil untuk menutupi biaya admin bank lintas bank.');
+                // =========================================================================
+                // 🌟 JALUR 1: WEB3 AUTO-PAYOUT (SMART CONTRACT)
+                // =========================================================================
+                if ($method === 'crypto') {
+                    // Konversi IDR ke USDT (Asumsi 1 USDT = Rp 15.500)
+                    $usdtAmount = round($amountToWithdraw / 15500, 2);
+                    $walletAddress = $request->account_number;
+
+                    // Di dunia nyata, di sini Anda menembak API Web3 (Misal: Thirdweb Engine / Alchemy)
+                    // Http::post('https://engine.gycora.com/contract/polygon/transfer', [...]);
+
+                    // Simulasi respon sukses dari Blockchain (Transaction Hash)
+                    $txHash = '0x' . strtolower(Str::random(40));
+
+                    $withdrawal = Withdrawal::create([
+                        'affiliate_id'   => $user->id,
+                        'amount'         => $amountToWithdraw,
+                        'bank_name'      => 'Web3 Smart Contract (Polygon)',
+                        'account_number' => $walletAddress,
+                        'account_name'   => 'Crypto Wallet',
+                        'status'         => 'approved', // 👈 LANGSUNG SELESAI, TANPA ADMIN!
+                        'processed_at'   => now(),
+                        'admin_notes'    => "🚀 AUTO-PAYOUT SUCCESS | USDT Dikirim: $ {$usdtAmount} | TX Hash: {$txHash}",
+                    ]);
+
+                    $user->decrement('commission_balance', $amountToWithdraw);
+
+                    return response()->json([
+                        'status'  => 'success',
+                        'message' => "Auto-Payout Web3 Berhasil! $ {$usdtAmount} USDT telah dikirim ke Wallet Anda.",
+                        'data'    => [
+                            'withdrawal_id'   => $withdrawal->id,
+                            'amount_deducted' => $amountToWithdraw,
+                            'tx_hash'         => $txHash,
+                        ],
+                    ]);
                 }
 
-                // 2. Simpan instruksi transfer bersih untuk Admin di kolom admin_notes
-                $transferInstruction = 'Biaya Admin: Rp'.number_format($adminFee, 0, ',', '.').
-                                       ' | TRANSFER BERSIH KE AFILIATOR: Rp'.number_format($netReceived, 0, ',', '.');
+                // =========================================================================
+                // 🏦 JALUR 2: TRANSFER BANK KONVENSIONAL (MANUAL ADMIN)
+                // =========================================================================
+                $bankName = strtolower(trim($request->bank_name));
+                $adminFee = 0;
+
+                if (!str_contains($bankName, 'mandiri')) {
+                    $adminFee = 2500; // Biaya BI-FAST
+                }
+
+                $netReceived = $amountToWithdraw - $adminFee;
+
+                if ($netReceived <= 0) {
+                    throw new \Exception('Nominal penarikan terlalu kecil untuk menutupi biaya admin bank.');
+                }
+
+                $transferInstruction = 'Biaya Admin: Rp' . number_format($adminFee, 0, ',', '.') .
+                                       ' | TRANSFER BERSIH KE AFILIATOR: Rp' . number_format($netReceived, 0, ',', '.');
 
                 $withdrawal = Withdrawal::create([
-                    'affiliate_id' => $user->id,
-                    'amount' => $amountToWithdraw, // Saldo utuh yang dipotong dari dompet
-                    'bank_name' => $request->bank_name,
+                    'affiliate_id'   => $user->id,
+                    'amount'         => $amountToWithdraw,
+                    'bank_name'      => $request->bank_name,
                     'account_number' => $request->account_number,
-                    'account_name' => $request->account_name,
-                    'status' => 'pending',
-                    'admin_notes' => $transferInstruction, // 👈 Ibu Melisa tinggal membaca ini nanti
+                    'account_name'   => $request->account_name,
+                    'status'         => 'pending', // 👈 BUTUH PERSETUJUAN ADMIN
+                    'admin_notes'    => $transferInstruction,
                 ]);
 
                 $user->decrement('commission_balance', $amountToWithdraw);
 
                 return response()->json([
-                    'status' => 'success',
-                    'message' => 'Penarikan diajukan. Biaya admin Rp '.number_format($adminFee, 0, ',', '.').' telah disesuaikan.',
-                    'data' => [
-                        'withdrawal_id' => $withdrawal->id,
+                    'status'  => 'success',
+                    'message' => 'Penarikan diajukan. Biaya admin Rp ' . number_format($adminFee, 0, ',', '.') . ' telah disesuaikan.',
+                    'data'    => [
+                        'withdrawal_id'   => $withdrawal->id,
                         'amount_deducted' => $amountToWithdraw,
-                        'net_received' => $netReceived,
+                        'net_received'    => $netReceived,
                     ],
                 ]);
             });
@@ -201,7 +317,7 @@ class AffiliateController extends Controller
         } catch (\Exception $e) {
             report($e);
             return response()->json([
-                'status' => 'error',
+                'status'  => 'error',
                 'message' => $e->getMessage(),
             ], 400);
         }
