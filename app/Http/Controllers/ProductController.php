@@ -368,7 +368,7 @@ class ProductController extends Controller
             $prompt .= '{"description_id": "...", "description_en": "...", "design_id": "...", "design_en": "..."}';
 
             $apiKey = config('services.gemini.api_key', env('GEMINI_API_KEY'));
-            $url = '[https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=)' . $apiKey;
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=' . $apiKey;
 
             $payload = [
                 'contents' => [
