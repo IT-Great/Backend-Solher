@@ -778,6 +778,7 @@ Route::middleware(['auth:sanctum', 'role:messages'])->prefix('admin/messages')->
 
 // --- PRODUK ---
 Route::middleware(['auth:sanctum', 'role:products'])->prefix('products')->group(function () {
+    Route::post('/ai-copywriter', [ProductController::class, 'generateAiCopy']);
     Route::post('/', [ProductController::class, 'store']);
     Route::put('/{id}', [ProductController::class, 'update']);
     Route::delete('/{id}', [ProductController::class, 'destroy']);

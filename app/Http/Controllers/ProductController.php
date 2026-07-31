@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\ImageManager;
+use Illuminate\Support\Facades\Http;
 use Str;
 
 class ProductController extends Controller
@@ -169,7 +170,7 @@ class ProductController extends Controller
             return response()->json($product, 201);
         } catch (\Exception $e) {
             report($e);
-            
+
             DB::rollBack();
 
             return response()->json(['message' => $e->getMessage()], 500);
@@ -336,5 +337,67 @@ class ProductController extends Controller
         Storage::disk('public')->put($filename, $encoded->toString());
 
         return '/storage/'.$filename;
+    }
+
+    // =========================================================================
+    // [BARU] FUNGSI AI COPYWRITER & TRANSLATOR
+    // =========================================================================
+    public function generateAiCopy(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string',
+            'material' => 'nullable|string',
+            'category_name' => 'nullable|string',
+        ]);
+
+        try {
+            $productName =$request->name;
+            $material =$request->material ?? 'Bahan berkualitas tinggi';
+            $category =$request->category_name ?? 'Produk Fashion';
+
+            $prompt = "Kamu adalah Expert E-Commerce Copywriter & Translator. Buat deskripsi produk yang menjual dan detail desain untuk produk berikut:\n\n";
+            $prompt .= "- Nama Produk: {$productName}\n";
+            $prompt .= "- Kategori: {$category}\n";
+            $prompt .= "- Material/Bahan: {$material}\n\n";
+            $prompt .= "Tugasmu:\n";
+            $prompt .= "1. Buat 'description_id' (Deskripsi menarik dalam Bahasa Indonesia, max 3 paragraf).\n";
+            $prompt .= "2. Buat 'description_en' (Terjemahan bahasa Inggris dari deskripsi tersebut).\n";
+            $prompt .= "3. Buat 'design_id' (Penjelasan detail desain/estetika dalam Bahasa Indonesia).\n";
+            $prompt .= "4. Buat 'design_en' (Terjemahan bahasa Inggris dari detail desain).\n\n";
+            $prompt .= "KEMBALIKAN HANYA FORMAT JSON MURNI (tanpa markdown ```json). Format wajib:\n";
+            $prompt .= '{"description_id": "...", "description_en": "...", "design_id": "...", "design_en": "..."}';
+
+            $apiKey = config('services.gemini.api_key', env('GEMINI_API_KEY'));
+            $url = '[https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=)' . $apiKey;
+
+            $payload = [
+                'contents' => [
+                    ['role' => 'user', 'parts' => [['text' => $prompt]]]
+                ],
+                'generationConfig' => ['temperature' => 0.7]
+            ];
+
+            $response = Http::timeout(30)->post($url, $payload);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+
+                // Bersihkan markdown jika AI membandel
+                $text = preg_replace('/```json\n?/', '', $text);$text = preg_replace('/```/', '', $text);
+
+                $result = json_decode(trim($text), true);
+
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    return response()->json(['status' => 'success', 'data' => $result]);
+                }
+            }
+
+            return response()->json(['status' => 'error', 'message' => 'Gagal memformat balasan AI.'], 500);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('AI Copywriter Error: ' . $e->getMessage());
+            return response()->json(['status' => 'error', 'message' => 'Layanan AI sedang sibuk.'], 500);
+        }
     }
 }
