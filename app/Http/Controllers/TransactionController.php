@@ -1655,7 +1655,7 @@ class TransactionController extends Controller
                 }
 
                 // Kirim event CAPI ke Facebook
-                $this->sendFacebookConversionAPI($transaction);
+                // $this->sendFacebookConversionAPI($transaction);
 
                 return [
                     'transaction' => $transaction,
