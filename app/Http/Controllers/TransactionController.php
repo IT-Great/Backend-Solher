@@ -1140,6 +1140,8 @@ class TransactionController extends Controller
                 // $baseShippingRate = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
                 // $totalShippingCost = $baseShippingRate * $totalQuantity;
 
+                $totalQuantity = $cartItems->sum('quantity') ?: 1;
+
                 $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
 
                 $affiliateId = null;
