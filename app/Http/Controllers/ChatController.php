@@ -368,6 +368,61 @@ class ChatController extends Controller
     }
 
     // 3. Menyimpan Pesan & Logika AI Handoff
+    // public function sendMessage(Request $request)
+    // {
+    //     $request->validate([
+    //         'receiver_id' => 'required|exists:users,id',
+    //         'message' => 'nullable|string',
+    //         'attachment' => 'nullable|file|mimes:jpeg,png,jpg,webp,mp4,mov,avi|max:10240',
+    //     ]);
+
+    //     if (! $request->message && ! $request->hasFile('attachment')) {
+    //         return response()->json(['error' => 'Message or attachment is required'], 422);
+    //     }
+
+    //     $attachmentPath = null;
+    //     $attachmentType = null;
+
+    //     if ($request->hasFile('attachment')) {
+    //         $file = $request->file('attachment');
+    //         $mimeType = $file->getMimeType();
+    //         $attachmentType = str_contains($mimeType, 'video') ? 'video' : 'image';
+    //         $attachmentPath = $file->store('chat_attachments', 'public');
+    //     }
+
+    //     $cleanMessage = $request->message;
+    //     if (trim($cleanMessage) === '') $cleanMessage = null;
+
+    //     $myId = auth()->id();
+    //     $me = User::find($myId);
+    //     $receiver = User::find($request->receiver_id);
+
+    //     $message = Message::create([
+    //         'sender_id' => $myId,
+    //         'receiver_id' => $request->receiver_id,
+    //         'message' => $cleanMessage,
+    //         'attachment' => $attachmentPath ?? null,
+    //         'attachment_type' => $attachmentType ?? null,
+    //     ]);
+
+    //     broadcast(new MessageSent($message->load('sender')))->toOthers();
+
+    //     // LOGIKA HYBRID: Lempar ke Queue Job jika pengirim = Customer, penerima = Admin/AI
+    //     $isCustomer = !in_array($me->usertype, ['admin', 'superadmin']);
+    //     $isReceiverAdmin = in_array($receiver->usertype, ['admin', 'superadmin']) || $receiver->email === 'ai@solher.com';
+
+    //     if ($isCustomer && $isReceiverAdmin && $cleanMessage) {
+    //         $chatMode = Cache::get('chat_mode_' . $myId, 'ai');
+    //         if ($chatMode === 'ai') {
+    //             // Lempar ke Otak Gemini di Latar Belakang
+    //             \App\Jobs\GenerateAiReply::dispatch($myId, $cleanMessage);
+    //         }
+    //     }
+
+    //     return response()->json($message->load('sender', 'receiver'));
+    // }
+
+    // 3. Menyimpan Pesan & Logika AI Handoff
     public function sendMessage(Request $request)
     {
         $request->validate([
@@ -406,6 +461,21 @@ class ChatController extends Controller
         ]);
 
         broadcast(new MessageSent($message->load('sender')))->toOthers();
+
+        // =========================================================================
+        // 👇 [BARU] LOGIKA PENGIRIMAN EMAIL NOTIFIKASI 👇
+        // =========================================================================
+        // Pastikan kita tidak mengirim email ke "Kotak Masuk" milik bot AI
+        if ($receiver->email !== 'ai@solher.com') {
+            try {
+                // Gunakan queue() agar API tidak tertahan/lambat saat proses kirim email
+                Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($me, $message));
+            } catch (\Exception $e) {
+                // Catat ke log jika email gagal terkirim, namun biarkan chat tetap jalan
+                \Illuminate\Support\Facades\Log::error('Gagal mengirim email notifikasi chat: ' . $e->getMessage());
+            }
+        }
+        // =========================================================================
 
         // LOGIKA HYBRID: Lempar ke Queue Job jika pengirim = Customer, penerima = Admin/AI
         $isCustomer = !in_array($me->usertype, ['admin', 'superadmin']);
