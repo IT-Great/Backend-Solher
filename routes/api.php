@@ -948,3 +948,5 @@ Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
     $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
     return response()->json(['message' => "Review berhasil $status."]);
 });
+
+Route::post('/admin/newsletters/broadcast', [NewsletterController::class, 'broadcast']);
