@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use App\Jobs\SendPromoReminderJob;
 use Carbon\Carbon;
 
 class PromoController extends Controller
@@ -42,6 +43,10 @@ class PromoController extends Controller
             'discount_value' => $discountValue,
             'expires_at' => $expiresAt,
         ]);
+
+        // 👇 [MAGIC HAPPENS HERE] Pemicu Drip Campaign Otomatis 👇
+        // Jadwalkan pengiriman email "Pengingat" tepat 23 jam dari sekarang (1 jam sebelum hangus)
+        SendPromoReminderJob::dispatch($request->email, $code, $discountValue)->delay(now()->addHours(23));
 
         return response()->json([
             'message' => 'Promo berhasil diklaim!',
