@@ -952,3 +952,6 @@ Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
 
 Route::post('/admin/newsletters/broadcast', [NewsletterController::class, 'broadcast']);
 Route::post('/admin/newsletters/upload-image', [NewsletterController::class, 'uploadImage']);
+
+// Route untuk Unsubscribe (Tidak memerlukan autentikasi)
+Route::get('/newsletters/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe']);

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Jobs\SendNewsletterJob;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Crypt;
+use App\Models\Subscriber;
 
 class NewsletterController extends Controller
 {
@@ -42,5 +44,37 @@ class NewsletterController extends Controller
         }
 
         return response()->json(['message' => 'Tidak ada file yang diterima'], 400);
+    }
+
+    public function unsubscribe($token)
+    {
+        try {
+            // Dekripsi token untuk mendapatkan email asli
+            $email = Crypt::decryptString($token);
+
+            // Cari subscriber dan nonaktifkan
+            $subscriber = Subscriber::where('email', $email)->first();
+
+            if ($subscriber) {
+                $subscriber->update(['is_active' => false]);
+            }
+
+            // Kembalikan HTML sederhana agar Anda tidak perlu membuat halaman Vue baru
+            return response("
+                <div style='font-family: sans-serif; text-align: center; margin-top: 50px;'>
+                    <h2 style='color: #333;'>Berhasil Berhenti Berlangganan</h2>
+                    <p style='color: #666;'>Anda tidak akan menerima email promosi lagi dari Gycora.</p>
+                </div>
+            ", 200)->header('Content-Type', 'text/html');
+
+        } catch (\Exception $e) {
+            // Jika token dimanipulasi atau kedaluwarsa
+            return response("
+                <div style='font-family: sans-serif; text-align: center; margin-top: 50px;'>
+                    <h2 style='color: #d33;'>Tautan Tidak Valid</h2>
+                    <p style='color: #666;'>Tautan ini sudah rusak atau tidak dapat digunakan.</p>
+                </div>
+            ", 400)->header('Content-Type', 'text/html');
+        }
     }
 }
