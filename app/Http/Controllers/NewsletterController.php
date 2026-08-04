@@ -7,6 +7,8 @@ use App\Jobs\SendNewsletterJob;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Crypt;
 use App\Models\Subscriber;
+use App\Models\Campaign;     // 👇 Import Model Baru
+use App\Models\CampaignLog;  // 👇 Import Model Baru
 
 class NewsletterController extends Controller
 {
@@ -17,8 +19,13 @@ class NewsletterController extends Controller
             'content' => 'required|string', // Isi email dalam format HTML
         ]);
 
-        // Lempar tugas pengiriman ke antrean (Queue)
-        SendNewsletterJob::dispatch($request->subject, $request->content);
+        // 1. Buat catatan Campaign baru
+        $campaign = Campaign::create([
+            'subject' => $request->subject,
+        ]);
+
+        // 2. Lempar ID Campaign ke antrean (Bukan lagi melempar subject string biasa)
+        SendNewsletterJob::dispatch($campaign, $request->content);
 
         return response()->json([
             'status' => 'success',
@@ -76,5 +83,28 @@ class NewsletterController extends Controller
                 </div>
             ", 400)->header('Content-Type', 'text/html');
         }
+    }
+
+    public function trackOpen($logId)
+    {
+        $log = CampaignLog::find($logId);
+        
+        // Jika log ditemukan dan belum pernah dibuka sebelumnya
+        if ($log && !$log->is_opened) {
+            // Catat waktu dibuka
+            $log->update([
+                'is_opened' => true,
+                'opened_at' => now(),
+            ]);
+            
+            // Tambah angka statistik di tabel utamanya
+            $log->campaign()->increment('opened_count');
+        }
+
+        // Hasilkan gambar transparan GIF berukuran 1x1 Pixel
+        $pixel = base64_decode('R0lGODlhAQABAJAAAP8AAAAAACH5BAUQAAAALAAAAAABAAEAAAICBAEAOw==');
+        
+        // Kembalikan sebagai respon file gambar (bukan teks/JSON)
+        return response($pixel, 200)->header('Content-Type', 'image/gif');
     }
 }

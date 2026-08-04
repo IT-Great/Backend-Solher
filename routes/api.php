@@ -955,3 +955,4 @@ Route::post('/admin/newsletters/upload-image', [NewsletterController::class, 'up
 
 // Route untuk Unsubscribe (Tidak memerlukan autentikasi)
 Route::get('/newsletters/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe']);
+Route::get('/newsletters/track/{log_id}', [NewsletterController::class, 'trackOpen']);

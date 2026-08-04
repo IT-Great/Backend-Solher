@@ -54,13 +54,15 @@ class BroadcastNewsletterMail extends Mailable
     public $htmlContent;
     public $subscriberEmail;
     public $unsubscribeUrl; // 👇 Tambahan Baru
+    public $trackingUrl;
 
-    public function __construct($subjectLine, $htmlContent, $subscriberEmail, $unsubscribeUrl)
+    public function __construct($subjectLine, $htmlContent, $subscriberEmail, $unsubscribeUrl, $trackingUrl)
     {
         $this->subjectLine = $subjectLine;
         $this->htmlContent = $htmlContent;
         $this->subscriberEmail = $subscriberEmail;
         $this->unsubscribeUrl = $unsubscribeUrl; // 👇 Simpan URL
+        $this->trackingUrl = $trackingUrl; // 👇 Simpan URL Pixel
     }
 
     public function envelope(): Envelope

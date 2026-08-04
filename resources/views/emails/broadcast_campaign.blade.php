@@ -43,5 +43,7 @@
             © 2026 Gycora Essence. All rights reserved.
         </div>
     </div>
+    
+    <img src="{{ $trackingUrl }}" width="1" height="1" alt="" style="display:none;" />
 </body>
 </html>
