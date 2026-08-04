@@ -957,3 +957,4 @@ Route::post('/admin/newsletters/upload-image', [NewsletterController::class, 'up
 Route::get('/newsletters/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe']);
 Route::get('/newsletters/track/{log_id}', [NewsletterController::class, 'trackOpen']);
 Route::get('/admin/newsletters/history', [NewsletterController::class, 'getCampaignHistory']);
+Route::get('/newsletters/click/{log_id}', [NewsletterController::class, 'trackClick']);

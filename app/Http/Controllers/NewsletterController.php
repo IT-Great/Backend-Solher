@@ -130,20 +130,75 @@ class NewsletterController extends Controller
         return response($pixel, 200)->header('Content-Type', 'image/gif');
     }
 
+    // public function getCampaignHistory()
+    // {
+    //     $campaigns = Campaign::orderBy('created_at', 'desc')->get()->map(function ($campaign) {
+    //         // Hitung Persentase Open Rate
+    //         $openRate = $campaign->sent_count > 0 
+    //             ? round(($campaign->opened_count / $campaign->sent_count) * 100, 1) 
+    //             : 0;
+
+    //         return [
+    //             'id' => $campaign->id,
+    //             'subject' => $campaign->subject,
+    //             'sent_count' => $campaign->sent_count,
+    //             'opened_count' => $campaign->opened_count,
+    //             'open_rate' => $openRate,
+    //             'date' => $campaign->created_at->format('d M Y, H:i'),
+    //         ];
+    //     });
+
+    //     return response()->json([
+    //         'status' => 'success',
+    //         'data' => $campaigns
+    //     ]);
+    // }
+
+    // 👇 [FITUR BARU] Sistem Pengalih URL (Redirector) & Pelacak Klik 👇
+    public function trackClick(Request $request, $logId)
+    {
+        $url = $request->query('url'); // Ambil url asli web yang dituju dari URL parameter
+        
+        // Jika tidak ada URL asli (Mencegah error/blank)
+        if (!$url) return redirect('/'); 
+
+        $log = \App\Models\CampaignLog::find($logId);
+        
+        if ($log && !$log->is_clicked) {
+            // Catat waktu klik
+            $log->update([
+                'is_clicked' => true,
+                'clicked_at' => now(),
+            ]);
+            
+            // Tambahkan skor "clicked_count" ke tabel Campaign utama
+            $log->campaign()->increment('clicked_count');
+        }
+
+        // Segera arahkan (Redirect) pengunjung ke URL aslinya seolah tidak terjadi apa-apa
+        return redirect()->away($url);
+    }
+
+    // 👇 [UPDATE] Perbarui API History untuk mengirim Data Click Rate (CTR) 👇
     public function getCampaignHistory()
     {
         $campaigns = Campaign::orderBy('created_at', 'desc')->get()->map(function ($campaign) {
-            // Hitung Persentase Open Rate
+            // Persentase yang Buka Email
             $openRate = $campaign->sent_count > 0 
-                ? round(($campaign->opened_count / $campaign->sent_count) * 100, 1) 
-                : 0;
+                ? round(($campaign->opened_count / $campaign->sent_count) * 100, 1) : 0;
+            
+            // Persentase yang Mengklik Tautan (CTR)
+            $clickRate = $campaign->sent_count > 0 
+                ? round(($campaign->clicked_count / $campaign->sent_count) * 100, 1) : 0;
 
             return [
                 'id' => $campaign->id,
                 'subject' => $campaign->subject,
                 'sent_count' => $campaign->sent_count,
                 'opened_count' => $campaign->opened_count,
+                'clicked_count' => $campaign->clicked_count ?? 0, // Data baru
                 'open_rate' => $openRate,
+                'click_rate' => $clickRate, // Data baru
                 'date' => $campaign->created_at->format('d M Y, H:i'),
             ];
         });

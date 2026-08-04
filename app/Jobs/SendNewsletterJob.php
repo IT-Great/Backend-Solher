@@ -204,6 +204,29 @@ class SendNewsletterJob implements ShouldQueue
         // Mencegah error jika tidak ada target audiens (0 orang)
         if ($subscribers->count() === 0) return;
 
+        // foreach ($subscribers as $sub) {
+        //     try {
+        //         $log = CampaignLog::create([
+        //             'campaign_id' => $this->campaign->id,
+        //             'subscriber_email' => $sub->email,
+        //         ]);
+
+        //         $trackingUrl = url("/api/newsletters/track/{$log->id}");
+        //         $token = Crypt::encryptString($sub->email);
+        //         $unsubscribeUrl = url("/api/newsletters/unsubscribe/{$token}");
+
+        //         Mail::to($sub->email)->send(new BroadcastNewsletterMail(
+        //             $this->campaign->subject, 
+        //             $this->content, 
+        //             $sub->email, 
+        //             $unsubscribeUrl,
+        //             $trackingUrl
+        //         ));
+        //     } catch (\Exception $e) {
+        //         Log::error("Gagal mengirim blast ke {$sub->email}: " . $e->getMessage());
+        //     }
+        // }
+
         foreach ($subscribers as $sub) {
             try {
                 $log = CampaignLog::create([
@@ -215,9 +238,34 @@ class SendNewsletterJob implements ShouldQueue
                 $token = Crypt::encryptString($sub->email);
                 $unsubscribeUrl = url("/api/newsletters/unsubscribe/{$token}");
 
+                // 👇 [MAGIC KODE UNTUK CTR] Modifikasi HTML dengan Injector URL 👇
+                $clickRedirectBaseUrl = url("/api/newsletters/click/{$log->id}");
+                
+                // Gunakan REGEX untuk menemukan semua link (href) di dalam HTML
+                $personalizedContent = preg_replace_callback(
+                    '/href=["\']([^"\']+)["\']/i', 
+                    function($matches) use ($clickRedirectBaseUrl) {
+                        $originalUrl = $matches[1];
+                        
+                        // Abaikan link khusus seperti mailto:, tel:, atau Unsubscribe
+                        if (str_starts_with($originalUrl, 'mailto:') || 
+                            str_starts_with($originalUrl, 'tel:') || 
+                            str_contains($originalUrl, 'unsubscribe')) {
+                            return $matches[0];
+                        }
+
+                        // Encode URL asli dan tempel ke parameter API Pelacakan kita
+                        $encodedUrl = urlencode($originalUrl);
+                        return 'href="' . $clickRedirectBaseUrl . '?url=' . $encodedUrl . '"';
+                    }, 
+                    $this->content // Desain HTML aslinya
+                );
+                // 👆 ========================================================= 👆
+
+                // Kirim email menggunakan $personalizedContent yang sudah dimanipulasi
                 Mail::to($sub->email)->send(new BroadcastNewsletterMail(
                     $this->campaign->subject, 
-                    $this->content, 
+                    $personalizedContent, // Jangan gunakan $this->content lagi
                     $sub->email, 
                     $unsubscribeUrl,
                     $trackingUrl
