@@ -12,11 +12,33 @@ use App\Models\CampaignLog;  // 👇 Import Model Baru
 
 class NewsletterController extends Controller
 {
+    // public function broadcast(Request $request)
+    // {
+    //     $request->validate([
+    //         'subject' => 'required|string|max:255',
+    //         'content' => 'required|string', // Isi email dalam format HTML
+    //     ]);
+
+    //     // 1. Buat catatan Campaign baru
+    //     $campaign = Campaign::create([
+    //         'subject' => $request->subject,
+    //     ]);
+
+    //     // 2. Lempar ID Campaign ke antrean (Bukan lagi melempar subject string biasa)
+    //     SendNewsletterJob::dispatch($campaign, $request->content);
+
+    //     return response()->json([
+    //         'status' => 'success',
+    //         'message' => 'Kampanye Newsletter sedang dikirim ke antrean server. Email akan mulai dikirimkan dalam beberapa saat.'
+    //     ]);
+    // }
+
     public function broadcast(Request $request)
     {
         $request->validate([
             'subject' => 'required|string|max:255',
-            'content' => 'required|string', // Isi email dalam format HTML
+            'content' => 'required|string',
+            'target_audience' => 'required|string|in:all,registered,guest', // 👇 Validasi opsi target
         ]);
 
         // 1. Buat catatan Campaign baru
@@ -24,8 +46,8 @@ class NewsletterController extends Controller
             'subject' => $request->subject,
         ]);
 
-        // 2. Lempar ID Campaign ke antrean (Bukan lagi melempar subject string biasa)
-        SendNewsletterJob::dispatch($campaign, $request->content);
+        // 2. Lempar ID Campaign dan Target Audiens ke antrean
+        SendNewsletterJob::dispatch($campaign, $request->content, $request->target_audience); // 👇 Tambahkan parameter ketiga
 
         return response()->json([
             'status' => 'success',
