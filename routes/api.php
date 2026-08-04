@@ -576,6 +576,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductStockController;
@@ -950,3 +951,4 @@ Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
 });
 
 Route::post('/admin/newsletters/broadcast', [NewsletterController::class, 'broadcast']);
+Route::post('/admin/newsletters/upload-image', [NewsletterController::class, 'uploadImage']);
