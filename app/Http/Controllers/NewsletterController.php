@@ -107,4 +107,28 @@ class NewsletterController extends Controller
         // Kembalikan sebagai respon file gambar (bukan teks/JSON)
         return response($pixel, 200)->header('Content-Type', 'image/gif');
     }
+
+    public function getCampaignHistory()
+    {
+        $campaigns = Campaign::orderBy('created_at', 'desc')->get()->map(function ($campaign) {
+            // Hitung Persentase Open Rate
+            $openRate = $campaign->sent_count > 0 
+                ? round(($campaign->opened_count / $campaign->sent_count) * 100, 1) 
+                : 0;
+
+            return [
+                'id' => $campaign->id,
+                'subject' => $campaign->subject,
+                'sent_count' => $campaign->sent_count,
+                'opened_count' => $campaign->opened_count,
+                'open_rate' => $openRate,
+                'date' => $campaign->created_at->format('d M Y, H:i'),
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $campaigns
+        ]);
+    }
 }
