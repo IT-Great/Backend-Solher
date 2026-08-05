@@ -189,7 +189,6 @@ class PromoController extends Controller
         }
 
         $code = 'SOLHER-'.strtoupper(Str::random(6));
-
         $expiresAt = now()->addHours(24);
 
         try {
@@ -228,10 +227,9 @@ class PromoController extends Controller
 
         // --- VALIDASI: CEK DISKON BERTUMPUK (Stacking) ---
         foreach ($cartItems as $item) {
-            // 👇 Wajib load 'category' agar validasi tas di bawah tidak error 👇
             $product = \App\Models\Product::with('category')->find($item['product_id']);
 
-            if ($product && $product->discount_price && \App\Models\Product::where('id', $product->id)->first()->discount_price !== null) {
+            if ($product && $product->discount_price) {
                  $now = now();
                  $start = $product->discount_start_date;
                  $end = $product->discount_end_date;
@@ -249,49 +247,45 @@ class PromoController extends Controller
         }
 
         // ====================================================================
-        // 👇 [PERMINTAAN BOS] VOUCHER TAS EKSKLUSIF (Misal kode: BUNDLETAS) 👇
+        // 👇 VOUCHER SUBSIDI TAS RP 3.4 JUTA (Hanya bisa 1 barang & Harus Tas) 👇
         // ====================================================================
-        if ($code === 'BUNDLETAS') {
-            // 1. Validasi Maksimal 1 Tas Saja yang di-checkout
+        if ($code === 'VOUCHERTAS') {
             $totalQuantityInCart = 0;
             $bagProductFound = null;
 
             foreach ($cartItems as $item) {
-                // Jangan hitung jika item tidak punya kuantitas
                 $qty = isset($item['quantity']) ? (int)$item['quantity'] : 1;
                 $totalQuantityInCart += $qty;
 
-                // Tarik ulang produk lengkap dengan relasi kategori
                 $prod = \App\Models\Product::with('category')->find($item['product_id']);
 
                 if ($prod && $prod->category) {
                     $catCode = strtoupper(trim($prod->category->code));
-                    // Jika kategori termasuk salah satu kode tas
                     if (in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) {
                         $bagProductFound = $prod;
                     }
                 }
             }
 
-            // Jika yang di-checkout lebih dari 1 barang (secara kuantitas)
+            // Jika yang di-checkout lebih dari 1 barang (secara total kuantitas)
             if ($totalQuantityInCart > 1) {
-                return response()->json(['message' => 'Voucher eksklusif ini hanya bisa digunakan jika keranjang Anda hanya berisi tepat 1 barang saja.'], 400);
+                return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
             }
 
             // Jika barangnya cuma 1, tapi BUKAN TAS
             if (!$bagProductFound) {
-                return response()->json(['message' => 'Voucher ini hanya berlaku khusus untuk pembelian 1 buah produk kategori Tas.'], 400);
+                return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas (Kode Kategori Valid).'], 400);
             }
 
-            // Cek apakah dia sudah pernah klaim voucher ini sebelumnya (Opsional, asumsikan menggunakan tabel PromoClaim agar 1x pakai)
-            $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'BUNDLETAS')->where('is_used', true)->first();
-            if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher tas ini.'], 400);
+            // Cek apakah dia sudah pernah klaim voucher ini
+            $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'VOUCHERTAS')->where('is_used', true)->first();
+            if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
 
-            // Berikan Diskon 3.4 Juta
+            // Berikan Diskon Subsidi 3.4 Juta
             return response()->json([
-                'message' => 'Voucher Tas Khusus Rp 3.400.000 Berhasil Diterapkan!',
+                'message' => 'Subsidi Spesial Rp 3.400.000 Berhasil Diterapkan!',
                 'discount_value' => 3400000,
-                'promo_type' => 'claim' // Mengikuti logika standar Anda agar Frontend membaca ini sebagai diskon uang
+                'promo_type' => 'claim'
             ], 200);
         }
         // ====================================================================

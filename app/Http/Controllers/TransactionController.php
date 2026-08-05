@@ -1708,7 +1708,6 @@ class TransactionController extends Controller
 
             $user = $request->user();
 
-            // 👇 [WAJIB] Relasi product.category HARUS ada agar kode tas C001 bisa dibaca! 👇
             $cartItems = Cart::with('product.category')
                 ->where('user_id', $user->id)
                 ->whereIn('id', $request->cart_ids)
@@ -1835,31 +1834,31 @@ class TransactionController extends Controller
                 if (! empty($request->promo_code)) {
                     $promoCode = strtoupper(trim($request->promo_code));
 
-                    // 👇 [BARU] DOUBLE-CHECK VOUCHER TAS DI BACKEND PAYMENT 👇
-                    if ($promoCode === 'BUNDLETAS') {
+                    // 👇 [BARU] DOUBLE-CHECK VOUCHER TAS (SUBSIDI 3.4 JT) 👇
+                    if ($promoCode === 'VOUCHERTAS') {
                         $totalQuantityInCart = $cartItems->sum('quantity');
 
                         if ($totalQuantityInCart > 1) {
-                            throw new \Exception('Voucher eksklusif BUNDLETAS hanya bisa digunakan jika keranjang Anda berisi 1 barang saja.');
+                            throw new \Exception('Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 tas saja.');
                         }
 
                         $item = $cartItems->first();
                         $catCode = strtoupper(trim($item->product->category->code ?? ''));
 
                         if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) {
-                            throw new \Exception('Voucher ini hanya berlaku khusus untuk produk kategori Tas.');
+                            throw new \Exception('Voucher ini khusus untuk produk kategori Tas.');
                         }
 
-                        $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'BUNDLETAS')->where('is_used', true)->first();
+                        $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'VOUCHERTAS')->where('is_used', true)->first();
                         if ($claimCheck) throw new \Exception('Anda sudah pernah menggunakan voucher tas ini.');
 
-                        // Jika tembus, berikan diskon & tandai voucher
+                        // Jika tembus, berikan diskon 3.4 Juta!
                         $promoDiscountAmount = 3400000;
-                        $appliedPromoCode = 'BUNDLETAS';
+                        $appliedPromoCode = 'VOUCHERTAS';
 
                         // Tandai digunakan agar tidak diexploitasi ulang
                         PromoClaim::updateOrCreate(
-                            ['email' => $lockedUser->email, 'promo_code' => 'BUNDLETAS'],
+                            ['email' => $lockedUser->email, 'promo_code' => 'VOUCHERTAS'],
                             ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
                         );
                     }
