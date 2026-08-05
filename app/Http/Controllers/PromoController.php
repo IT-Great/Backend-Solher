@@ -249,7 +249,7 @@ class PromoController extends Controller
         // ====================================================================
         // 👇 VOUCHER SUBSIDI TAS RP 3.4 JUTA (Hanya bisa 1 barang & Harus Tas) 👇
         // ====================================================================
-        if ($code === 'VOUCHERTAS') {
+        if ($code === 'SOLHOST34') {
             $totalQuantityInCart = 0;
             $bagProductFound = null;
 
@@ -278,7 +278,7 @@ class PromoController extends Controller
             }
 
             // Cek apakah dia sudah pernah klaim voucher ini
-            $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'VOUCHERTAS')->where('is_used', true)->first();
+            $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
             if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
 
             // Berikan Diskon Subsidi 3.4 Juta
