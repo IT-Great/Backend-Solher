@@ -1835,11 +1835,39 @@ class TransactionController extends Controller
                     $promoCode = strtoupper(trim($request->promo_code));
 
                     // 👇 [BARU] DOUBLE-CHECK VOUCHER TAS (SUBSIDI 3.4 JT) 👇
+                    // if ($promoCode === 'VOUCHERTAS') {
+                    //     $totalQuantityInCart = $cartItems->sum('quantity');
+
+                    //     if ($totalQuantityInCart > 1) {
+                    //         throw new \Exception('Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 tas saja.');
+                    //     }
+
+                    //     $item = $cartItems->first();
+                    //     $catCode = strtoupper(trim($item->product->category->code ?? ''));
+
+                    //     if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) {
+                    //         throw new \Exception('Voucher ini khusus untuk produk kategori Tas.');
+                    //     }
+
+                    //     $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'VOUCHERTAS')->where('is_used', true)->first();
+                    //     if ($claimCheck) throw new \Exception('Anda sudah pernah menggunakan voucher tas ini.');
+
+                    //     // Jika tembus, berikan diskon 3.4 Juta!
+                    //     $promoDiscountAmount = 3400000;
+                    //     $appliedPromoCode = 'VOUCHERTAS';
+
+                    //     // Tandai digunakan agar tidak diexploitasi ulang
+                    //     PromoClaim::updateOrCreate(
+                    //         ['email' => $lockedUser->email, 'promo_code' => 'VOUCHERTAS'],
+                    //         ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
+                    //     );
+                    // }
+
                     if ($promoCode === 'VOUCHERTAS') {
                         $totalQuantityInCart = $cartItems->sum('quantity');
 
                         if ($totalQuantityInCart > 1) {
-                            throw new \Exception('Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 tas saja.');
+                            throw new \Exception('Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.');
                         }
 
                         $item = $cartItems->first();
@@ -1849,14 +1877,28 @@ class TransactionController extends Controller
                             throw new \Exception('Voucher ini khusus untuk produk kategori Tas.');
                         }
 
+                        // 👇 [BARU] CEGAH GABUNG DENGAN POIN LOYALITAS 👇
+                        if ($request->use_points > 0) {
+                            throw new \Exception('Voucher Subsidi Tas tidak dapat digabungkan dengan penukaran Poin Loyalitas.');
+                        }
+
+                        // 👇 [BARU] CEGAH GABUNG DENGAN PRODUK YANG SEDANG DISKON (SALE) 👇
+                        $product = $item->product;
+                        if (
+                            !empty($product->discount_price) &&
+                            (!$product->discount_start_date || $now >= $product->discount_start_date) &&
+                            (!$product->discount_end_date || $now <= $product->discount_end_date)
+                        ) {
+                            throw new \Exception('Voucher ini tidak dapat digunakan pada tas yang sedang dalam masa harga diskon (Sale).');
+                        }
+
                         $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'VOUCHERTAS')->where('is_used', true)->first();
                         if ($claimCheck) throw new \Exception('Anda sudah pernah menggunakan voucher tas ini.');
 
-                        // Jika tembus, berikan diskon 3.4 Juta!
+                        // Jika tembus, berikan diskon & tandai voucher
                         $promoDiscountAmount = 3400000;
                         $appliedPromoCode = 'VOUCHERTAS';
 
-                        // Tandai digunakan agar tidak diexploitasi ulang
                         PromoClaim::updateOrCreate(
                             ['email' => $lockedUser->email, 'promo_code' => 'VOUCHERTAS'],
                             ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
