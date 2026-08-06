@@ -3494,128 +3494,6 @@ class PaymentController extends Controller
         return redirect($frontendSuccessUrl);
     }
 
-    // public function getShippingRates(Request $request)
-    // {
-    //     $user = $request->user();
-    //     if (! $user) {
-    //         return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
-    //     }
-
-    //     $request->validate([
-    //         'address_id' => 'required|exists:addresses,id',
-    //         'cart_ids' => 'required|array',
-    //         'cart_ids.*' => 'exists:carts,id',
-    //     ]);
-
-    //     $address = Address::find($request->address_id);
-
-    //     if (! $address || ! $address->postal_code) {
-    //         return response()->json(['message' => 'Alamat tidak valid atau kodepos tidak ditemukan.'], 400);
-    //     }
-
-    //     try {
-    //         $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
-
-    //         $origin = [
-    //             'postal_code' => config('services.biteship.origin_postal_code', '60272'),
-    //             'latitude' => -7.25653,
-    //             'longitude' => 112.74877,
-    //         ];
-
-    //         $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
-
-    //         $countryCode = match (strtolower(trim($destinationCountry))) {
-    //             'indonesia' => 'ID',
-    //             'singapore' => 'SG',
-    //             'malaysia' => 'MY',
-    //             'united states' => 'US',
-    //             'australia' => 'AU',
-    //             'japan' => 'JP',
-    //             'united kingdom' => 'GB',
-    //             'taiwan' => 'TW',
-    //             'china' => 'CN',
-    //             'tiongkok' => 'CN',
-    //             default => 'US'
-    //         };
-
-    //         $destination = [
-    //             'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
-    //             'phone'        => $user->phone ?? '08123456789',
-    //             'address'      => $address->address_location,
-    //             'postal_code'  => $address->postal_code,
-    //             'latitude'     => $address->latitude,
-    //             'longitude'    => $address->longitude,
-    //             'city'         => $address->city ?? 'Unknown City',
-    //             'province'     => $address->province ?? 'Unknown Province',
-    //             'country_code' => $countryCode,
-    //         ];
-
-    //         $items = [];
-
-    //         // 👇 [PERBAIKAN KRUSIAL] KALKULASI BERAT MANUAL (AKTUAL VS VOLUMETRIK) 👇
-    //         $totalFinalWeightGrams = 0;
-
-    //         foreach ($cartItems as $item) {
-    //             $prod = $item->product;
-
-    //             // 1. Ambil Berat Aktual (DB nyimpan 1 = 1kg, jadi kita kali 1000 jadi Gram)
-    //             $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
-    //             $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
-
-    //             // 2. Ambil Dimensi Asli
-    //             $length = $prod->length > 0 ? $prod->length : 20;
-    //             $width  = $prod->width > 0  ? $prod->width  : 20;
-    //             $height = $prod->height > 0 ? $prod->height : 10;
-
-    //             // 3. Hitung Berat Volumetrik (P x L x T / 6 untuk satuan Gram)
-    //             $volumetricWeightGrams = ($length * $width * $height) / 6;
-
-    //             // 4. Bandingkan! Mana yang lebih berat per-barang?
-    //             $billableWeightPerItem = max($actualWeightGrams, $volumetricWeightGrams);
-
-    //             // 5. Kalikan dengan kuantitas yang dibeli, tambahkan ke total keseluruhan
-    //             $totalFinalWeightGrams += ($billableWeightPerItem * $item->quantity);
-
-    //             $validPrice = $prod->price;
-    //             if (
-    //                 !empty($prod->discount_price) &&
-    //                 $prod->discount_start_date <= now() &&
-    //                 $prod->discount_end_date >= now()
-    //             ) {
-    //                 $validPrice = $prod->discount_price;
-    //             }
-
-    //             $items[] = [
-    //                 'name'     => $prod->name,
-    //                 'value'    => $validPrice,
-    //                 'quantity' => $item->quantity,
-    //                 'weight'   => (int) $actualWeightGrams, // Ini display saja
-    //                 'length'   => (int) $length,
-    //                 'width'    => (int) $width,
-    //                 'height'   => (int) $height,
-    //             ];
-    //         }
-
-    //         $parcelData = [
-    //             'items'  => $items,
-    //             // Mengirim Berat Tagihan (Billable Weight) yg paling besar langsung ke Biteship
-    //             'weight' => (int) round($totalFinalWeightGrams),
-    //         ];
-
-    //         $shippingGateway = ShippingFactory::make($destinationCountry);
-
-    //         $rates = $shippingGateway->calculateRates($origin, $destination, $parcelData);
-
-    //         return response()->json($rates);
-
-    //     } catch (\Exception $e) {
-    //         report($e);
-    //         return response()->json([
-    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
-    //         ], 500);
-    //     }
-    // }
-
     public function getShippingRates(Request $request)
     {
         $user = $request->user();
@@ -3673,14 +3551,14 @@ class PaymentController extends Controller
             ];
 
             $items = [];
-            
-            // 👇 KALKULASI BERAT MANUAL (AKTUAL VS VOLUMETRIK) 👇
+
+            // 👇 [PERBAIKAN KRUSIAL] KALKULASI BERAT MANUAL (AKTUAL VS VOLUMETRIK) 👇
             $totalFinalWeightGrams = 0;
 
             foreach ($cartItems as $item) {
                 $prod = $item->product;
 
-                // 1. Ambil Berat Aktual (DB simpan 1 = 1kg, jadi kita jadikan Gram)
+                // 1. Ambil Berat Aktual (DB nyimpan 1 = 1kg, jadi kita kali 1000 jadi Gram)
                 $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
                 $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
 
@@ -3695,7 +3573,7 @@ class PaymentController extends Controller
                 // 4. Bandingkan! Mana yang lebih berat per-barang?
                 $billableWeightPerItem = max($actualWeightGrams, $volumetricWeightGrams);
 
-                // 5. Kalikan dengan kuantitas yang dibeli
+                // 5. Kalikan dengan kuantitas yang dibeli, tambahkan ke total keseluruhan
                 $totalFinalWeightGrams += ($billableWeightPerItem * $item->quantity);
 
                 $validPrice = $prod->price;
@@ -3711,26 +3589,18 @@ class PaymentController extends Controller
                     'name'     => $prod->name,
                     'value'    => $validPrice,
                     'quantity' => $item->quantity,
-                    'weight'   => (int) $actualWeightGrams, // Untuk display
-                    'length'   => (int) $length, 
-                    'width'    => (int) $width,  
-                    'height'   => (int) $height, 
+                    'weight'   => (int) $actualWeightGrams, // Ini display saja
+                    'length'   => (int) $length,
+                    'width'    => (int) $width,
+                    'height'   => (int) $height,
                 ];
             }
 
-            // 👇 [MAGIC HAPPENS HERE] TRIK KARDUS VIRTUAL 👇
-            // Kita bypass error wrapper dengan memaksa Biteship menghitung tarif
-            // murni menggunakan parameter dimensi root (Panjang=10, Lebar=60).
-            $virtualHeight = round($totalFinalWeightGrams / 100, 2);
-
             $parcelData = [
                 'items'  => $items,
-                'weight' => max(0.1, round($totalFinalWeightGrams / 1000, 2)), // Jaga-jaga jika wrapper minta satuan Kg
-                'length' => 10,
-                'width'  => 60,
-                'height' => max(1, $virtualHeight) // Memaksa Volumetrik Biteship = Berat Tagihan Asli
+                // Mengirim Berat Tagihan (Billable Weight) yg paling besar langsung ke Biteship
+                'weight' => (int) round($totalFinalWeightGrams),
             ];
-            // 👆 ========================================= 👆
 
             $shippingGateway = ShippingFactory::make($destinationCountry);
 
@@ -3745,6 +3615,136 @@ class PaymentController extends Controller
             ], 500);
         }
     }
+
+    // public function getShippingRates(Request $request)
+    // {
+    //     $user = $request->user();
+    //     if (! $user) {
+    //         return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
+    //     }
+
+    //     $request->validate([
+    //         'address_id' => 'required|exists:addresses,id',
+    //         'cart_ids' => 'required|array',
+    //         'cart_ids.*' => 'exists:carts,id',
+    //     ]);
+
+    //     $address = Address::find($request->address_id);
+
+    //     if (! $address || ! $address->postal_code) {
+    //         return response()->json(['message' => 'Alamat tidak valid atau kodepos tidak ditemukan.'], 400);
+    //     }
+
+    //     try {
+    //         $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+    //         $origin = [
+    //             'postal_code' => config('services.biteship.origin_postal_code', '60272'),
+    //             'latitude' => -7.25653,
+    //             'longitude' => 112.74877,
+    //         ];
+
+    //         $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
+
+    //         $countryCode = match (strtolower(trim($destinationCountry))) {
+    //             'indonesia' => 'ID',
+    //             'singapore' => 'SG',
+    //             'malaysia' => 'MY',
+    //             'united states' => 'US',
+    //             'australia' => 'AU',
+    //             'japan' => 'JP',
+    //             'united kingdom' => 'GB',
+    //             'taiwan' => 'TW',
+    //             'china' => 'CN',
+    //             'tiongkok' => 'CN',
+    //             default => 'US'
+    //         };
+
+    //         $destination = [
+    //             'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
+    //             'phone'        => $user->phone ?? '08123456789',
+    //             'address'      => $address->address_location,
+    //             'postal_code'  => $address->postal_code,
+    //             'latitude'     => $address->latitude,
+    //             'longitude'    => $address->longitude,
+    //             'city'         => $address->city ?? 'Unknown City',
+    //             'province'     => $address->province ?? 'Unknown Province',
+    //             'country_code' => $countryCode,
+    //         ];
+
+    //         $items = [];
+            
+    //         // 👇 KALKULASI BERAT MANUAL (AKTUAL VS VOLUMETRIK) 👇
+    //         $totalFinalWeightGrams = 0;
+
+    //         foreach ($cartItems as $item) {
+    //             $prod = $item->product;
+
+    //             // 1. Ambil Berat Aktual (DB simpan 1 = 1kg, jadi kita jadikan Gram)
+    //             $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+    //             $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+
+    //             // 2. Ambil Dimensi Asli
+    //             $length = $prod->length > 0 ? $prod->length : 20;
+    //             $width  = $prod->width > 0  ? $prod->width  : 20;
+    //             $height = $prod->height > 0 ? $prod->height : 10;
+
+    //             // 3. Hitung Berat Volumetrik (P x L x T / 6 untuk satuan Gram)
+    //             $volumetricWeightGrams = ($length * $width * $height) / 6;
+
+    //             // 4. Bandingkan! Mana yang lebih berat per-barang?
+    //             $billableWeightPerItem = max($actualWeightGrams, $volumetricWeightGrams);
+
+    //             // 5. Kalikan dengan kuantitas yang dibeli
+    //             $totalFinalWeightGrams += ($billableWeightPerItem * $item->quantity);
+
+    //             $validPrice = $prod->price;
+    //             if (
+    //                 !empty($prod->discount_price) &&
+    //                 $prod->discount_start_date <= now() &&
+    //                 $prod->discount_end_date >= now()
+    //             ) {
+    //                 $validPrice = $prod->discount_price;
+    //             }
+
+    //             $items[] = [
+    //                 'name'     => $prod->name,
+    //                 'value'    => $validPrice,
+    //                 'quantity' => $item->quantity,
+    //                 'weight'   => (int) $actualWeightGrams, // Untuk display
+    //                 'length'   => (int) $length, 
+    //                 'width'    => (int) $width,  
+    //                 'height'   => (int) $height, 
+    //             ];
+    //         }
+
+    //         // 👇 [MAGIC HAPPENS HERE] TRIK KARDUS VIRTUAL 👇
+    //         // Kita bypass error wrapper dengan memaksa Biteship menghitung tarif
+    //         // murni menggunakan parameter dimensi root (Panjang=10, Lebar=60).
+    //         $virtualHeight = round($totalFinalWeightGrams / 100, 2);
+
+    //         $parcelData = [
+    //             'items'  => $items,
+    //             'weight' => max(0.1, round($totalFinalWeightGrams / 1000, 2)), // Jaga-jaga jika wrapper minta satuan Kg
+    //             'length' => 10,
+    //             'width'  => 60,
+    //             'height' => max(1, $virtualHeight) // Memaksa Volumetrik Biteship = Berat Tagihan Asli
+    //         ];
+    //         // 👆 ========================================= 👆
+
+    //         $shippingGateway = ShippingFactory::make($destinationCountry);
+
+    //         $rates = $shippingGateway->calculateRates($origin, $destination, $parcelData);
+
+    //         return response()->json($rates);
+
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         return response()->json([
+    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
 
     private function checkAndAssignMembership($user)
     {
