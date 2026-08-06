@@ -247,6 +247,123 @@
 //     }
 // }
 
+// namespace App\Services;
+
+// use App\Contracts\ShippingGatewayInterface;
+// use Carbon\Carbon;
+// use Illuminate\Support\Facades\Http;
+
+// class BiteshipService implements ShippingGatewayInterface
+// {
+//     protected $baseUrl = 'https://api.biteship.com/v1';
+//     protected $apiKey;
+
+//     public function __construct()
+//     {
+//         $this->apiKey = config('services.biteship.api_key');
+//     }
+
+//     /**
+//      * Sesuai Kontrak: calculateRates
+//      */
+//     public function calculateRates(array $origin, array $destination, array $items): array
+//     {
+//         // Hitung total berat dari array items
+//         $totalWeight = array_sum(array_column($items, 'weight'));
+//         // Fallback berat minimal agar Biteship tidak error
+//         if ($totalWeight <= 0) $totalWeight = 1000;
+
+//         $payload = [
+//             'origin_postal_code' => $origin['postal_code'] ?? config('services.biteship.origin_postal_code'),
+//             'destination_postal_code' => $destination['postal_code'],
+//             'origin_latitude' => $origin['latitude'] ?? -7.25653,
+//             'origin_longitude' => $origin['longitude'] ?? 112.74877,
+//             'destination_latitude' => floatval($destination['latitude']),
+//             'destination_longitude' => floatval($destination['longitude']),
+//             'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
+//             'items' => [
+//                 [
+//                     'name' => 'Cart Items',
+//                     'value' => 10000,
+//                     'quantity' => 1,
+//                     'weight' => $totalWeight,
+//                 ],
+//             ],
+//         ];
+
+//         $response = Http::withHeaders([
+//             'Authorization' => $this->apiKey,
+//             'Content-Type' => 'application/json',
+//         ])->post("{$this->baseUrl}/rates/couriers", $payload);
+
+//         // Standarisasi Response agar DHL dan Biteship punya output kembar untuk Vue.js
+//         if ($response->successful() && isset($response->json()['pricing'])) {
+//             return [
+//                 'status' => 'success',
+//                 'gateway' => 'biteship',
+//                 'rates' => $response->json()['pricing'] // Mengirim data ongkir ke frontend
+//             ];
+//         }
+
+//         throw new \Exception('Biteship API Error: ' . $response->body());
+//     }
+
+//     /**
+//      * Sesuai Kontrak: createOrder
+//      */
+//     public function createOrder(array $transactionData): array
+//     {
+//         date_default_timezone_set('Asia/Jakarta');
+
+//         $payload = [
+//             'origin_contact_name' => 'Solher Store',
+//             'origin_contact_phone' => '08883888585',
+//             'origin_address' => 'Jalan Wijaya Kusuma No.57, Kota Surabaya, Jawa Timur 60272, Indonesia',
+//             'origin_postal_code' => config('services.biteship.origin_postal_code'),
+//             'origin_coordinate' => [
+//                 'latitude' => -7.25653,
+//                 'longitude' => 112.74877,
+//             ],
+//             'destination_contact_name' => $transactionData['destination']['name'],
+//             'destination_contact_phone' => $transactionData['destination']['phone'],
+//             'destination_address' => $transactionData['destination']['address'],
+//             'destination_postal_code' => $transactionData['destination']['postal_code'],
+//             'destination_coordinate' => [
+//                 'latitude' => floatval($transactionData['destination']['latitude']),
+//                 'longitude' => floatval($transactionData['destination']['longitude']),
+//             ],
+//             'courier_company' => $transactionData['courier_company'],
+//             'courier_type' => $transactionData['courier_type'],
+//             'delivery_type' => $transactionData['delivery_type'] ?? 'now',
+//             'items' => $transactionData['items'],
+//         ];
+
+//         if (($transactionData['delivery_type'] ?? '') === 'scheduled') {
+//             $payload['delivery_date'] = $transactionData['delivery_date'] ?? date('Y-m-d');
+//             $payload['delivery_time'] = Carbon::parse($transactionData['delivery_time'])->format('H:i');
+//         }
+
+//         $response = Http::timeout(10)->withHeaders([
+//             'Authorization' => $this->apiKey,
+//             'Content-Type' => 'application/json',
+//         ])->post("{$this->baseUrl}/orders", $payload);
+
+//         $data = $response->json();
+
+//         if (isset($data['success']) && $data['success'] === false) {
+//             \Log::channel('stderr')->error('BITESHIP REJECTED ORDER: ' . json_encode($data));
+//             throw new \Exception('Failed to create Biteship order');
+//         }
+
+//         // Return Data yang diseragamkan
+//         return [
+//             'id' => $data['id'],
+//             'tracking_number' => $data['courier']['waybill_id'] ?? 'Pending',
+//             'status' => strtolower($data['status'] ?? 'pending')
+//         ];
+//     }
+// }
+
 namespace App\Services;
 
 use App\Contracts\ShippingGatewayInterface;
@@ -266,12 +383,22 @@ class BiteshipService implements ShippingGatewayInterface
     /**
      * Sesuai Kontrak: calculateRates
      */
-    public function calculateRates(array $origin, array $destination, array $items): array
+    public function calculateRates(array $origin, array $destination, array $parcelData): array
     {
-        // Hitung total berat dari array items
-        $totalWeight = array_sum(array_column($items, 'weight'));
-        // Fallback berat minimal agar Biteship tidak error
-        if ($totalWeight <= 0) $totalWeight = 1000;
+        // 👇 [PERBAIKAN MUTLAK] Ambil items asli yang sudah ada dimensinya dari PaymentController 👇
+        $items = $parcelData['items'] ?? [];
+
+        // Jaga-jaga jika keranjang kosong agar API tidak error
+        if (empty($items)) {
+            $items = [
+                [
+                    'name' => 'Cart Items',
+                    'value' => 10000,
+                    'quantity' => 1,
+                    'weight' => 1000,
+                ],
+            ];
+        }
 
         $payload = [
             'origin_postal_code' => $origin['postal_code'] ?? config('services.biteship.origin_postal_code'),
@@ -281,14 +408,9 @@ class BiteshipService implements ShippingGatewayInterface
             'destination_latitude' => floatval($destination['latitude']),
             'destination_longitude' => floatval($destination['longitude']),
             'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
-            'items' => [
-                [
-                    'name' => 'Cart Items',
-                    'value' => 10000,
-                    'quantity' => 1,
-                    'weight' => $totalWeight,
-                ],
-            ],
+            
+            // 👇 KIRIM DATA BARANG YANG ASLI BESERTA DIMENSINYA KE API BITESHIP 👇
+            'items' => $items, 
         ];
 
         $response = Http::withHeaders([
@@ -301,7 +423,7 @@ class BiteshipService implements ShippingGatewayInterface
             return [
                 'status' => 'success',
                 'gateway' => 'biteship',
-                'rates' => $response->json()['pricing'] // Mengirim data ongkir ke frontend
+                'rates' => $response->json()['pricing'] // Mengirim data ongkir akurat ke frontend
             ];
         }
 
