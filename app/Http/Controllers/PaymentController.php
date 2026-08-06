@@ -2044,6 +2044,839 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use App\Models\Address;
+// use App\Models\Cart;
+// use App\Models\Payment;
+// use App\Models\Transaction;
+// use App\Services\ShippingFactory;
+// use App\Services\PaymentFactory;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\DB;
+// use Illuminate\Support\Facades\Http;
+// use Illuminate\Support\Facades\Log;
+
+// class PaymentController extends Controller
+// {
+//     public function createInvoice(Request $request)
+//     {
+//         $request->validate([
+//             'transaction_id' => 'required|exists:transactions,id',
+//             'address_id' => 'required',
+//             'shipping_method' => 'required|in:free,biteship',
+//             'courier_company' => 'nullable|string',
+//             'courier_type' => 'nullable|string',
+//             'shipping_cost' => 'nullable|numeric',
+//             'delivery_type' => 'nullable|string|in:now,later,scheduled',
+//             'delivery_date' => 'nullable|date',
+//             'delivery_time' => 'nullable|date_format:H:i',
+//             'use_points' => 'nullable|integer|min:0',
+//             'currency' => 'required|string|in:IDR,USD,SGD,EUR',
+//         ]);
+
+//         $transaction = Transaction::with(['user', 'details.product', 'payment'])
+//             ->where('user_id', $request->user()->id)
+//             ->findOrFail($request->transaction_id);
+
+//         if ($transaction->payment && $transaction->payment->status === 'pending' && ! empty($transaction->payment->checkout_url)) {
+//             return response()->json([
+//                 'checkout_url' => $transaction->payment->checkout_url,
+//             ]);
+//         }
+
+//         $totalQuantity = $transaction->details->sum('quantity') ?: 1;
+
+//         if (! $transaction->shipping_cost || $transaction->shipping_cost == 0) {
+//             $baseShippingRate = $request->shipping_method === 'free' ? 0 : $request->shipping_cost;
+//             $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+//             $courierCompany = $request->shipping_method === 'free' ? 'Internal' : $request->courier_company;
+//             $courierType = $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type;
+
+//             $transaction->update([
+//                 'address_id' => $request->address_id,
+//                 'shipping_method' => $request->shipping_method,
+//                 'courier_company' => $courierCompany,
+//                 'courier_type' => $courierType,
+//                 'shipping_cost' => $totalShippingCost,
+//                 'total_amount' => $transaction->total_amount,
+//                 'delivery_type' => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+//                 'delivery_date' => $request->delivery_date,
+//                 'delivery_time' => $request->delivery_time,
+//                 'status' => 'pending',
+//                 'currency_code' => $request->currency,
+//             ]);
+//         } else {
+//             $transaction->update([
+//                 'currency_code' => $request->currency,
+//             ]);
+//         }
+
+//         $user = $request->user();
+
+//         $pointsUsed = $transaction->points_used ?? 0;
+//         $conversionRate = 1000;
+//         $pointDiscountAmount = $pointsUsed * $conversionRate;
+
+//         $promoDiscount = $transaction->promo_discount ?? 0;
+//         $subtotalAfterPromo = max(0, $transaction->total_amount - $promoDiscount);
+//         $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromo);
+
+//         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
+
+//         $items = [];
+//         foreach ($transaction->details as $detail) {
+//             $productName = $detail->product->name;
+//             if (! empty($detail->color)) {
+//                 $productName .= ' - '.$detail->color;
+//             }
+
+//             $items[] = [
+//                 'name' => $productName,
+//                 'quantity' => $detail->quantity,
+//                 'price' => (int) $detail->price,
+//                 'category' => 'PHYSICAL_PRODUCT',
+//             ];
+//         }
+
+//         if ($promoDiscount > 0) {
+//             $items[] = [
+//                 'name' => 'Promo Code: '.($transaction->promo_code ?? 'DISCOUNT'),
+//                 'quantity' => 1,
+//                 'price' => -(int) $promoDiscount,
+//                 'category' => 'DISCOUNT',
+//             ];
+//         }
+
+//         if ($pointDiscountAmount > 0) {
+//             $items[] = [
+//                 'name' => 'Loyalty Point Discount ('.$pointsUsed.' Pts)',
+//                 'quantity' => 1,
+//                 'price' => -(int) $pointDiscountAmount,
+//                 'category' => 'DISCOUNT',
+//             ];
+//         }
+
+//         $basePriceXendit = 0;
+//         if ($transaction->shipping_cost > 0) {
+//             $basePriceXendit = $transaction->shipping_cost / $totalQuantity;
+//             $items[] = [
+//                 'name' => 'Shipping Cost ('.$transaction->courier_company.')',
+//                 'quantity' => (int) $totalQuantity,
+//                 'price' => (int) $basePriceXendit,
+//                 'category' => 'SHIPPING_FEE',
+//             ];
+//         }
+
+//         $finalAmount = (int) $transaction->total_amount
+//                      + ($basePriceXendit * $totalQuantity)
+//                      - $pointDiscountAmount
+//                      - $promoDiscount;
+
+//         $currency = $transaction->currency_code ?? 'IDR';
+//         $paymentGateway = PaymentFactory::make($currency);
+
+//         $frontendSuccessUrl = config('app.frontend_url')
+//             . '/payment-success?external_id=' . $externalId
+//             . '&order_id=' . $transaction->order_id;
+
+//         $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' . $transaction->order_id);
+//         $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
+
+//         $checkoutUrl = $paymentGateway->createInvoice([
+//             'order_id' => $transaction->order_id,
+//             'external_id' => $externalId,
+//             'payer_email' => $transaction->user->email,
+//             'amount' => $finalAmount,
+//             'currency' => $currency,
+//             'items' => $items,
+//             'success_redirect_url' => $dynamicSuccessUrl,
+//             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
+//         ]);
+
+//         Payment::updateOrCreate(
+//             ['transaction_id' => $transaction->id],
+//             [
+//                 'external_id' => $externalId,
+//                 'checkout_url' => $checkoutUrl,
+//                 'amount' => $transaction->total_amount,
+//                 'status' => 'pending',
+//             ]
+//         );
+
+//         return response()->json([
+//             'checkout_url' => $checkoutUrl,
+//             'gateway' => $currency === 'IDR' ? 'Xendit' : 'Stripe',
+//         ]);
+//     }
+
+//     // =====================================================================
+//     // 1. WEBHOOK XENDIT
+//     // =====================================================================
+//     public function xenditCallback(Request $request)
+//     {
+//         return DB::transaction(function () use ($request) {
+//             $payment = Payment::where('external_id', $request->external_id)->lockForUpdate()->first();
+
+//             if (! $payment) {
+//                 return response()->json(['message' => 'Payment not found'], 404);
+//             }
+
+//             $status = $request->status;
+//             $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+//             if ($status === 'PAID') {
+//                 if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+//                     return response()->json(['message' => 'Already processed']);
+//                 }
+
+//                 $payment->update(['status' => $status]);
+
+//                 $this->sendFacebookConversionAPI($transaction);
+
+//                 $paymentMethod = $request->input('payment_method', 'Unknown');
+//                 $paymentChannel = $request->input('payment_channel', '');
+//                 $fullPaymentMethod = trim($paymentMethod.' '.$paymentChannel);
+
+//                 $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+//                 $transaction->update([
+//                     'status' => $targetTransactionStatus,
+//                     'payment_method' => $fullPaymentMethod,
+//                 ]);
+
+//                 if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+//                     $transaction->update(['commission_status' => 'settled']);
+
+//                     $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+//                     if ($affiliateUser) {
+//                         $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+//                     }
+//                 }
+
+//                 if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
+//                     DB::afterCommit(function () use ($transaction) {
+//                         try {
+//                             $transaction->loadMissing(['address', 'user', 'details.product']);
+//                             $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+//                             $shippingGateway = ShippingFactory::make($destinationCountry);
+
+//                             $items = [];
+//                             foreach ($transaction->details as $detail) {
+//                                 $prod = $detail->product;
+//                                 // 👇 [PERBAIKAN DIMENSI] Tarik data fisik asli dari database 👇
+//                                 $weight = $prod->weight > 0 ? $prod->weight : 1000;
+//                                 $length = $prod->length > 0 ? $prod->length : 20;
+//                                 $width  = $prod->width > 0  ? $prod->width  : 20;
+//                                 $height = $prod->height > 0 ? $prod->height : 10;
+
+//                                 $items[] = [
+//                                     'name'     => $prod->name,
+//                                     'value'    => (int) $detail->price,
+//                                     'quantity' => (int) $detail->quantity,
+//                                     'weight'   => (int) $weight,
+//                                     'length'   => (int) $length, // ADDED
+//                                     'width'    => (int) $width,   // ADDED
+//                                     'height'   => (int) $height,  // ADDED
+//                                 ];
+//                             }
+
+//                             $transactionData = [
+//                                 'courier_company' => $transaction->courier_company,
+//                                 'courier_type' => $transaction->courier_type,
+//                                 'delivery_type' => $transaction->delivery_type,
+//                                 'delivery_date' => $transaction->delivery_date,
+//                                 'delivery_time' => $transaction->delivery_time,
+//                                 'destination' => [
+//                                     'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+//                                     'phone' => $transaction->user->phone ?? '08123456789',
+//                                     'address' => $transaction->address->address_location,
+//                                     'postal_code' => $transaction->address->postal_code,
+//                                     'latitude' => $transaction->address->latitude,
+//                                     'longitude' => $transaction->address->longitude,
+//                                     'country' => $destinationCountry
+//                                 ],
+//                                 'items' => $items,
+//                             ];
+
+//                             $order = $shippingGateway->createOrder($transactionData);
+
+//                             if (isset($order['id'])) {
+//                                 $transaction->update([
+//                                     'biteship_order_id' => $order['id'],
+//                                     'tracking_number' => $order['tracking_number'],
+//                                     'shipping_status' => $order['status'],
+//                                 ]);
+//                             }
+//                         } catch (\Exception $e) {
+//                             report($e);
+//                             \Log::error('Shipping Factory Exception: '.$e->getMessage());
+//                         }
+//                     });
+//                 } else {
+//                     $transaction->update([
+//                         'tracking_number' => 'In-Store Pickup',
+//                         'shipping_status' => 'ready_for_pickup',
+//                     ]);
+//                 }
+//             }
+//             elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+//                 if ($transaction->status !== 'cancelled') {
+//                     $payment->update(['status' => $status]);
+//                     $transaction->update([
+//                         'status' => 'cancelled',
+//                         'shipping_status' => 'cancelled',
+//                     ]);
+
+//                     if ($transaction->points_used > 0) {
+//                         $transaction->user->increment('point', $transaction->points_used);
+//                     }
+
+//                     $transactionController = app(TransactionController::class);
+//                     foreach ($transaction->details as $detail) {
+//                         $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
+//                     }
+//                 }
+//             } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
+//                 $payment->update(['status' => $status]);
+//                 $transaction->update(['status' => 'pending']);
+//             }
+
+//             return response()->json(['message' => 'Xendit Callback processed']);
+//         });
+//     }
+
+//     // =====================================================================
+//     // 2. WEBHOOK STRIPE
+//     // =====================================================================
+//     public function stripeWebhook(Request $request)
+//     {
+//         $payload = $request->getContent();
+//         $sigHeader = $request->header('Stripe-Signature');
+//         $endpointSecret = config('services.stripe.webhook_secret');
+
+//         try {
+//             if ($endpointSecret) {
+//                 $event = \Stripe\Webhook::constructEvent($payload, $sigHeader, $endpointSecret);
+//             } else {
+//                 $event = json_decode($payload);
+//             }
+//         } catch (\UnexpectedValueException $e) {
+//             report($e);
+//             \Log::error('Stripe Webhook Error: Invalid payload');
+//             return response()->json(['error' => 'Invalid payload'], 400);
+//         } catch (\Stripe\Exception\SignatureVerificationException $e) {
+//             report($e);
+//             \Log::error('Stripe Webhook Error: Invalid signature');
+//             return response()->json(['error' => 'Invalid signature'], 400);
+//         }
+
+//         if ($event->type == 'checkout.session.completed') {
+//             $session = $event->data->object;
+//             $externalId = $session->client_reference_id;
+
+//             return DB::transaction(function () use ($externalId, $session) {
+//                 $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+
+//                 if (! $payment) {
+//                     \Log::error("Stripe Webhook: Payment not found for reference {$externalId}");
+//                     return response()->json(['message' => 'Payment not found'], 404);
+//                 }
+
+//                 $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+//                 if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+//                     return response()->json(['message' => 'Already processed']);
+//                 }
+
+//                 $payment->update(['status' => 'PAID']);
+//                 $this->sendFacebookConversionAPI($transaction);
+
+//                 $paymentMethodTypes = $session->payment_method_types;
+//                 $paymentMethod = !empty($paymentMethodTypes) ? strtoupper($paymentMethodTypes[0]) : 'STRIPE';
+
+//                 $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+//                 $transaction->update([
+//                     'status' => $targetTransactionStatus,
+//                     'payment_method' => 'STRIPE ' . $paymentMethod,
+//                 ]);
+
+//                 if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+//                     $transaction->update(['commission_status' => 'settled']);
+
+//                     $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+//                     if ($affiliateUser) {
+//                         $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+//                     }
+//                 }
+
+//                 if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
+//                     DB::afterCommit(function () use ($transaction) {
+//                         try {
+//                             $transaction->loadMissing(['address', 'user', 'details.product']);
+//                             $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+//                             $shippingGateway = ShippingFactory::make($destinationCountry);
+
+//                             $items = [];
+//                             foreach ($transaction->details as $detail) {
+//                                 $prod = $detail->product;
+//                                 // 👇 [PERBAIKAN DIMENSI] Tarik data fisik asli dari database 👇
+//                                 $weight = $prod->weight > 0 ? $prod->weight : 1000;
+//                                 $length = $prod->length > 0 ? $prod->length : 20;
+//                                 $width  = $prod->width > 0  ? $prod->width  : 20;
+//                                 $height = $prod->height > 0 ? $prod->height : 10;
+
+//                                 $items[] = [
+//                                     'name'     => $prod->name,
+//                                     'value'    => (int) $detail->price,
+//                                     'quantity' => (int) $detail->quantity,
+//                                     'weight'   => (int) $weight,
+//                                     'length'   => (int) $length, // ADDED
+//                                     'width'    => (int) $width,   // ADDED
+//                                     'height'   => (int) $height,  // ADDED
+//                                 ];
+//                             }
+
+//                             $transactionData = [
+//                                 'courier_company' => $transaction->courier_company,
+//                                 'courier_type' => $transaction->courier_type,
+//                                 'delivery_type' => $transaction->delivery_type,
+//                                 'delivery_date' => $transaction->delivery_date,
+//                                 'delivery_time' => $transaction->delivery_time,
+//                                 'destination' => [
+//                                     'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+//                                     'phone' => $transaction->user->phone ?? '08123456789',
+//                                     'address' => $transaction->address->address_location,
+//                                     'postal_code' => $transaction->address->postal_code,
+//                                     'latitude' => $transaction->address->latitude,
+//                                     'longitude' => $transaction->address->longitude,
+//                                     'country' => $destinationCountry
+//                                 ],
+//                                 'items' => $items,
+//                             ];
+
+//                             $order = $shippingGateway->createOrder($transactionData);
+
+//                             if (isset($order['id'])) {
+//                                 $transaction->update([
+//                                     'biteship_order_id' => $order['id'],
+//                                     'tracking_number' => $order['tracking_number'],
+//                                     'shipping_status' => $order['status'],
+//                                 ]);
+//                             }
+//                         } catch (\Exception $e) {
+//                             report($e);
+//                             \Log::error('Stripe Shipping Callback Exception: '.$e->getMessage());
+//                         }
+//                     });
+//                 } else {
+//                     $transaction->update([
+//                         'tracking_number' => 'In-Store Pickup',
+//                         'shipping_status' => 'ready_for_pickup',
+//                     ]);
+//                 }
+
+//                 return response()->json(['message' => 'Stripe Checkout Session Completed Handled']);
+//             });
+//         }
+
+//         elseif ($event->type == 'checkout.session.expired') {
+//             $session = $event->data->object;
+//             $externalId = $session->client_reference_id;
+
+//             DB::transaction(function () use ($externalId) {
+//                 $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+//                 if ($payment) {
+//                     $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+//                     if ($transaction->status !== 'cancelled') {
+//                         $payment->update(['status' => 'EXPIRED']);
+//                         $transaction->update([
+//                             'status' => 'cancelled',
+//                             'shipping_status' => 'cancelled',
+//                         ]);
+
+//                         if ($transaction->points_used > 0) {
+//                             $transaction->user->increment('point', $transaction->points_used);
+//                         }
+
+//                         $transactionController = app(TransactionController::class);
+//                         foreach ($transaction->details as $detail) {
+//                             $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
+//                         }
+//                     }
+//                 }
+//             });
+//         }
+
+//         return response()->json(['status' => 'success']);
+//     }
+
+//     // =====================================================================
+//     // 3. WEBHOOK PAYPAL
+//     // =====================================================================
+//     public function paypalWebhook(Request $request)
+//     {
+//         $payload = $request->all();
+//         $eventType = $payload['event_type'] ?? null;
+
+//         if ($eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+
+//             $externalId = $payload['resource']['custom_id'] ?? null;
+
+//             if (!$externalId) {
+//                 \Log::error("PayPal Webhook: Custom ID (External ID) tidak ditemukan di payload.");
+//                 return response()->json(['error' => 'External ID missing'], 400);
+//             }
+
+//             return DB::transaction(function () use ($externalId) {
+//                 $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+
+//                 if (!$payment) {
+//                     \Log::error("PayPal Webhook: Payment tidak ditemukan untuk External ID {$externalId}");
+//                     return response()->json(['message' => 'Payment not found'], 404);
+//                 }
+
+//                 $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+//                 if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+//                     return response()->json(['message' => 'Already processed']);
+//                 }
+
+//                 $payment->update(['status' => 'PAID']);
+//                 $this->sendFacebookConversionAPI($transaction);
+
+//                 $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+//                 $transaction->update([
+//                     'status' => $targetTransactionStatus,
+//                     'payment_method' => 'PAYPAL',
+//                 ]);
+
+//                 if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+//                     $transaction->update(['commission_status' => 'settled']);
+
+//                     $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+//                     if ($affiliateUser) {
+//                         $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+//                     }
+//                 }
+
+//                 if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
+//                     DB::afterCommit(function () use ($transaction) {
+//                         try {
+//                             $transaction->loadMissing(['address', 'user', 'details.product']);
+//                             $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+//                             $shippingGateway = ShippingFactory::make($destinationCountry);
+
+//                             $items = [];
+//                             foreach ($transaction->details as $detail) {
+//                                 $prod = $detail->product;
+//                                 // 👇 [PERBAIKAN DIMENSI] Tarik data fisik asli dari database 👇
+//                                 $weight = $prod->weight > 0 ? $prod->weight : 1000;
+//                                 $length = $prod->length > 0 ? $prod->length : 20;
+//                                 $width  = $prod->width > 0  ? $prod->width  : 20;
+//                                 $height = $prod->height > 0 ? $prod->height : 10;
+
+//                                 $items[] = [
+//                                     'name'     => $prod->name,
+//                                     'value'    => (int) $detail->price,
+//                                     'quantity' => (int) $detail->quantity,
+//                                     'weight'   => (int) $weight,
+//                                     'length'   => (int) $length, // ADDED
+//                                     'width'    => (int) $width,   // ADDED
+//                                     'height'   => (int) $height,  // ADDED
+//                                 ];
+//                             }
+
+//                             $transactionData = [
+//                                 'courier_company' => $transaction->courier_company,
+//                                 'courier_type' => $transaction->courier_type,
+//                                 'delivery_type' => $transaction->delivery_type,
+//                                 'delivery_date' => $transaction->delivery_date,
+//                                 'delivery_time' => $transaction->delivery_time,
+//                                 'destination' => [
+//                                     'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+//                                     'phone' => $transaction->user->phone ?? '08123456789',
+//                                     'address' => $transaction->address->address_location,
+//                                     'postal_code' => $transaction->address->postal_code,
+//                                     'latitude' => $transaction->address->latitude,
+//                                     'longitude' => $transaction->address->longitude,
+//                                     'country' => $destinationCountry
+//                                 ],
+//                                 'items' => $items,
+//                             ];
+
+//                             $order = $shippingGateway->createOrder($transactionData);
+
+//                             if (isset($order['id'])) {
+//                                 $transaction->update([
+//                                     'biteship_order_id' => $order['id'],
+//                                     'tracking_number' => $order['tracking_number'],
+//                                     'shipping_status' => $order['status'],
+//                                 ]);
+//                             }
+//                         } catch (\Exception $e) {
+//                             report($e);
+//                             \Log::error('PayPal Shipping Callback Exception: '.$e->getMessage());
+//                         }
+//                     });
+//                 } else {
+//                     $transaction->update([
+//                         'tracking_number' => 'In-Store Pickup',
+//                         'shipping_status' => 'ready_for_pickup',
+//                     ]);
+//                 }
+
+//                 return response()->json(['message' => 'PayPal Webhook Processed Successfully']);
+//             });
+//         }
+
+//         return response()->json(['status' => 'success']);
+//     }
+
+//     public function capturePayPal(Request $request)
+//     {
+//         $paypalToken = $request->query('token');
+//         $externalId = $request->query('external_id');
+//         $orderId = $request->query('order_id');
+
+//         $paypalService = app(\App\Services\PayPalService::class);
+//         $paypalService->capturePayment($paypalToken);
+
+//         $frontendSuccessUrl = config('app.frontend_url')
+//             . '/payment-success?external_id=' . $externalId
+//             . '&order_id=' . $orderId;
+
+//         return redirect($frontendSuccessUrl);
+//     }
+
+//     public function getShippingRates(Request $request)
+//     {
+//         $user = $request->user();
+//         if (! $user) {
+//             return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
+//         }
+
+//         $request->validate([
+//             'address_id' => 'required|exists:addresses,id',
+//             'cart_ids' => 'required|array',
+//             'cart_ids.*' => 'exists:carts,id',
+//         ]);
+
+//         $address = Address::find($request->address_id);
+
+//         if (! $address || ! $address->postal_code) {
+//             return response()->json(['message' => 'Alamat tidak valid atau kodepos tidak ditemukan.'], 400);
+//         }
+
+//         try {
+//             $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+//             $origin = [
+//                 'postal_code' => config('services.biteship.origin_postal_code', '60272'),
+//                 'latitude' => -7.25653,
+//                 'longitude' => 112.74877,
+//             ];
+
+//             $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
+
+//             $countryCode = match (strtolower(trim($destinationCountry))) {
+//                 'indonesia' => 'ID',
+//                 'singapore' => 'SG',
+//                 'malaysia' => 'MY',
+//                 'united states' => 'US',
+//                 'australia' => 'AU',
+//                 'japan' => 'JP',
+//                 'united kingdom' => 'GB',
+//                 'taiwan' => 'TW',
+//                 'china' => 'CN',
+//                 'tiongkok' => 'CN',
+//                 default => 'US'
+//             };
+
+//             $destination = [
+//                 'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
+//                 'phone'        => $user->phone ?? '08123456789',
+//                 'address'      => $address->address_location,
+//                 'postal_code'  => $address->postal_code,
+//                 'latitude'     => $address->latitude,
+//                 'longitude'    => $address->longitude,
+//                 'city'         => $address->city ?? 'Unknown City',
+//                 'province'     => $address->province ?? 'Unknown Province',
+//                 'country_code' => $countryCode,
+//             ];
+
+//             $items = [];
+
+//             // 👇 [PERBAIKAN] Kalkulasi dimensi paket secara cerdas 👇
+//             $totalWeightGrams = 0;
+//             $maxLength = 0;
+//             $maxWidth = 0;
+//             $totalHeight = 0;
+
+//             foreach ($cartItems as $item) {
+//                 $prod = $item->product;
+
+//                 // Tarik data dimensi dari database, kasih fallback jika kosong (0)
+//                 $itemWeight = $prod->weight > 0 ? $prod->weight : 1000;
+//                 $itemLength = $prod->length > 0 ? $prod->length : 20;
+//                 $itemWidth  = $prod->width > 0  ? $prod->width  : 20;
+//                 $itemHeight = $prod->height > 0 ? $prod->height : 10;
+
+//                 $validPrice = $prod->price;
+
+//                 // Mencegah error salah ketik nama kolom di database
+//                 if (
+//                     !empty($prod->discount_price) &&
+//                     $prod->discount_start_date <= now() &&
+//                     $prod->discount_end_date >= now()
+//                 ) {
+//                     $validPrice = $prod->discount_price;
+//                 }
+
+//                 $items[] = [
+//                     'name'     => $prod->name,
+//                     'value'    => $validPrice,
+//                     'quantity' => $item->quantity,
+//                     'weight'   => $itemWeight,
+//                     'length'   => $itemLength, // ADDED
+//                     'width'    => $itemWidth,  // ADDED
+//                     'height'   => $itemHeight, // ADDED
+//                 ];
+
+//                 // Hitung total berat
+//                 $totalWeightGrams += ($itemWeight * $item->quantity);
+
+//                 // Simulasi kardus penumpukan: Panjang/Lebar dicari yang paling maksimal, Tinggi dijumlahkan.
+//                 $maxLength = max($maxLength, $itemLength);
+//                 $maxWidth = max($maxWidth, $itemWidth);
+//                 $totalHeight += ($itemHeight * $item->quantity);
+//             }
+
+//             // $parcelData = [
+//             //     'items'  => $items,
+//             //     'weight' => max(0.1, $totalWeightGrams / 1000),
+//             //     'length' => (string) max(1, $maxLength), // Menggunakan Panjang Maksimal Barang
+//             //     'width'  => (string) max(1, $maxWidth),  // Menggunakan Lebar Maksimal Barang
+//             //     'height' => (string) max(1, $totalHeight) // Menggunakan Tinggi yang ditumpuk
+//             // ];
+
+//             // 👇 [PERBAIKAN] Hapus pembagian 1000. Biteship membaca satuan Gram! 👇
+//             $parcelData = [
+//                 'items'  => $items,
+//                 'weight' => max(1, $totalWeightGrams), // 👈 Kirim gram utuh (Contoh: 2000 gram)
+//                 'length' => (int) max(1, $maxLength),
+//                 'width'  => (int) max(1, $maxWidth),
+//                 'height' => (int) max(1, $totalHeight)
+//             ];
+
+//             $shippingGateway = ShippingFactory::make($destinationCountry);
+
+//             $rates = $shippingGateway->calculateRates($origin, $destination, $parcelData);
+
+//             return response()->json($rates);
+
+//         } catch (\Exception $e) {
+//             report($e);
+//             return response()->json([
+//                 'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+//             ], 500);
+//         }
+//     }
+
+//     private function checkAndAssignMembership($user)
+//     {
+//         if ($user->is_membership) {
+//             return;
+//         }
+
+//         $totalSpent = Transaction::where('user_id', $user->id)
+//             ->where('status', 'completed')
+//             ->sum('total_amount');
+
+//         if ($totalSpent >= 100000) {
+//             $user->update(['is_membership' => true]);
+//         }
+//     }
+
+//     // =====================================================================
+//     // 👇 FUNGSI HELPER BARU UNTUK MENGIRIM DATA KE FB CAPI 👇
+//     // =====================================================================
+//     private function sendFacebookConversionAPI(Transaction $transaction)
+//     {
+//         $pixelId = '1060021089748617';
+//         // Token dari Mas Sean
+//         $accessToken = 'EAATOy9uvwuMBSKF7gr9mSNTZCB6DYnAXDcgEmCMxLZA61GPs5hxHUfFjfNBZAQ2alYezpyGyU7zLZA6ubbM1yxADm36gBVLcYwDVyzVxfZCen9Rja5aQASYRIlgM0KgFZBbEZCWmTa60PuCGllmAJzByaa9kAvR4lWeg2SApuKCZCcWNqEnpU376xCrzfJ7hMQZDZD';
+
+//         $url = "https://graph.facebook.com/v19.0/{$pixelId}/events";
+
+//         // Pastikan relasi data user dan produk termuat
+//         $transaction->loadMissing(['user', 'details.product']);
+//         $user = $transaction->user;
+
+//         if (!$user) return; // Mencegah error jika data user tidak ditemukan
+
+//         // 1. Enkripsi Email (SHA256, huruf kecil)
+//         $hashedEmail = hash('sha256', strtolower(trim($user->email)));
+
+//         // 2. Enkripsi Nomor HP (SHA256, format internasional tanpa +)
+//         $cleanPhone = preg_replace('/[^0-9]/', '', $user->phone ?? '');
+//         if (!str_starts_with($cleanPhone, '62') && !empty($cleanPhone)) {
+//             $cleanPhone = '62' . ltrim($cleanPhone, '0');
+//         }
+//         $hashedPhone = !empty($cleanPhone) ? hash('sha256', $cleanPhone) : null;
+
+//         // 3. Ekstrak data produk
+//         $contents = [];
+//         foreach ($transaction->details as $detail) {
+//             $contents[] = [
+//                 'id'         => (string) $detail->product_id,
+//                 'quantity'   => (int) $detail->quantity,
+//                 'item_price' => (float) $detail->price
+//             ];
+//         }
+
+//         // 4. Struktur Payload Facebook
+//         $userData = [
+//             'em' => [$hashedEmail],
+//         ];
+
+//         if ($hashedPhone) {
+//             $userData['ph'] = [$hashedPhone];
+//         }
+
+//         $payload = [
+//             'data' => [
+//                 [
+//                     'event_name'    => 'Purchase',
+//                     'event_time'    => time(),
+//                     'action_source' => 'website',
+//                     'user_data'     => $userData,
+//                     'custom_data'   => [
+//                         'currency' => $transaction->currency_code ?? 'IDR', // Support multicurrency
+//                         'value'    => (float) $transaction->total_amount, // Total nilai belanja
+//                         'contents' => $contents // Data produk
+//                     ]
+//                 ]
+//             ],
+//             // 'test_event_code' => 'TEST4450' // Ganti dengan kode dari Mas Sean
+//         ];
+
+//         // 5. Eksekusi HTTP Request secara background agar tidak mengganggu response payment
+//         try {
+//             $response = Http::post($url . '?access_token=' . $accessToken, $payload);
+
+//             if ($response->failed()) {
+//                 Log::error('Facebook CAPI Error: ' . $response->body());
+//             }
+//         } catch (\Exception $e) {
+//             Log::error('Facebook CAPI Exception: ' . $e->getMessage());
+//         }
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use App\Models\Address;
@@ -2265,8 +3098,11 @@ class PaymentController extends Controller
                             $items = [];
                             foreach ($transaction->details as $detail) {
                                 $prod = $detail->product;
-                                // 👇 [PERBAIKAN DIMENSI] Tarik data fisik asli dari database 👇
-                                $weight = $prod->weight > 0 ? $prod->weight : 1000;
+
+                                // 👇 Konversi Berat Otomatis ke Gram 👇
+                                $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+                                $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+
                                 $length = $prod->length > 0 ? $prod->length : 20;
                                 $width  = $prod->width > 0  ? $prod->width  : 20;
                                 $height = $prod->height > 0 ? $prod->height : 10;
@@ -2275,10 +3111,10 @@ class PaymentController extends Controller
                                     'name'     => $prod->name,
                                     'value'    => (int) $detail->price,
                                     'quantity' => (int) $detail->quantity,
-                                    'weight'   => (int) $weight,
-                                    'length'   => (int) $length, // ADDED
-                                    'width'    => (int) $width,   // ADDED
-                                    'height'   => (int) $height,  // ADDED
+                                    'weight'   => (int) $actualWeightGrams,
+                                    'length'   => (int) $length,
+                                    'width'    => (int) $width,
+                                    'height'   => (int) $height,
                                 ];
                             }
 
@@ -2422,8 +3258,11 @@ class PaymentController extends Controller
                             $items = [];
                             foreach ($transaction->details as $detail) {
                                 $prod = $detail->product;
-                                // 👇 [PERBAIKAN DIMENSI] Tarik data fisik asli dari database 👇
-                                $weight = $prod->weight > 0 ? $prod->weight : 1000;
+
+                                // 👇 Konversi Berat Otomatis ke Gram 👇
+                                $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+                                $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+
                                 $length = $prod->length > 0 ? $prod->length : 20;
                                 $width  = $prod->width > 0  ? $prod->width  : 20;
                                 $height = $prod->height > 0 ? $prod->height : 10;
@@ -2432,10 +3271,10 @@ class PaymentController extends Controller
                                     'name'     => $prod->name,
                                     'value'    => (int) $detail->price,
                                     'quantity' => (int) $detail->quantity,
-                                    'weight'   => (int) $weight,
-                                    'length'   => (int) $length, // ADDED
-                                    'width'    => (int) $width,   // ADDED
-                                    'height'   => (int) $height,  // ADDED
+                                    'weight'   => (int) $actualWeightGrams,
+                                    'length'   => (int) $length,
+                                    'width'    => (int) $width,
+                                    'height'   => (int) $height,
                                 ];
                             }
 
@@ -2573,8 +3412,11 @@ class PaymentController extends Controller
                             $items = [];
                             foreach ($transaction->details as $detail) {
                                 $prod = $detail->product;
-                                // 👇 [PERBAIKAN DIMENSI] Tarik data fisik asli dari database 👇
-                                $weight = $prod->weight > 0 ? $prod->weight : 1000;
+
+                                // 👇 Konversi Berat Otomatis ke Gram 👇
+                                $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+                                $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+
                                 $length = $prod->length > 0 ? $prod->length : 20;
                                 $width  = $prod->width > 0  ? $prod->width  : 20;
                                 $height = $prod->height > 0 ? $prod->height : 10;
@@ -2583,10 +3425,10 @@ class PaymentController extends Controller
                                     'name'     => $prod->name,
                                     'value'    => (int) $detail->price,
                                     'quantity' => (int) $detail->quantity,
-                                    'weight'   => (int) $weight,
-                                    'length'   => (int) $length, // ADDED
-                                    'width'    => (int) $width,   // ADDED
-                                    'height'   => (int) $height,  // ADDED
+                                    'weight'   => (int) $actualWeightGrams,
+                                    'length'   => (int) $length,
+                                    'width'    => (int) $width,
+                                    'height'   => (int) $height,
                                 ];
                             }
 
@@ -2710,24 +3552,31 @@ class PaymentController extends Controller
 
             $items = [];
 
-            // 👇 [PERBAIKAN] Kalkulasi dimensi paket secara cerdas 👇
-            $totalWeightGrams = 0;
-            $maxLength = 0;
-            $maxWidth = 0;
-            $totalHeight = 0;
+            // 👇 [PERBAIKAN KRUSIAL] KALKULASI BERAT MANUAL (AKTUAL VS VOLUMETRIK) 👇
+            $totalFinalWeightGrams = 0;
 
             foreach ($cartItems as $item) {
                 $prod = $item->product;
 
-                // Tarik data dimensi dari database, kasih fallback jika kosong (0)
-                $itemWeight = $prod->weight > 0 ? $prod->weight : 1000;
-                $itemLength = $prod->length > 0 ? $prod->length : 20;
-                $itemWidth  = $prod->width > 0  ? $prod->width  : 20;
-                $itemHeight = $prod->height > 0 ? $prod->height : 10;
+                // 1. Ambil Berat Aktual (DB nyimpan 1 = 1kg, jadi kita kali 1000 jadi Gram)
+                $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+                $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+
+                // 2. Ambil Dimensi Asli
+                $length = $prod->length > 0 ? $prod->length : 20;
+                $width  = $prod->width > 0  ? $prod->width  : 20;
+                $height = $prod->height > 0 ? $prod->height : 10;
+
+                // 3. Hitung Berat Volumetrik (P x L x T / 6 untuk satuan Gram)
+                $volumetricWeightGrams = ($length * $width * $height) / 6;
+
+                // 4. Bandingkan! Mana yang lebih berat per-barang?
+                $billableWeightPerItem = max($actualWeightGrams, $volumetricWeightGrams);
+
+                // 5. Kalikan dengan kuantitas yang dibeli, tambahkan ke total keseluruhan
+                $totalFinalWeightGrams += ($billableWeightPerItem * $item->quantity);
 
                 $validPrice = $prod->price;
-
-                // Mencegah error salah ketik nama kolom di database
                 if (
                     !empty($prod->discount_price) &&
                     $prod->discount_start_date <= now() &&
@@ -2740,36 +3589,17 @@ class PaymentController extends Controller
                     'name'     => $prod->name,
                     'value'    => $validPrice,
                     'quantity' => $item->quantity,
-                    'weight'   => $itemWeight,
-                    'length'   => $itemLength, // ADDED
-                    'width'    => $itemWidth,  // ADDED
-                    'height'   => $itemHeight, // ADDED
+                    'weight'   => (int) $actualWeightGrams, // Ini display saja
+                    'length'   => (int) $length,
+                    'width'    => (int) $width,
+                    'height'   => (int) $height,
                 ];
-
-                // Hitung total berat
-                $totalWeightGrams += ($itemWeight * $item->quantity);
-
-                // Simulasi kardus penumpukan: Panjang/Lebar dicari yang paling maksimal, Tinggi dijumlahkan.
-                $maxLength = max($maxLength, $itemLength);
-                $maxWidth = max($maxWidth, $itemWidth);
-                $totalHeight += ($itemHeight * $item->quantity);
             }
 
-            // $parcelData = [
-            //     'items'  => $items,
-            //     'weight' => max(0.1, $totalWeightGrams / 1000),
-            //     'length' => (string) max(1, $maxLength), // Menggunakan Panjang Maksimal Barang
-            //     'width'  => (string) max(1, $maxWidth),  // Menggunakan Lebar Maksimal Barang
-            //     'height' => (string) max(1, $totalHeight) // Menggunakan Tinggi yang ditumpuk
-            // ];
-
-            // 👇 [PERBAIKAN] Hapus pembagian 1000. Biteship membaca satuan Gram! 👇
             $parcelData = [
                 'items'  => $items,
-                'weight' => max(1, $totalWeightGrams), // 👈 Kirim gram utuh (Contoh: 2000 gram)
-                'length' => (int) max(1, $maxLength),
-                'width'  => (int) max(1, $maxWidth),
-                'height' => (int) max(1, $totalHeight)
+                // Mengirim Berat Tagihan (Billable Weight) yg paling besar langsung ke Biteship
+                'weight' => (int) round($totalFinalWeightGrams),
             ];
 
             $shippingGateway = ShippingFactory::make($destinationCountry);
