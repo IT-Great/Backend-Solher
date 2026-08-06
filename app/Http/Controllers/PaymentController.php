@@ -2755,12 +2755,21 @@ class PaymentController extends Controller
                 $totalHeight += ($itemHeight * $item->quantity);
             }
 
+            // $parcelData = [
+            //     'items'  => $items,
+            //     'weight' => max(0.1, $totalWeightGrams / 1000),
+            //     'length' => (string) max(1, $maxLength), // Menggunakan Panjang Maksimal Barang
+            //     'width'  => (string) max(1, $maxWidth),  // Menggunakan Lebar Maksimal Barang
+            //     'height' => (string) max(1, $totalHeight) // Menggunakan Tinggi yang ditumpuk
+            // ];
+
+            // 👇 [PERBAIKAN] Hapus pembagian 1000. Biteship membaca satuan Gram! 👇
             $parcelData = [
                 'items'  => $items,
-                'weight' => max(0.1, $totalWeightGrams / 1000),
-                'length' => (string) max(1, $maxLength), // Menggunakan Panjang Maksimal Barang
-                'width'  => (string) max(1, $maxWidth),  // Menggunakan Lebar Maksimal Barang
-                'height' => (string) max(1, $totalHeight) // Menggunakan Tinggi yang ditumpuk
+                'weight' => max(1, $totalWeightGrams), // 👈 Kirim gram utuh (Contoh: 2000 gram)
+                'length' => (int) max(1, $maxLength),
+                'width'  => (int) max(1, $maxWidth),
+                'height' => (int) max(1, $totalHeight)
             ];
 
             $shippingGateway = ShippingFactory::make($destinationCountry);
