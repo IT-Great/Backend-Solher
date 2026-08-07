@@ -665,6 +665,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('throttle:checkout-limiter')->group(function () {
         Route::post('/checkout', [TransactionController::class, 'checkout']);
         Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
+
+        // --- KLASTER CHECKOUT ---
+    
+        // 👇 Tambahkan ->middleware() di baris ini 👇
+        Route::post('/checkout', [TransactionController::class, 'checkout'])
+             ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
+             
+        Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
     });
 
     Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates']);
