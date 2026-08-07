@@ -826,6 +826,7 @@ Route::middleware(['auth:sanctum', 'role:transactions'])->prefix('admin/transact
     Route::get('/{id}/print-label', [TransactionController::class, 'printLabel']);
     // Update tracking resi divalidasi sebagai aksi update
     Route::post('/tracking/bulk', [TransactionController::class, 'adminBulkTrackOrders'])->middleware('role:transactions,update');
+    Route::delete('/{id}', [TransactionController::class, 'forceDeleteTransaction'])->middleware('role:transactions,delete');
 });
 
 // --- SALES REPORT ---

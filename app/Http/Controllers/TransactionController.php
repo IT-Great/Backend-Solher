@@ -2927,7 +2927,7 @@ class TransactionController extends Controller
             $transaction->update($updates);
 
             // 👇 [BARU] TRIGGER PENGIRIMAN EMAIL OTOMATIS 👇
-            // Kita lempar ke Job Antrean agar webhook langsung merespons "success" ke Biteship 
+            // Kita lempar ke Job Antrean agar webhook langsung merespons "success" ke Biteship
             // tanpa menunggu proses pengiriman email selesai.
             SendShippingUpdateJob::dispatch($transaction->id, $status);
             // 👆 ========================================= 👆
@@ -2953,5 +2953,59 @@ class TransactionController extends Controller
         if ($totalSpent >= 100000) {
             $user->update(['is_membership' => true]);
         }
+    }
+
+    // =====================================================================
+    // 👇 FUNGSI BARU UNTUK ADMIN MENGHAPUS TRANSAKSI PERMANEN 👇
+    // =====================================================================
+    public function forceDeleteTransaction(Request $request, $id)
+    {
+        // Temukan transaksi
+        $transaction = Transaction::with(['details', 'payment'])->find($id);
+
+        if (!$transaction) {
+            return response()->json(['message' => 'Transaksi tidak ditemukan.'], 404);
+        }
+
+        // Mulai transaksi database agar penghapusan konsisten
+        DB::transaction(function () use ($transaction) {
+
+            // 1. KEMBALIKAN STOK BARANG (Jika statusnya bukan batal/refund)
+            // Karena jika statusnya sudah batal/refund, stoknya sudah kembali.
+            $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
+
+            if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+                foreach ($transaction->details as $detail) {
+                    $this->restoreProductStock($detail->product_id, $detail->quantity);
+                }
+            }
+
+            // 2. KEMBALIKAN POIN (Opsional: Jika Anda ingin poin sandbox kembali)
+            if ($transaction->points_used > 0 && !in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+                $transaction->user->increment('point', $transaction->points_used);
+            }
+
+            // 3. HAPUS DATA PEMBAYARAN TERKAIT
+            if ($transaction->payment) {
+                $transaction->payment->delete();
+            }
+
+            // 4. HAPUS DETAIL TRANSAKSI
+            // (Atau jika Anda sudah memakai skema 'onDelete cascade' di migrasi, ini opsional.
+            // Namun untuk amannya kita hapus manual)
+            foreach ($transaction->details as $detail) {
+                // Jangan lupa hapus cache per-produk yang terpengaruh
+                Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+                $detail->delete();
+            }
+
+            // 5. HAPUS TRANSAKSI UTAMA
+            $transaction->delete();
+        });
+
+        // Flush seluruh cache untuk keamanan
+        Cache::flush();
+
+        return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
     }
 }
