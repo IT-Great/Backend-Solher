@@ -28,6 +28,7 @@ use Xendit\Refund\CreateRefund;
 use Xendit\Refund\RefundApi;
 use Xendit\XenditSdkException;
 use App\Jobs\SendShippingUpdateJob;
+use App\Events\ShippingStatusUpdated;
 
 class TransactionController extends Controller
 {
@@ -2930,6 +2931,12 @@ class TransactionController extends Controller
             // Kita lempar ke Job Antrean agar webhook langsung merespons "success" ke Biteship
             // tanpa menunggu proses pengiriman email selesai.
             SendShippingUpdateJob::dispatch($transaction->id, $status);
+            // 👆 ========================================= 👆
+
+            // 👇 [BARU] TRIGGER WEBSOCKETS REVERB/PUSHER 👇
+            // Muat ulang data transaksi terbaru agar Frontend mendapat data segar
+            $transaction->refresh();
+            broadcast(new ShippingStatusUpdated($transaction, "Status pengiriman Anda telah diperbarui menjadi: " . strtoupper($status)));
             // 👆 ========================================= 👆
 
             return response()->json(['message' => 'Webhook processed successfully']);
