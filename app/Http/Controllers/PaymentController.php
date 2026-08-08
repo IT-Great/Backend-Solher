@@ -3092,7 +3092,8 @@ class PaymentController extends Controller
                     DB::afterCommit(function () use ($transaction) {
                         try {
                             $transaction->loadMissing(['address', 'user', 'details.product']);
-                            $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            // $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            $destinationCountry = !empty($transaction->address->region) ? $transaction->address->region : (!empty($transaction->address->details['region']) ? $transaction->address->details['region'] : 'Indonesia');
                             $shippingGateway = ShippingFactory::make($destinationCountry);
 
                             $items = [];
@@ -3252,7 +3253,8 @@ class PaymentController extends Controller
                     DB::afterCommit(function () use ($transaction) {
                         try {
                             $transaction->loadMissing(['address', 'user', 'details.product']);
-                            $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            // $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            $destinationCountry = !empty($transaction->address->region) ? $transaction->address->region : (!empty($transaction->address->details['region']) ? $transaction->address->details['region'] : 'Indonesia');
                             $shippingGateway = ShippingFactory::make($destinationCountry);
 
                             $items = [];
@@ -3406,7 +3408,8 @@ class PaymentController extends Controller
                     DB::afterCommit(function () use ($transaction) {
                         try {
                             $transaction->loadMissing(['address', 'user', 'details.product']);
-                            $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            // $destinationCountry = $transaction->address->region ?? ($transaction->address->details['region'] ?? 'Indonesia');
+                            $destinationCountry = !empty($transaction->address->region) ? $transaction->address->region : (!empty($transaction->address->details['region']) ? $transaction->address->details['region'] : 'Indonesia');
                             $shippingGateway = ShippingFactory::make($destinationCountry);
 
                             $items = [];
@@ -3522,7 +3525,8 @@ class PaymentController extends Controller
                 'longitude' => 112.74877,
             ];
 
-            $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
+            // $destinationCountry = $address->region ?? ($address->details['region'] ?? 'Indonesia');
+            $destinationCountry = !empty($address->region) ? $address->region : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
 
             $countryCode = match (strtolower(trim($destinationCountry))) {
                 'indonesia' => 'ID',
@@ -3673,7 +3677,7 @@ class PaymentController extends Controller
     //         ];
 
     //         $items = [];
-            
+
     //         // 👇 KALKULASI BERAT MANUAL (AKTUAL VS VOLUMETRIK) 👇
     //         $totalFinalWeightGrams = 0;
 
@@ -3712,9 +3716,9 @@ class PaymentController extends Controller
     //                 'value'    => $validPrice,
     //                 'quantity' => $item->quantity,
     //                 'weight'   => (int) $actualWeightGrams, // Untuk display
-    //                 'length'   => (int) $length, 
-    //                 'width'    => (int) $width,  
-    //                 'height'   => (int) $height, 
+    //                 'length'   => (int) $length,
+    //                 'width'    => (int) $width,
+    //                 'height'   => (int) $height,
     //             ];
     //         }
 
