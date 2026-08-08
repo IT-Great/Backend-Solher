@@ -586,6 +586,7 @@ use App\Http\Controllers\S3UploadController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TransferReceivePaymentController;
 use App\Http\Controllers\WishlistController;
+use App\Http\Controllers\SitemapController;
 use App\Models\Subscriber;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -667,11 +668,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
 
         // --- KLASTER CHECKOUT ---
-    
+
         // 👇 Tambahkan ->middleware() di baris ini 👇
         Route::post('/checkout', [TransactionController::class, 'checkout'])
              ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
-             
+
         Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
     });
 
@@ -967,3 +968,5 @@ Route::get('/newsletters/unsubscribe/{token}', [NewsletterController::class, 'un
 Route::get('/newsletters/track/{log_id}', [NewsletterController::class, 'trackOpen']);
 Route::get('/admin/newsletters/history', [NewsletterController::class, 'getCampaignHistory']);
 Route::get('/newsletters/click/{log_id}', [NewsletterController::class, 'trackClick']);
+
+Route::get('/sitemap.xml', [SitemapController::class, 'index']);
