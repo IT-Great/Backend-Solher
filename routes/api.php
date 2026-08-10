@@ -663,13 +663,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/transactions/{id}/tracking', [TransactionController::class, 'trackOrder']);
     Route::post('/transactions/tracking/bulk', [TransactionController::class, 'bulkTrackOrders']);
 
+    // Route::middleware('throttle:checkout-limiter')->group(function () {
+    //     Route::post('/checkout', [TransactionController::class, 'checkout']);
+    //     Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
+
+    //     // --- KLASTER CHECKOUT ---
+
+    //     // 👇 Tambahkan ->middleware() di baris ini 👇
+    //     Route::post('/checkout', [TransactionController::class, 'checkout'])
+    //          ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
+
+    //     Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
+    // });
+
     Route::middleware('throttle:checkout-limiter')->group(function () {
-        Route::post('/checkout', [TransactionController::class, 'checkout']);
-        Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
-
         // --- KLASTER CHECKOUT ---
-
-        // 👇 Tambahkan ->middleware() di baris ini 👇
         Route::post('/checkout', [TransactionController::class, 'checkout'])
              ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
 
@@ -970,3 +978,4 @@ Route::get('/admin/newsletters/history', [NewsletterController::class, 'getCampa
 Route::get('/newsletters/click/{log_id}', [NewsletterController::class, 'trackClick']);
 
 Route::get('/sitemap.xml', [SitemapController::class, 'index']);
+Route::get('/health', [\App\Http\Controllers\HealthController::class, 'check']);
