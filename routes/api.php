@@ -601,6 +601,15 @@ Broadcast::routes(['middleware' => ['auth:sanctum']]);
 // PUBLIC & USER ROUTES (TIDAK ADA PERUBAHAN)
 // =========================================================================
 
+// 👇 TAMBAHKAN RUTE JEBAKAN INI 👇
+Route::get('/login', function () {
+    return response()->json([
+        'status' => 'error',
+        'message' => 'Unauthenticated. Harap login atau sertakan Bearer token.'
+    ], 401);
+})->name('login');
+// 👆 ========================== 👆
+
 Route::get('/home/find-product', [HomeController::class, 'getProductBySearch']);
 Route::get('/home/category/{code}', [HomeController::class, 'getProductsByCategory']);
 Route::get('/products', [ProductController::class, 'index']);
