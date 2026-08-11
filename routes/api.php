@@ -960,6 +960,7 @@ Route::get('/exchange-rates', function () {
 });
 
 Route::middleware('auth:sanctum')->post('/reviews', [ReviewController::class, 'store']);
+Route::get('/home/reviews', [ReviewController::class, 'publicReviews']);
 
 // Mengambil semua review (beserta relasi user & product)
 Route::get('/admin/reviews', function () {
