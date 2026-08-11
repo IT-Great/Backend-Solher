@@ -22,3 +22,8 @@ Schedule::command('currency:update-rates')
     ->timezone('Asia/Jakarta')
     ->twiceDaily(0, 12)
     ->appendOutputTo(storage_path('logs/currency-update.log'));
+
+Schedule::command('system:prune --days=90')
+    ->weeklyOn(0, '03:00')
+    ->withoutOverlapping()
+    ->runInBackground();
