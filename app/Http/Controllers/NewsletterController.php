@@ -33,12 +33,35 @@ class NewsletterController extends Controller
     //     ]);
     // }
 
+    // public function broadcast(Request $request)
+    // {
+    //     $request->validate([
+    //         'subject' => 'required|string|max:255',
+    //         'content' => 'required|string',
+    //         'target_audience' => 'required|string|in:all,registered,guest', // 👇 Validasi opsi target
+    //     ]);
+
+    //     // 1. Buat catatan Campaign baru
+    //     $campaign = Campaign::create([
+    //         'subject' => $request->subject,
+    //     ]);
+
+    //     // 2. Lempar ID Campaign dan Target Audiens ke antrean
+    //     SendNewsletterJob::dispatch($campaign, $request->content, $request->target_audience); // 👇 Tambahkan parameter ketiga
+
+    //     return response()->json([
+    //         'status' => 'success',
+    //         'message' => 'Kampanye Newsletter sedang dikirim ke antrean server. Email akan mulai dikirimkan dalam beberapa saat.'
+    //     ]);
+    // }
+
     public function broadcast(Request $request)
     {
         $request->validate([
             'subject' => 'required|string|max:255',
             'content' => 'required|string',
-            'target_audience' => 'required|string|in:all,registered,guest', // 👇 Validasi opsi target
+            'target_audience' => 'required|string|in:all,registered,guest,test', // Tambahkan 'test'
+            'test_emails' => 'nullable|string' // Parameter baru
         ]);
 
         // 1. Buat catatan Campaign baru
@@ -46,8 +69,19 @@ class NewsletterController extends Controller
             'subject' => $request->subject,
         ]);
 
-        // 2. Lempar ID Campaign dan Target Audiens ke antrean
-        SendNewsletterJob::dispatch($campaign, $request->content, $request->target_audience); // 👇 Tambahkan parameter ketiga
+        // Ekstrak string email yang dipisahkan koma menjadi Array
+        $testEmailsArray = [];
+        if ($request->target_audience === 'test' && $request->test_emails) {
+            $testEmailsArray = array_map('trim', explode(',', $request->test_emails));
+        }
+
+        // 2. Lempar ID Campaign, Target Audiens, dan Data Email Test ke antrean
+        SendNewsletterJob::dispatch(
+            $campaign,
+            $request->content,
+            $request->target_audience,
+            $testEmailsArray // Parameter array baru untuk Worker
+        );
 
         return response()->json([
             'status' => 'success',
@@ -110,7 +144,7 @@ class NewsletterController extends Controller
     public function trackOpen($logId)
     {
         $log = CampaignLog::find($logId);
-        
+
         // Jika log ditemukan dan belum pernah dibuka sebelumnya
         if ($log && !$log->is_opened) {
             // Catat waktu dibuka
@@ -118,14 +152,14 @@ class NewsletterController extends Controller
                 'is_opened' => true,
                 'opened_at' => now(),
             ]);
-            
+
             // Tambah angka statistik di tabel utamanya
             $log->campaign()->increment('opened_count');
         }
 
         // Hasilkan gambar transparan GIF berukuran 1x1 Pixel
         $pixel = base64_decode('R0lGODlhAQABAJAAAP8AAAAAACH5BAUQAAAALAAAAAABAAEAAAICBAEAOw==');
-        
+
         // Kembalikan sebagai respon file gambar (bukan teks/JSON)
         return response($pixel, 200)->header('Content-Type', 'image/gif');
     }
@@ -134,8 +168,8 @@ class NewsletterController extends Controller
     // {
     //     $campaigns = Campaign::orderBy('created_at', 'desc')->get()->map(function ($campaign) {
     //         // Hitung Persentase Open Rate
-    //         $openRate = $campaign->sent_count > 0 
-    //             ? round(($campaign->opened_count / $campaign->sent_count) * 100, 1) 
+    //         $openRate = $campaign->sent_count > 0
+    //             ? round(($campaign->opened_count / $campaign->sent_count) * 100, 1)
     //             : 0;
 
     //         return [
@@ -158,19 +192,19 @@ class NewsletterController extends Controller
     public function trackClick(Request $request, $logId)
     {
         $url = $request->query('url'); // Ambil url asli web yang dituju dari URL parameter
-        
+
         // Jika tidak ada URL asli (Mencegah error/blank)
-        if (!$url) return redirect('/'); 
+        if (!$url) return redirect('/');
 
         $log = \App\Models\CampaignLog::find($logId);
-        
+
         if ($log && !$log->is_clicked) {
             // Catat waktu klik
             $log->update([
                 'is_clicked' => true,
                 'clicked_at' => now(),
             ]);
-            
+
             // Tambahkan skor "clicked_count" ke tabel Campaign utama
             $log->campaign()->increment('clicked_count');
         }
@@ -184,11 +218,11 @@ class NewsletterController extends Controller
     {
         $campaigns = Campaign::orderBy('created_at', 'desc')->get()->map(function ($campaign) {
             // Persentase yang Buka Email
-            $openRate = $campaign->sent_count > 0 
+            $openRate = $campaign->sent_count > 0
                 ? round(($campaign->opened_count / $campaign->sent_count) * 100, 1) : 0;
-            
+
             // Persentase yang Mengklik Tautan (CTR)
-            $clickRate = $campaign->sent_count > 0 
+            $clickRate = $campaign->sent_count > 0
                 ? round(($campaign->clicked_count / $campaign->sent_count) * 100, 1) : 0;
 
             return [
