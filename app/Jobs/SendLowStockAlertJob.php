@@ -32,7 +32,7 @@ class SendLowStockAlertJob implements ShouldQueue
     public function handle(): void
     {
         try {
-            Mail::to('gycora.essence@gmail.com')->send(new LowStockAlertMail($this->product));
+            Mail::to('solherbag@gmail.com')->send(new LowStockAlertMail($this->product));
         } catch (\Exception $e) {
             Log::error('Queue Error (LowStockAlert): ' . $e->getMessage());
         }

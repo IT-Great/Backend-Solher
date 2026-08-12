@@ -37,13 +37,13 @@
         {!! $htmlContent !!}
 
         <div class="footer">
-            Email ini dikirimkan ke {{ $subscriberEmail }} karena Anda berlangganan buletin Gycora.<br>
+            Email ini dikirimkan ke {{ $subscriberEmail }} karena Anda berlangganan buletin Solher.<br>
             Jika Anda tidak ingin menerima pesan promosi ini lagi, Anda dapat <a href="{{ $unsubscribeUrl }}" class="unsubscribe-link">berhenti berlangganan di sini</a>.<br>
             <br>
-            © 2026 Gycora Essence. All rights reserved.
+            © 2026 Solher. All rights reserved.
         </div>
     </div>
-    
+
     <img src="{{ $trackingUrl }}" width="1" height="1" alt="" style="display:none;" />
 </body>
 </html>

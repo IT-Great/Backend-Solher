@@ -93,7 +93,7 @@ class TrackAffiliate
                 // =========================================================================
                 // ✅ JIKA LOLOS SEMUA UJIAN, TANAMKAN COOKIE (Valid selama 30 Hari)
                 // =========================================================================
-                Cookie::queue('gycora_affiliate_id', $affiliate->id, 43200);
+                Cookie::queue('solher_affiliate_id', $affiliate->id, 43200);
             }
         }
 

@@ -126,7 +126,7 @@ class NewsletterController extends Controller
             return response("
                 <div style='font-family: sans-serif; text-align: center; margin-top: 50px;'>
                     <h2 style='color: #333;'>Berhasil Berhenti Berlangganan</h2>
-                    <p style='color: #666;'>Anda tidak akan menerima email promosi lagi dari Gycora.</p>
+                    <p style='color: #666;'>Anda tidak akan menerima email promosi lagi dari Solher.</p>
                 </div>
             ", 200)->header('Content-Type', 'text/html');
 
