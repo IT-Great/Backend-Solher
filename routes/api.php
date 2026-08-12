@@ -613,6 +613,7 @@ Route::get('/login', function () {
 Route::get('/home/find-product', [HomeController::class, 'getProductBySearch']);
 Route::get('/home/category/{code}', [HomeController::class, 'getProductsByCategory']);
 Route::get('/products', [ProductController::class, 'index']);
+Route::get('/home/best-sellers', [ProductController::class, 'getBestSellers']);
 Route::get('/products/inactive', [ProductController::class, 'inactiveProducts']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
 Route::get('/guest/categories', [CategoryController::class, 'index']);

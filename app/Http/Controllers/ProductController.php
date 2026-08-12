@@ -44,6 +44,32 @@ class ProductController extends Controller
         return response()->json($products, 200);
     }
 
+    // Fungsi khusus untuk menarik data Best Seller asli
+    public function getBestSellers()
+    {
+        try {
+            $bestSellers = Product::with('category')
+                ->where('status', 'active')
+                ->addSelect(['total_sold' => function ($query) {
+                    $query->selectRaw('COALESCE(SUM(quantity), 0)')
+                        ->from('transaction_details')
+                        ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+                        ->whereColumn('transaction_details.product_id', 'products.id')
+                        ->where('transactions.status', 'completed'); // 🔥 HANYA TRANSAKSI SUKSES
+                }])
+                ->having('total_sold', '>', 0) // 🔥 HANYA TAMPILKAN YANG PERNAH LAKU MINIMAL 1
+                ->orderByDesc('total_sold')    // 🔥 URUTKAN DARI PENJUALAN TERTINGGI
+                ->get();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $bestSellers
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function inactiveProducts()
     {
         $products = Cache::tags(['catalog'])->remember('products.inactive', 86400, function () {
