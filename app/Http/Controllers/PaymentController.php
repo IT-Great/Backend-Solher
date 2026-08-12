@@ -4005,6 +4005,10 @@ class PaymentController extends Controller
             ]
         );
 
+        // 👇 [TAMBAHAN BARU] DISPATCH DELAYED JOB UNTUK TTL CHECKOUT (15 MENIT) 👇
+        \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addMinutes(15));
+        // 👆 =================================================================== 👆
+
         return response()->json([
             'checkout_url' => $checkoutUrl,
             'gateway' => $currency === 'IDR' ? 'Xendit' : 'Stripe',
@@ -4399,8 +4403,8 @@ class PaymentController extends Controller
             DB::afterCommit(function () use ($transaction) {
                 try {
                     $transaction->loadMissing(['address', 'user', 'details.product']);
-                    $destinationCountry = ! empty($transaction->address->region) 
-                        ? $transaction->address->region 
+                    $destinationCountry = ! empty($transaction->address->region)
+                        ? $transaction->address->region
                         : (! empty($transaction->address->details['region']) ? $transaction->address->details['region'] : 'Indonesia');
 
                     $shippingGateway = ShippingFactory::make($destinationCountry);
