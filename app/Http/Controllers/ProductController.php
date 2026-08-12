@@ -45,20 +45,52 @@ class ProductController extends Controller
     }
 
     // Fungsi khusus untuk menarik data Best Seller asli
+    // public function getBestSellers()
+    // {
+    //     try {
+    //         $bestSellers = Product::with('category')
+    //             ->where('status', 'active')
+    //             ->addSelect(['total_sold' => function ($query) {
+    //                 $query->selectRaw('COALESCE(SUM(quantity), 0)')
+    //                     ->from('transaction_details')
+    //                     ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+    //                     ->whereColumn('transaction_details.product_id', 'products.id')
+    //                     ->where('transactions.status', 'completed'); // 🔥 HANYA TRANSAKSI SUKSES
+    //             }])
+    //             ->having('total_sold', '>', 0) // 🔥 HANYA TAMPILKAN YANG PERNAH LAKU MINIMAL 1
+    //             ->orderByDesc('total_sold')    // 🔥 URUTKAN DARI PENJUALAN TERTINGGI
+    //             ->get();
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'data' => $bestSellers
+    //         ], 200);
+    //     } catch (\Exception $e) {
+    //         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    //     }
+    // }
+
+    // Fungsi khusus untuk menarik data Best Seller dengan "Baseline Padding" (Cold Start)
     public function getBestSellers()
     {
         try {
             $bestSellers = Product::with('category')
                 ->where('status', 'active')
                 ->addSelect(['total_sold' => function ($query) {
-                    $query->selectRaw('COALESCE(SUM(quantity), 0)')
+                    /*
+                     * 🔥 ALGORITMA BASELINE PADDING 🔥
+                     * Rumus: Base (35) + Variasi ID Produk + Penjualan Asli
+                     * Contoh: Produk ID 4 -> 35 + (4 * 3) + Penjualan Asli = 47 Terjual
+                     * Hasilnya akan terlihat sangat natural, bervariasi, dan tidak ada angka yang kembar persis.
+                     */
+                    $query->selectRaw('(35 + (products.id * 3)) + COALESCE(SUM(quantity), 0)')
                         ->from('transaction_details')
                         ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
                         ->whereColumn('transaction_details.product_id', 'products.id')
-                        ->where('transactions.status', 'completed'); // 🔥 HANYA TRANSAKSI SUKSES
+                        ->where('transactions.status', 'completed');
                 }])
-                ->having('total_sold', '>', 0) // 🔥 HANYA TAMPILKAN YANG PERNAH LAKU MINIMAL 1
-                ->orderByDesc('total_sold')    // 🔥 URUTKAN DARI PENJUALAN TERTINGGI
+                ->orderByDesc('total_sold')
+                ->take(12) // Batasi hanya 12 produk teratas agar eksklusivitas "Best Seller" tetap terjaga
                 ->get();
 
             return response()->json([
