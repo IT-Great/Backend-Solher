@@ -71,32 +71,54 @@ class ProductController extends Controller
     // }
 
     // Fungsi khusus untuk menarik data Best Seller dengan "Baseline Padding" (Cold Start)
+    // Fungsi khusus untuk menarik data Best Seller dengan "Baseline Padding" (Cold Start)
     public function getBestSellers()
     {
         try {
-            $bestSellers = Product::with('category')
+            // 1. Tarik Data Penjualan Murni dari SQL
+            $products = Product::with('category')
                 ->where('status', 'active')
-                ->addSelect(['total_sold' => function ($query) {
-                    /*
-                     * 🔥 ALGORITMA BASELINE PADDING 🔥
-                     * Rumus: Base (35) + Variasi ID Produk + Penjualan Asli
-                     * Contoh: Produk ID 4 -> 35 + (4 * 3) + Penjualan Asli = 47 Terjual
-                     * Hasilnya akan terlihat sangat natural, bervariasi, dan tidak ada angka yang kembar persis.
-                     */
-                    $query->selectRaw('(35 + (products.id * 3)) + COALESCE(SUM(quantity), 0)')
+                ->addSelect(['real_sold' => function ($query) {
+                    $query->selectRaw('COALESCE(SUM(quantity), 0)')
                         ->from('transaction_details')
                         ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
                         ->whereColumn('transaction_details.product_id', 'products.id')
                         ->where('transactions.status', 'completed');
                 }])
-                ->orderByDesc('total_sold')
-                ->take(12) // Batasi hanya 12 produk teratas agar eksklusivitas "Best Seller" tetap terjaga
                 ->get();
+
+            // 2. Manipulasi Data Fiktif dengan Aman di Level PHP (Collection)
+            $bestSellers = $products->map(function ($product) {
+                $actualSales = (int) $product->real_sold;
+
+                /*
+                 * 🔥 ALGORITMA BASELINE PADDING V2 🔥
+                 * Kita gunakan Modulo (%) 5. Hasilnya selalu berputar di angka 0, 1, 2, 3, 4.
+                 * Jika dikali 3, variasinya hanya 0, 3, 6, 9, 12.
+                 * Ditambah base 35, angka fiktifnya aman di rentang 35 sampai 47.
+                 */
+                $fakePadding = 35 + (($product->id % 5) * 3);
+
+                // Bobot penjualan asli dikali 5.
+                // Tujuannya agar produk yang laku 3 buah (3x5=15) akan otomatis
+                // mengalahkan seluruh produk fiktif yang 0 penjualan.
+                $weightedSales = $actualSales > 0 ? ($actualSales * 5) : 0;
+
+                // Total akhir untuk tampilan
+                $product->total_sold = $fakePadding + $weightedSales;
+
+                return $product;
+            })
+            // 3. Urutkan dari yang terbesar, lalu potong 12 teratas
+            ->sortByDesc('total_sold')
+            ->take(12)
+            ->values(); // Reset urutan index array
 
             return response()->json([
                 'status' => 'success',
                 'data' => $bestSellers
             ], 200);
+
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
