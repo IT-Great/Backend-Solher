@@ -742,6 +742,8 @@ Route::middleware(['auth:sanctum', 'role:categories'])->group(function () {
     Route::put('/categories/{id}', [CategoryController::class, 'update']);
     Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
     Route::get('/categories/{id}', [CategoryController::class, 'show']);
+
+    Route::apiResource('/admin/bag-categories', \App\Http\Controllers\BagCategoryController::class);
 });
 
 // --- USER & SUBSCRIBER ---
