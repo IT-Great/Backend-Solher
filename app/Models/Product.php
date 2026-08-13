@@ -13,6 +13,7 @@ class Product extends Model
 
     protected $fillable = [
         'category_id',
+        'bag_category_id',
         'code',
         'slug',
         'name',
@@ -44,7 +45,7 @@ class Product extends Model
         'variant_images' => 'array',
         'color' => 'array',            // <--- BARU: Casting ke Array
         'strap_length' => 'array',
-        'prices' => 'array',         
+        'prices' => 'array',
         'discount_prices' => 'array',
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
@@ -55,6 +56,11 @@ class Product extends Model
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function bagCategory()
+    {
+        return $this->belongsTo(BagCategory::class, 'bag_category_id');
     }
 
     public function transactionDetails(): HasMany

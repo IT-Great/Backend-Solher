@@ -21,7 +21,7 @@ class ProductController extends Controller
     {
 
         $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
-            return Product::with('category')
+            return Product::with(['category', 'bagCategory'])
 
                 ->withSum(['transactionDetails' => function ($query) {
 
@@ -139,7 +139,7 @@ class ProductController extends Controller
     public function show($identifier)
     {
         $product = Cache::tags(['catalog'])->remember("products.detail.{$identifier}", 86400, function () use ($identifier) {
-            return Product::with(['category', 'stocks' => function ($q) {
+            return Product::with(['category', 'bagCategory', 'stocks' => function ($q) {
                 $q->orderBy('created_at', 'asc');
             }])
                 ->where('slug', $identifier)
@@ -159,6 +159,7 @@ class ProductController extends Controller
             'code' => 'required|unique:products',
             'name' => 'required',
             'category_id' => 'required|exists:categories,id',
+            'bag_category_id' => 'nullable|exists:bag_categories,id',
             'price' => 'required|numeric|min:0',
 
             'prices' => 'nullable|array',
