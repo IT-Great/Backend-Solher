@@ -744,6 +744,8 @@ Route::middleware(['auth:sanctum', 'role:categories'])->group(function () {
     Route::get('/categories/{id}', [CategoryController::class, 'show']);
 
     Route::apiResource('/admin/bag-categories', \App\Http\Controllers\BagCategoryController::class);
+    // Rute publik untuk mengambil data jenis tas (digunakan di Mega Menu Header)
+    Route::get('/bag-categories', [\App\Http\Controllers\BagCategoryController::class, 'index']);
 });
 
 // --- USER & SUBSCRIBER ---
