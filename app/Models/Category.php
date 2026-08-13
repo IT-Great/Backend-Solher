@@ -21,12 +21,13 @@ class Category extends Model
     use Auditable;
 
     protected $fillable = [
-        'code', 'name', 'description',
+        'code', 'name', 'description', 'subcategories',
         'bundle_qty', 'bundle_price', 'bundle_start_date', 'bundle_end_date'
     ];
 
     // Mengubah string datetime menjadi objek Carbon secara otomatis
     protected $casts = [
+        'subcategories' => 'array',
         'bundle_start_date' => 'datetime',
         'bundle_end_date' => 'datetime',
         'bundle_price' => 'array',

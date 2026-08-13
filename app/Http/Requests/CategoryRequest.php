@@ -81,6 +81,10 @@ class CategoryRequest extends FormRequest
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
 
+            // 👇 Tambahkan baris ini
+            'subcategories' => 'nullable|array',
+            'subcategories.*' => 'string|max:100', // Batasi panjang nama subkategori
+
             'bundle_qty' => 'nullable|integer|min:2',
             // [PERBAIKAN] Validasi untuk JSON Array Multi-Currency
             'bundle_price' => 'nullable|array|required_with:bundle_qty',

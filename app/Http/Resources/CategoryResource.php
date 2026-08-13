@@ -54,6 +54,7 @@ class CategoryResource extends JsonResource
                 'description' => $this->description ?? 'No description provided.',
                 'slug' => str($this->name)->slug(),
             ],
+            'subcategories' => $this->subcategories ?? [],
             // [BARU] Informasi Bundle Promo dikirimkan dalam 1 objek rapi
             'bundle_promo' => [
                 'is_active' => $isPromoActive,
