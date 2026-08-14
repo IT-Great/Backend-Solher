@@ -39,6 +39,7 @@ class Product extends Model
         'design',
         'design_en',      // [BARU]
         'status',
+        'is_final_sale',
     ];
 
     protected $casts = [
@@ -51,6 +52,7 @@ class Product extends Model
         'discount_price' => 'decimal:2',
         'discount_start_date' => 'datetime', // <--- BARU
         'discount_end_date' => 'datetime',   // <--- BARU
+        'is_final_sale' => 'boolean',
     ];
 
     public function category()

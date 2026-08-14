@@ -193,6 +193,7 @@ class ProductController extends Controller
             'variant_video' => 'nullable|mimes:mp4,mov,avi',
             'discount_start_date' => 'nullable|date',
             'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
+            'is_final_sale' => 'nullable|boolean', // <--- Tambahkan validasi ini
         ]);
 
         if ($validator->fails()) {
@@ -293,6 +294,10 @@ class ProductController extends Controller
             'variant_images.*' => 'image',
 
             'variant_video' => 'nullable|mimes:mp4,mov,avi',
+
+            'discount_start_date' => 'nullable|date',
+            'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
+            'is_final_sale' => 'nullable|boolean', // <--- Tambahkan validasi ini
         ]);
 
         if ($validator->fails()) {
