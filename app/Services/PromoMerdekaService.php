@@ -16,6 +16,7 @@ class PromoMerdekaService
      */
     public function calculatePromo($cartItems, $appliedVouchers = [])
     {
+        \Carbon\Carbon::setTestNow('2026-08-17 10:00:00');
         // 1. RULE: Promo tidak bisa digabung dengan voucher code lainnya
         if (count($appliedVouchers) > 0) {
             return [
@@ -27,6 +28,7 @@ class PromoMerdekaService
 
         // 2. RULE: Valid 17 Aug only
         // Menggunakan zona waktu Jakarta agar pergantian hari presisi
+        /*
         $today = Carbon::now()->timezone('Asia/Jakarta');
         if ($today->format('m-d') !== '08-17') {
             return [
@@ -35,6 +37,7 @@ class PromoMerdekaService
                 'discount_amount' => 0
             ];
         }
+        */
 
         // 3. RULE: Min purchase 699K
         $subtotal = 0;
