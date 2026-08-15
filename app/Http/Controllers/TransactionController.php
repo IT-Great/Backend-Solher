@@ -12,6 +12,7 @@ use App\Models\Transaction;
 use App\Models\TransactionDetail;
 use App\Models\User;
 use App\Services\PaymentFactory;
+use App\Services\PromoMerdekaService;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -1691,7 +1692,8 @@ class TransactionController extends Controller
 
     // Ganti fungsi public function checkout(Request $request) secara utuh dengan ini:
 
-    public function checkout(Request $request)
+    // public function checkout(Request $request)
+    public function checkout(Request $request, PromoMerdekaService $promoService)
     {
         try {
             $request->validate([
@@ -1719,7 +1721,8 @@ class TransactionController extends Controller
                 return response()->json(['message' => 'No items selected for checkout'], 400);
             }
 
-            $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
+            // $transactionData = DB::transaction(function () use ($user, $cartItems, $request) {
+            $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService) {
 
                 $lockedUser = User::lockForUpdate()->find($user->id);
                 $currency = $request->currency;
@@ -1833,7 +1836,7 @@ class TransactionController extends Controller
                 $promoDiscountAmount = 0;
                 $appliedPromoCode = null;
 
-                if (! empty($request->promo_code)) {
+                if (!empty($request->promo_code)) {
                     $promoCode = strtoupper(trim($request->promo_code));
 
                     // 👇 [BARU] DOUBLE-CHECK VOUCHER TAS (SUBSIDI 3.4 JT) 👇
@@ -1865,7 +1868,27 @@ class TransactionController extends Controller
                     //     );
                     // }
 
-                    if ($promoCode === 'SOLHOST34') {
+                    // ==========================================================
+                    // 👇 [BARU] INTEGRASI PROMO 17 AGUSTUS (MERDEKA17) 👇
+                    // ==========================================================
+                    if ($promoCode === 'MERDEKA17') {
+                        // Sistem Anda hanya mengizinkan 1 voucher per transaksi, jadi array voucher lain kita kirim kosong []
+                        $promoResult = $promoService->calculatePromo($cartItems, []);
+
+                        if (!$promoResult['is_valid']) {
+                            // Lempar error jika tidak memenuhi syarat (beda tanggal, kurang dari 699k, dll)
+                            throw new \Exception($promoResult['message']);
+                        }
+
+                        // Jika tembus validasi, berikan nilai diskon ke variabel keranjang
+                        $promoDiscountAmount = $promoResult['discount_amount'];
+                        $appliedPromoCode = $promoResult['code'];
+                    }
+                    // ==========================================================
+                    // 👇 VOUCHER SUBSIDI TAS EKSIS 👇
+                    // ==========================================================
+
+                    elseif ($promoCode === 'SOLHOST34') {
                         $totalQuantityInCart = $cartItems->sum('quantity');
 
                         if ($totalQuantityInCart > 1) {
