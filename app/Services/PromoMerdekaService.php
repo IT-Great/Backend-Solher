@@ -31,7 +31,7 @@ class PromoMerdekaService
         if ($today->format('m-d') !== '08-17') {
             return [
                 'is_valid' => false,
-                'message' => 'Voucher MERDEKA17 hanya berlaku khusus pada tanggal 17 Agustus.',
+                'message' => 'Voucher SOLHER17 hanya berlaku khusus pada tanggal 17 Agustus.',
                 'discount_amount' => 0
             ];
         }
@@ -92,7 +92,7 @@ class PromoMerdekaService
             'is_valid' => true,
             'message' => 'Promo 17 Agustus berhasil diterapkan!',
             'discount_amount' => $finalDiscount,
-            'code' => 'MERDEKA17'
+            'code' => 'SOLHER17'
         ];
     }
 }

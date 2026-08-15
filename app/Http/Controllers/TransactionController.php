@@ -1869,23 +1869,57 @@ class TransactionController extends Controller
                     // }
 
                     // ==========================================================
-                    // 👇 [BARU] INTEGRASI PROMO 17 AGUSTUS (MERDEKA17) 👇
+                    // 👇 [BARU] INTEGRASI PROMO 17 AGUSTUS (SOLHER17) 👇
                     // ==========================================================
-                    if ($promoCode === 'MERDEKA17') {
-                        // Sistem Anda hanya mengizinkan 1 voucher per transaksi, jadi array voucher lain kita kirim kosong []
+                    // if ($promoCode === 'SOLHER17') {
+                    //     // Sistem Anda hanya mengizinkan 1 voucher per transaksi, jadi array voucher lain kita kirim kosong []
+                    //     $promoResult = $promoService->calculatePromo($cartItems, []);
+
+                    //     if (!$promoResult['is_valid']) {
+                    //         // Lempar error jika tidak memenuhi syarat (beda tanggal, kurang dari 699k, dll)
+                    //         throw new \Exception($promoResult['message']);
+                    //     }
+
+                    //     // Jika tembus validasi, berikan nilai diskon ke variabel keranjang
+                    //     $promoDiscountAmount = $promoResult['discount_amount'];
+                    //     $appliedPromoCode = $promoResult['code'];
+                    // }
+                    // ==========================================================
+                    // 👇 VOUCHER SUBSIDI TAS EKSIS 👇
+                    // ==========================================================
+
+                    // ==========================================================
+                    // 👇 [BARU] INTEGRASI PROMO 17 AGUSTUS (SOLHER17) 👇
+                    // ==========================================================
+                    if ($promoCode === 'SOLHER17') {
+                        // CEK KE DATABASE: Apakah email ini beneran input email di pop-up?
+                        $claimCheck = \App\Models\PromoClaim::where('email', $lockedUser->email)
+                            ->where('promo_code', 'SOLHER17')
+                            ->lockForUpdate()
+                            ->first();
+
+                        // Tolak jika ngakalin masukin kode manual tanpa subscribe popup
+                        if (!$claimCheck) {
+                            throw new \Exception('Akses ditolak: Anda belum mengklaim promo ini. Silakan daftar via pop-up di Beranda terlebih dahulu.');
+                        }
+
+                        // Tolak jika dipakai dua kali
+                        if ($claimCheck->is_used) {
+                            throw new \Exception('Voucher SOLHER17 Anda sudah hangus/terpakai.');
+                        }
+
                         $promoResult = $promoService->calculatePromo($cartItems, []);
 
                         if (!$promoResult['is_valid']) {
-                            // Lempar error jika tidak memenuhi syarat (beda tanggal, kurang dari 699k, dll)
                             throw new \Exception($promoResult['message']);
                         }
 
-                        // Jika tembus validasi, berikan nilai diskon ke variabel keranjang
                         $promoDiscountAmount = $promoResult['discount_amount'];
                         $appliedPromoCode = $promoResult['code'];
+
+                        // JIKA BERHASIL: Tandai voucher di database telah dipakai!
+                        $claimCheck->update(['is_used' => true, 'used_at' => now()]);
                     }
-                    // ==========================================================
-                    // 👇 VOUCHER SUBSIDI TAS EKSIS 👇
                     // ==========================================================
 
                     elseif ($promoCode === 'SOLHOST34') {
