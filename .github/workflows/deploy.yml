@@ -35,9 +35,9 @@ jobs:
           DB_DATABASE: ":memory:" # Menggunakan RAM sebagai database sementara agar cepat
         run: php artisan test
 
-  ==========================================
-  JOB 1: JALANKAN PENGUJIAN OTOMATIS
-  ==========================================
+  # ==========================================
+  # JOB 1: JALANKAN PENGUJIAN OTOMATIS
+  # ==========================================
   test:
     runs-on: ubuntu-latest
 
