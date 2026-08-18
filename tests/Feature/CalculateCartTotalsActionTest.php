@@ -16,25 +16,45 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     $this->action = app(CalculateCartTotalsAction::class);
     $this->promoService = app(PromoMerdekaService::class);
-    
-    // Siapkan User Dummy
+
+    // User tetap pakai factory karena kita tahu UserFactory sudah berfungsi dengan baik
     $this->user = User::factory()->create([
-        'is_membership' => true, 
+        'is_membership' => true,
         'point' => 50 // Setara diskon Rp 50.000
     ]);
-    
-    // Siapkan Kategori Dummy
-    $this->bagCategory = Category::factory()->create(['code' => 'C001']);
-    $this->beltCategory = Category::factory()->create(['code' => 'C005']);
+
+    // 👇 PERBAIKAN: Ganti factory() menjadi forceCreate() untuk mem-bypass kebutuhan file Factory
+    $this->bagCategory = Category::forceCreate([
+        'name' => 'Bag Collection',
+        'code' => 'C001'
+    ]);
+
+    $this->beltCategory = Category::forceCreate([
+        'name' => 'Belt Collection',
+        'code' => 'C005'
+    ]);
 });
 
 // 🧪 SKENARIO 1: Kalkulasi Normal Tanpa Promo
 it('calculates normal cart totals correctly without any promos', function () {
-    $product = Product::factory()->create(['price' => 150000, 'category_id' => $this->bagCategory->id]);
-    Cart::factory()->create(['user_id' => $this->user->id, 'product_id' => $product->id, 'quantity' => 2]);
-    
+    // Gunakan forceCreate dengan isian dasar tabel products
+    $product = Product::forceCreate([
+        'name' => 'Tas Premium',
+        'code' => 'BAG-01',
+        'price' => 150000,
+        'stock' => 10,
+        'weight' => 500,
+        'category_id' => $this->bagCategory->id
+    ]);
+
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 2
+    ]);
+
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
-    
+
     $request = new Request([
         'currency' => 'IDR',
         'shipping_method' => 'free',
@@ -51,9 +71,21 @@ it('calculates normal cart totals correctly without any promos', function () {
 
 // 🧪 SKENARIO 2: Penukaran Poin Loyalitas
 it('deducts loyalty points correctly for VIP members', function () {
-    $product = Product::factory()->create(['price' => 200000, 'category_id' => $this->bagCategory->id]);
-    Cart::factory()->create(['user_id' => $this->user->id, 'product_id' => $product->id, 'quantity' => 1]);
-    
+    $product = Product::forceCreate([
+        'name' => 'Tas VIP',
+        'code' => 'BAG-02',
+        'price' => 200000,
+        'stock' => 10,
+        'weight' => 500,
+        'category_id' => $this->bagCategory->id
+    ]);
+
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 1
+    ]);
+
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
 
     $request = new Request([
@@ -70,10 +102,22 @@ it('deducts loyalty points correctly for VIP members', function () {
 
 // 🧪 SKENARIO 3: Validasi Ketat Voucher Subsidi Tas (SOLHOST34)
 it('rejects SOLHOST34 promo if cart has more than 1 item', function () {
-    $product = Product::factory()->create(['price' => 5000000, 'category_id' => $this->bagCategory->id]);
+    $product = Product::forceCreate([
+        'name' => 'Tas Mahal',
+        'code' => 'BAG-03',
+        'price' => 5000000,
+        'stock' => 10,
+        'weight' => 1000,
+        'category_id' => $this->bagCategory->id
+    ]);
+
     // Beli 2 Tas sekaligus
-    Cart::factory()->create(['user_id' => $this->user->id, 'product_id' => $product->id, 'quantity' => 2]);
-    
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 2
+    ]);
+
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
 
     $request = new Request([
@@ -89,9 +133,21 @@ it('rejects SOLHOST34 promo if cart has more than 1 item', function () {
 
 // 🧪 SKENARIO 4: Keamanan Pop-Up Kemerdekaan (SOLHER17)
 it('throws an error if SOLHER17 is used without claiming it first via popup', function () {
-    $product = Product::factory()->create(['price' => 1000000, 'category_id' => $this->bagCategory->id]);
-    Cart::factory()->create(['user_id' => $this->user->id, 'product_id' => $product->id, 'quantity' => 1]);
-    
+    $product = Product::forceCreate([
+        'name' => 'Tas Kemerdekaan',
+        'code' => 'BAG-04',
+        'price' => 1000000,
+        'stock' => 10,
+        'weight' => 1000,
+        'category_id' => $this->bagCategory->id
+    ]);
+
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 1
+    ]);
+
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
 
     $request = new Request([
@@ -108,7 +164,7 @@ it('throws an error if SOLHER17 is used without claiming it first via popup', fu
 // 🧪 SKENARIO 5: Sukses Menggunakan Promo Kemerdekaan (SOLHER17)
 it('applies SOLHER17 correctly and marks the claim as used', function () {
     // 1. Suntikkan data bahwa user SUDAH input email di popup
-    PromoClaim::create([
+    PromoClaim::forceCreate([
         'email' => $this->user->email,
         'promo_code' => 'SOLHER17',
         'discount_value' => 500000,
@@ -117,9 +173,21 @@ it('applies SOLHER17 correctly and marks the claim as used', function () {
     ]);
 
     // 2. Siapkan keranjang dengan Tas harga 2 Juta
-    $product = Product::factory()->create(['price' => 2000000, 'category_id' => $this->bagCategory->id]);
-    Cart::factory()->create(['user_id' => $this->user->id, 'product_id' => $product->id, 'quantity' => 1]);
-    
+    $product = Product::forceCreate([
+        'name' => 'Tas Juara',
+        'code' => 'BAG-05',
+        'price' => 2000000,
+        'stock' => 10,
+        'weight' => 1000,
+        'category_id' => $this->bagCategory->id
+    ]);
+
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 1
+    ]);
+
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
 
     $request = new Request([
@@ -140,5 +208,5 @@ it('applies SOLHER17 correctly and marks the claim as used', function () {
     // 17% dari 2.000.000 adalah 340.000
     expect($result['promoDiscountAmount'])->toBe(340000)
         ->and($result['appliedPromoCode'])->toBe('SOLHER17')
-        ->and($claim->is_used)->toBeTrue(); // Pastikan database ditandai terpakai
+        ->and($claim->is_used)->toBeTruthy(); // Pastikan database ditandai terpakai
 });
