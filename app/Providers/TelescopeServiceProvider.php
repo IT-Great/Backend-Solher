@@ -54,11 +54,24 @@ class TelescopeServiceProvider extends TelescopeApplicationServiceProvider
      *
      * This gate determines who can access Telescope in non-local environments.
      */
+    // protected function gate(): void
+    // {
+    //     Gate::define('viewTelescope', function ($user) {
+    //         // 👇 Sesuaikan dengan field role/usertype di tabel users Anda 👇
+    //         return in_array($user->usertype, ['superadmin']); 
+    //     });
+    // }
+
     protected function gate(): void
     {
-        Gate::define('viewTelescope', function ($user) {
-            // 👇 Sesuaikan dengan field role/usertype di tabel users Anda 👇
-            return in_array($user->usertype, ['superadmin']); 
+        Gate::define('viewTelescope', function ($user = null) {
+            // 👇 BYPASS KEAMANAN JIKA MENDAPAT TOKEN RAHASIA DARI IFRAME VUE 👇
+            if (request()->query('token') === env('TELESCOPE_TOKEN', 'solher-secure-telescope-123')) {
+                return true;
+            }
+
+            // Fallback default Laravel jika diakses langsung
+            return $user && in_array($user->usertype, ['superadmin']);
         });
     }
 }
