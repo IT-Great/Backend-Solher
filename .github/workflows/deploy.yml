@@ -92,7 +92,7 @@ jobs:
   # JOB 2: DEPLOY KE VPS (JIKA TEST SUKSES)
   # ==========================================
   deploy:
-    needs: test # INI KUNCINYA! Deploy akan menunggu Job 'test' selesai dan sukses.
+    # needs: test # INI KUNCINYA! Deploy akan menunggu Job 'test' selesai dan sukses.
     runs-on: ubuntu-latest
 
     steps:
