@@ -2686,7 +2686,7 @@ class TransactionController extends Controller
     {
         return response()->json(Transaction::with(['user', 'details.product', 'payment', 'address'])->findOrFail($id));
     }
-    
+
     public function adminShow($id)
     {
         // Mengambil transaksi dengan relasi user, detail, dan produk di dalam detail
@@ -2997,121 +2997,133 @@ class TransactionController extends Controller
         }
     }
 
+    // public function biteshipCallback(Request $request)
+    // {
+    //     // Validasi signature (Opsional tapi disarankan)
+    //     // $signature = $request->header('biteship-signature');
+    //     // $secret = config('services.biteship.webhook_secret'); // Tambahkan di config/services.php dan .env
+
+    //     // if ($signature !== $secret) {
+    //     //     Log::critical('Fake Biteship Webhook Detected!', $request->all());
+
+    //     //     return response()->json(['message' => 'Forbidden'], 403);
+    //     // }
+
+    //     $biteshipOrderId = $request->input('order_id');
+    //     $status = strtolower($request->input('status')); // picking_up, dropped, delivered, cancelled, rejected, dll
+    //     $waybill = $request->input('courier_waybill_id');
+
+    //     \Log::info('Biteship Webhook Received: ', $request->all());
+
+    //     // [PERBAIKAN MUTLAK: DB TRANSACTION & LOCKING]
+    //     return DB::transaction(function () use ($biteshipOrderId, $status, $waybill) {
+
+    //         // $transaction = Transaction::where('biteship_order_id', $biteshipOrderId)->first();
+    //         // Kunci baris ini agar webhook yang datang bersamaan harus antre!
+    //         $transaction = Transaction::where('biteship_order_id', $biteshipOrderId)
+    //             ->lockForUpdate()
+    //             ->first();
+
+    //         if (! $transaction) {
+    //             return response()->json(['message' => 'Transaction not found'], 200);
+    //         }
+
+    //         // Mencegah proses ulang jika status sudah 'completed'
+    //         if ($transaction->status === 'completed' && $status === 'delivered') {
+    //             return response()->json(['message' => 'Already completed'], 200);
+    //         }
+
+    //         // [PERBAIKAN UTAMA] Selalu update shipping_status terbaru dari Webhook!
+    //         $updates = ['shipping_status' => $status];
+
+    //         // 1. Update Resi jika baru turun
+    //         if ($waybill && in_array($transaction->tracking_number, ['Pending', null])) {
+    //             $updates['tracking_number'] = $waybill;
+    //         }
+
+    //         // 2. Jika paket berhasil dikirim ke pembeli, otomatis selesaikan transaksi
+    //         if ($status === 'delivered' && $transaction->status === 'processing') {
+    //             $updates['status'] = 'completed';
+
+    //             // ==========================================================
+    //             // 👇 [BARU] CAIRKAN KOMISI KARENA BARANG SUDAH SAMPAI 👇
+    //             // ==========================================================
+    //             if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
+    //                 $updates['commission_status'] = 'settled'; // Status komisi jadi Selesai
+
+    //                 $affiliateUser = User::find($transaction->affiliate_id);
+    //                 if ($affiliateUser) {
+    //                     // Tambahkan uang ke dompet afiliator sesuai perhitungan saat checkout
+    //                     $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+    //                 }
+    //             }
+    //             // ==========================================================
+
+    //             // Simpan status transaksi agar query SUM di helper bisa menangkap transaksi ini
+    //             $transaction->update($updates);
+
+    //             // [PERBAIKAN] Cek dan jadikan member jika memenuhi syarat
+    //             $this->checkAndAssignMembership($transaction->user);
+
+    //             // Refresh data user
+    //             $transaction->user->refresh();
+
+    //             // Tambah poin user jika dia member dan transaksi punya poin
+    //             if ($transaction->point > 0 && $transaction->user->is_membership) {
+    //                 $transaction->user->increment('point', $transaction->point);
+    //             }
+
+    //             return response()->json(['message' => 'Webhook processed and membership checked']);
+    //         }
+
+    //         // 3. Jika logistik membatalkan pengiriman SEPIHAK
+    //         if (in_array($status, ['cancelled', 'rejected']) && $transaction->status === 'processing') {
+    //             $updates['status'] = 'refund_manual_required';
+    //             $updates['tracking_number'] = 'Logistics Cancelled/Rejected';
+    //             \Log::warning("Biteship Logistics Cancelled for Order ID: {$transaction->order_id}. Moved to Manual Refund.");
+    //         }
+
+    //         if ($status === 'disposed' && $transaction->status === 'processing') {
+    //             $updates['status'] = 'shipping_failed';
+    //             $updates['tracking_number'] = 'Shipping Failed';
+    //             \Log::warning("Biteship Shipping Failed for Order ID: {$transaction->order_id}.");
+    //         }
+
+    //         if ($status === 'returned' && $transaction->status === 'processing') {
+    //             $updates['status'] = 'returned';
+    //             $updates['tracking_number'] = 'Shipping Returned';
+    //             \Log::warning("Biteship Shipping Returned for Order ID: {$transaction->order_id}.");
+    //         }
+
+    //         // Eksekusi semua update ke database dalam 1 query
+    //         $transaction->update($updates);
+
+    //         // 👇 [BARU] TRIGGER PENGIRIMAN EMAIL OTOMATIS 👇
+    //         // Kita lempar ke Job Antrean agar webhook langsung merespons "success" ke Biteship
+    //         // tanpa menunggu proses pengiriman email selesai.
+    //         SendShippingUpdateJob::dispatch($transaction->id, $status);
+    //         // 👆 ========================================= 👆
+
+    //         // 👇 [BARU] TRIGGER WEBSOCKETS REVERB/PUSHER 👇
+    //         // Muat ulang data transaksi terbaru agar Frontend mendapat data segar
+    //         $transaction->refresh();
+    //         broadcast(new ShippingStatusUpdated($transaction, "Status pengiriman Anda telah diperbarui menjadi: " . strtoupper($status)));
+    //         // 👆 ========================================= 👆
+
+    //         return response()->json(['message' => 'Webhook processed successfully']);
+    //     });
+    // }
+
     public function biteshipCallback(Request $request)
     {
-        // Validasi signature (Opsional tapi disarankan)
-        // $signature = $request->header('biteship-signature');
-        // $secret = config('services.biteship.webhook_secret'); // Tambahkan di config/services.php dan .env
+        $payload = $request->all();
+        \Log::info('Biteship Webhook Received (Queued): ', ['order_id' => $payload['order_id'] ?? null]);
 
-        // if ($signature !== $secret) {
-        //     Log::critical('Fake Biteship Webhook Detected!', $request->all());
+        // Langsung lempar ke antrean background
+        \App\Jobs\ProcessBiteshipWebhookJob::dispatch($payload);
 
-        //     return response()->json(['message' => 'Forbidden'], 403);
-        // }
-
-        $biteshipOrderId = $request->input('order_id');
-        $status = strtolower($request->input('status')); // picking_up, dropped, delivered, cancelled, rejected, dll
-        $waybill = $request->input('courier_waybill_id');
-
-        \Log::info('Biteship Webhook Received: ', $request->all());
-
-        // [PERBAIKAN MUTLAK: DB TRANSACTION & LOCKING]
-        return DB::transaction(function () use ($biteshipOrderId, $status, $waybill) {
-
-            // $transaction = Transaction::where('biteship_order_id', $biteshipOrderId)->first();
-            // Kunci baris ini agar webhook yang datang bersamaan harus antre!
-            $transaction = Transaction::where('biteship_order_id', $biteshipOrderId)
-                ->lockForUpdate()
-                ->first();
-
-            if (! $transaction) {
-                return response()->json(['message' => 'Transaction not found'], 200);
-            }
-
-            // Mencegah proses ulang jika status sudah 'completed'
-            if ($transaction->status === 'completed' && $status === 'delivered') {
-                return response()->json(['message' => 'Already completed'], 200);
-            }
-
-            // [PERBAIKAN UTAMA] Selalu update shipping_status terbaru dari Webhook!
-            $updates = ['shipping_status' => $status];
-
-            // 1. Update Resi jika baru turun
-            if ($waybill && in_array($transaction->tracking_number, ['Pending', null])) {
-                $updates['tracking_number'] = $waybill;
-            }
-
-            // 2. Jika paket berhasil dikirim ke pembeli, otomatis selesaikan transaksi
-            if ($status === 'delivered' && $transaction->status === 'processing') {
-                $updates['status'] = 'completed';
-
-                // ==========================================================
-                // 👇 [BARU] CAIRKAN KOMISI KARENA BARANG SUDAH SAMPAI 👇
-                // ==========================================================
-                if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
-                    $updates['commission_status'] = 'settled'; // Status komisi jadi Selesai
-
-                    $affiliateUser = User::find($transaction->affiliate_id);
-                    if ($affiliateUser) {
-                        // Tambahkan uang ke dompet afiliator sesuai perhitungan saat checkout
-                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
-                    }
-                }
-                // ==========================================================
-
-                // Simpan status transaksi agar query SUM di helper bisa menangkap transaksi ini
-                $transaction->update($updates);
-
-                // [PERBAIKAN] Cek dan jadikan member jika memenuhi syarat
-                $this->checkAndAssignMembership($transaction->user);
-
-                // Refresh data user
-                $transaction->user->refresh();
-
-                // Tambah poin user jika dia member dan transaksi punya poin
-                if ($transaction->point > 0 && $transaction->user->is_membership) {
-                    $transaction->user->increment('point', $transaction->point);
-                }
-
-                return response()->json(['message' => 'Webhook processed and membership checked']);
-            }
-
-            // 3. Jika logistik membatalkan pengiriman SEPIHAK
-            if (in_array($status, ['cancelled', 'rejected']) && $transaction->status === 'processing') {
-                $updates['status'] = 'refund_manual_required';
-                $updates['tracking_number'] = 'Logistics Cancelled/Rejected';
-                \Log::warning("Biteship Logistics Cancelled for Order ID: {$transaction->order_id}. Moved to Manual Refund.");
-            }
-
-            if ($status === 'disposed' && $transaction->status === 'processing') {
-                $updates['status'] = 'shipping_failed';
-                $updates['tracking_number'] = 'Shipping Failed';
-                \Log::warning("Biteship Shipping Failed for Order ID: {$transaction->order_id}.");
-            }
-
-            if ($status === 'returned' && $transaction->status === 'processing') {
-                $updates['status'] = 'returned';
-                $updates['tracking_number'] = 'Shipping Returned';
-                \Log::warning("Biteship Shipping Returned for Order ID: {$transaction->order_id}.");
-            }
-
-            // Eksekusi semua update ke database dalam 1 query
-            $transaction->update($updates);
-
-            // 👇 [BARU] TRIGGER PENGIRIMAN EMAIL OTOMATIS 👇
-            // Kita lempar ke Job Antrean agar webhook langsung merespons "success" ke Biteship
-            // tanpa menunggu proses pengiriman email selesai.
-            SendShippingUpdateJob::dispatch($transaction->id, $status);
-            // 👆 ========================================= 👆
-
-            // 👇 [BARU] TRIGGER WEBSOCKETS REVERB/PUSHER 👇
-            // Muat ulang data transaksi terbaru agar Frontend mendapat data segar
-            $transaction->refresh();
-            broadcast(new ShippingStatusUpdated($transaction, "Status pengiriman Anda telah diperbarui menjadi: " . strtoupper($status)));
-            // 👆 ========================================= 👆
-
-            return response()->json(['message' => 'Webhook processed successfully']);
-        });
+        // Kembalikan 200 OK dalam hitungan milidetik
+        return response()->json(['message' => 'Webhook received and queued'], 200);
     }
 
     // --- [BARU] HELPER FUNGSI UNTUK CEK MEMBERSHIP ---

@@ -4015,93 +4015,266 @@ class PaymentController extends Controller
         ]);
     }
 
-    // =====================================================================
-    // 1. WEBHOOK XENDIT (IDEMPOTENT)
-    // =====================================================================
+    // // =====================================================================
+    // // 1. WEBHOOK XENDIT (IDEMPOTENT)
+    // // =====================================================================
+    // public function xenditCallback(Request $request)
+    // {
+    //     $payload = $request->all();
+    //     $eventId = (string) ($request->input('id') ?? $request->input('external_id'));
+
+    //     return $this->handleIdempotentWebhook('xendit', $eventId, $payload, function ($data) {
+    //         $externalId = $data['external_id'] ?? null;
+    //         $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+
+    //         if (! $payment) {
+    //             return 'Payment record not found for external_id: ' . $externalId;
+    //         }
+
+    //         $status = $data['status'] ?? '';
+    //         $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+
+    //         if (! $transaction) {
+    //             return 'Transaction record not found';
+    //         }
+
+    //         if ($status === 'PAID') {
+    //             if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+    //                 return 'Already processed';
+    //             }
+
+    //             $payment->update(['status' => $status]);
+    //             $this->sendFacebookConversionAPI($transaction);
+
+    //             $paymentMethod = $data['payment_method'] ?? 'Unknown';
+    //             $paymentChannel = $data['payment_channel'] ?? '';
+    //             $fullPaymentMethod = trim($paymentMethod . ' ' . $paymentChannel);
+
+    //             $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+    //             $transaction->update([
+    //                 'status' => $targetTransactionStatus,
+    //                 'payment_method' => $fullPaymentMethod,
+    //             ]);
+
+    //             if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+    //                 $transaction->update(['commission_status' => 'settled']);
+
+    //                 $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+    //                 if ($affiliateUser) {
+    //                     $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+    //                 }
+    //             }
+
+    //             $this->dispatchShippingOrder($transaction);
+
+    //             return "Xendit invoice {$externalId} marked as PAID.";
+    //         } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
+    //             if ($transaction->status !== 'cancelled') {
+    //                 $payment->update(['status' => $status]);
+    //                 $transaction->update([
+    //                     'status' => 'cancelled',
+    //                     'shipping_status' => 'cancelled',
+    //                 ]);
+
+    //                 if ($transaction->points_used > 0) {
+    //                     $transaction->user->increment('point', $transaction->points_used);
+    //                 }
+
+    //                 $transactionController = app(TransactionController::class);
+    //                 foreach ($transaction->details as $detail) {
+    //                     $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
+    //                 }
+    //             }
+
+    //             return "Xendit invoice {$externalId} cancelled due to {$status}.";
+    //         } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
+    //             $payment->update(['status' => $status]);
+    //             $transaction->update(['status' => 'pending']);
+
+    //             return "Xendit invoice {$externalId} updated to pending.";
+    //         }
+
+    //         return "Xendit status unhandled: {$status}";
+    //     });
+    // }
+
+    // // =====================================================================
+    // // 2. WEBHOOK STRIPE (IDEMPOTENT)
+    // // =====================================================================
+    // public function stripeWebhook(Request $request)
+    // {
+    //     $payloadContent = $request->getContent();
+    //     $sigHeader = $request->header('Stripe-Signature');
+    //     $endpointSecret = config('services.stripe.webhook_secret');
+
+    //     try {
+    //         if ($endpointSecret) {
+    //             $event = \Stripe\Webhook::constructEvent($payloadContent, $sigHeader, $endpointSecret);
+    //         } else {
+    //             $event = json_decode($payloadContent);
+    //         }
+    //     } catch (\UnexpectedValueException $e) {
+    //         report($e);
+    //         Log::error('Stripe Webhook Error: Invalid payload');
+    //         return response()->json(['error' => 'Invalid payload'], 400);
+    //     } catch (\Stripe\Exception\SignatureVerificationException $e) {
+    //         report($e);
+    //         Log::error('Stripe Webhook Error: Invalid signature');
+    //         return response()->json(['error' => 'Invalid signature'], 400);
+    //     }
+
+    //     $eventId = (string) ($event->id ?? '');
+    //     $payloadArray = json_decode($payloadContent, true) ?? [];
+
+    //     return $this->handleIdempotentWebhook('stripe', $eventId, $payloadArray, function () use ($event) {
+    //         if ($event->type === 'checkout.session.completed') {
+    //             $session = $event->data->object;
+    //             $externalId = $session->client_reference_id;
+
+    //             $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+    //             if (! $payment) {
+    //                 Log::error("Stripe Webhook: Payment not found for reference {$externalId}");
+    //                 return "Payment not found for reference {$externalId}";
+    //             }
+
+    //             $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+    //             if (! $transaction) {
+    //                 return "Transaction not found for payment {$payment->id}";
+    //             }
+
+    //             if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+    //                 return 'Already processed';
+    //             }
+
+    //             $payment->update(['status' => 'PAID']);
+    //             $this->sendFacebookConversionAPI($transaction);
+
+    //             $paymentMethodTypes = $session->payment_method_types ?? [];
+    //             $paymentMethod = ! empty($paymentMethodTypes) ? strtoupper($paymentMethodTypes[0]) : 'STRIPE';
+
+    //             $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+    //             $transaction->update([
+    //                 'status' => $targetTransactionStatus,
+    //                 'payment_method' => 'STRIPE ' . $paymentMethod,
+    //             ]);
+
+    //             if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+    //                 $transaction->update(['commission_status' => 'settled']);
+
+    //                 $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+    //                 if ($affiliateUser) {
+    //                     $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+    //                 }
+    //             }
+
+    //             $this->dispatchShippingOrder($transaction);
+
+    //             return "Stripe session {$externalId} marked as PAID.";
+    //         } elseif ($event->type === 'checkout.session.expired') {
+    //             $session = $event->data->object;
+    //             $externalId = $session->client_reference_id;
+
+    //             $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+    //             if ($payment) {
+    //                 $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+    //                 if ($transaction && $transaction->status !== 'cancelled') {
+    //                     $payment->update(['status' => 'EXPIRED']);
+    //                     $transaction->update([
+    //                         'status' => 'cancelled',
+    //                         'shipping_status' => 'cancelled',
+    //                     ]);
+
+    //                     if ($transaction->points_used > 0) {
+    //                         $transaction->user->increment('point', $transaction->points_used);
+    //                     }
+
+    //                     $transactionController = app(TransactionController::class);
+    //                     foreach ($transaction->details as $detail) {
+    //                         $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
+    //                     }
+    //                 }
+    //             }
+
+    //             return "Stripe session {$externalId} expired.";
+    //         }
+
+    //         return "Stripe event {$event->type} ignored.";
+    //     });
+    // }
+
+    // // =====================================================================
+    // // 3. WEBHOOK PAYPAL (IDEMPOTENT)
+    // // =====================================================================
+    // public function paypalWebhook(Request $request)
+    // {
+    //     $payload = $request->all();
+    //     $eventId = (string) ($payload['id'] ?? '');
+
+    //     return $this->handleIdempotentWebhook('paypal', $eventId, $payload, function ($data) {
+    //         $eventType = $data['event_type'] ?? null;
+
+    //         if ($eventType === 'PAYMENT.CAPTURE.COMPLETED') {
+    //             $externalId = $data['resource']['custom_id'] ?? null;
+
+    //             if (! $externalId) {
+    //                 Log::error('PayPal Webhook: Custom ID (External ID) tidak ditemukan di payload.');
+    //                 return 'External ID missing in payload';
+    //             }
+
+    //             $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
+    //             if (! $payment) {
+    //                 Log::error("PayPal Webhook: Payment tidak ditemukan untuk External ID {$externalId}");
+    //                 return "Payment not found for {$externalId}";
+    //             }
+
+    //             $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
+    //             if (! $transaction) {
+    //                 return 'Transaction not found';
+    //             }
+
+    //             if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
+    //                 return 'Already processed';
+    //             }
+
+    //             $payment->update(['status' => 'PAID']);
+    //             $this->sendFacebookConversionAPI($transaction);
+
+    //             $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
+
+    //             $transaction->update([
+    //                 'status' => $targetTransactionStatus,
+    //                 'payment_method' => 'PAYPAL',
+    //             ]);
+
+    //             if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+    //                 $transaction->update(['commission_status' => 'settled']);
+
+    //                 $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
+    //                 if ($affiliateUser) {
+    //                     $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+    //                 }
+    //             }
+
+    //             $this->dispatchShippingOrder($transaction);
+
+    //             return "PayPal payment {$externalId} completed successfully.";
+    //         }
+
+    //         return "PayPal event {$eventType} ignored.";
+    //     });
+    // }
+
     public function xenditCallback(Request $request)
     {
         $payload = $request->all();
         $eventId = (string) ($request->input('id') ?? $request->input('external_id'));
 
-        return $this->handleIdempotentWebhook('xendit', $eventId, $payload, function ($data) {
-            $externalId = $data['external_id'] ?? null;
-            $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
-
-            if (! $payment) {
-                return 'Payment record not found for external_id: ' . $externalId;
-            }
-
-            $status = $data['status'] ?? '';
-            $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
-
-            if (! $transaction) {
-                return 'Transaction record not found';
-            }
-
-            if ($status === 'PAID') {
-                if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
-                    return 'Already processed';
-                }
-
-                $payment->update(['status' => $status]);
-                $this->sendFacebookConversionAPI($transaction);
-
-                $paymentMethod = $data['payment_method'] ?? 'Unknown';
-                $paymentChannel = $data['payment_channel'] ?? '';
-                $fullPaymentMethod = trim($paymentMethod . ' ' . $paymentChannel);
-
-                $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
-
-                $transaction->update([
-                    'status' => $targetTransactionStatus,
-                    'payment_method' => $fullPaymentMethod,
-                ]);
-
-                if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
-                    $transaction->update(['commission_status' => 'settled']);
-
-                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
-                    if ($affiliateUser) {
-                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
-                    }
-                }
-
-                $this->dispatchShippingOrder($transaction);
-
-                return "Xendit invoice {$externalId} marked as PAID.";
-            } elseif ($status === 'EXPIRED' || $status === 'FAILED') {
-                if ($transaction->status !== 'cancelled') {
-                    $payment->update(['status' => $status]);
-                    $transaction->update([
-                        'status' => 'cancelled',
-                        'shipping_status' => 'cancelled',
-                    ]);
-
-                    if ($transaction->points_used > 0) {
-                        $transaction->user->increment('point', $transaction->points_used);
-                    }
-
-                    $transactionController = app(TransactionController::class);
-                    foreach ($transaction->details as $detail) {
-                        $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
-                    }
-                }
-
-                return "Xendit invoice {$externalId} cancelled due to {$status}.";
-            } elseif ($status === 'PENDING' && $transaction->status === 'awaiting_payment') {
-                $payment->update(['status' => $status]);
-                $transaction->update(['status' => 'pending']);
-
-                return "Xendit invoice {$externalId} updated to pending.";
-            }
-
-            return "Xendit status unhandled: {$status}";
-        });
+        \App\Jobs\ProcessPaymentWebhookJob::dispatch('xendit', $eventId, $payload);
+        return response()->json(['message' => 'Xendit webhook queued'], 200);
     }
 
-    // =====================================================================
-    // 2. WEBHOOK STRIPE (IDEMPOTENT)
-    // =====================================================================
     public function stripeWebhook(Request $request)
     {
         $payloadContent = $request->getContent();
@@ -4110,160 +4283,26 @@ class PaymentController extends Controller
 
         try {
             if ($endpointSecret) {
-                $event = \Stripe\Webhook::constructEvent($payloadContent, $sigHeader, $endpointSecret);
-            } else {
-                $event = json_decode($payloadContent);
+                \Stripe\Webhook::constructEvent($payloadContent, $sigHeader, $endpointSecret);
             }
-        } catch (\UnexpectedValueException $e) {
-            report($e);
-            Log::error('Stripe Webhook Error: Invalid payload');
-            return response()->json(['error' => 'Invalid payload'], 400);
-        } catch (\Stripe\Exception\SignatureVerificationException $e) {
-            report($e);
-            Log::error('Stripe Webhook Error: Invalid signature');
-            return response()->json(['error' => 'Invalid signature'], 400);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Invalid signature or payload'], 400);
         }
 
-        $eventId = (string) ($event->id ?? '');
         $payloadArray = json_decode($payloadContent, true) ?? [];
+        $eventId = (string) ($payloadArray['id'] ?? '');
 
-        return $this->handleIdempotentWebhook('stripe', $eventId, $payloadArray, function () use ($event) {
-            if ($event->type === 'checkout.session.completed') {
-                $session = $event->data->object;
-                $externalId = $session->client_reference_id;
-
-                $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
-                if (! $payment) {
-                    Log::error("Stripe Webhook: Payment not found for reference {$externalId}");
-                    return "Payment not found for reference {$externalId}";
-                }
-
-                $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
-                if (! $transaction) {
-                    return "Transaction not found for payment {$payment->id}";
-                }
-
-                if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
-                    return 'Already processed';
-                }
-
-                $payment->update(['status' => 'PAID']);
-                $this->sendFacebookConversionAPI($transaction);
-
-                $paymentMethodTypes = $session->payment_method_types ?? [];
-                $paymentMethod = ! empty($paymentMethodTypes) ? strtoupper($paymentMethodTypes[0]) : 'STRIPE';
-
-                $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
-
-                $transaction->update([
-                    'status' => $targetTransactionStatus,
-                    'payment_method' => 'STRIPE ' . $paymentMethod,
-                ]);
-
-                if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
-                    $transaction->update(['commission_status' => 'settled']);
-
-                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
-                    if ($affiliateUser) {
-                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
-                    }
-                }
-
-                $this->dispatchShippingOrder($transaction);
-
-                return "Stripe session {$externalId} marked as PAID.";
-            } elseif ($event->type === 'checkout.session.expired') {
-                $session = $event->data->object;
-                $externalId = $session->client_reference_id;
-
-                $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
-                if ($payment) {
-                    $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
-                    if ($transaction && $transaction->status !== 'cancelled') {
-                        $payment->update(['status' => 'EXPIRED']);
-                        $transaction->update([
-                            'status' => 'cancelled',
-                            'shipping_status' => 'cancelled',
-                        ]);
-
-                        if ($transaction->points_used > 0) {
-                            $transaction->user->increment('point', $transaction->points_used);
-                        }
-
-                        $transactionController = app(TransactionController::class);
-                        foreach ($transaction->details as $detail) {
-                            $transactionController->restoreProductStock($detail->product_id, $detail->quantity);
-                        }
-                    }
-                }
-
-                return "Stripe session {$externalId} expired.";
-            }
-
-            return "Stripe event {$event->type} ignored.";
-        });
+        \App\Jobs\ProcessPaymentWebhookJob::dispatch('stripe', $eventId, $payloadArray);
+        return response()->json(['message' => 'Stripe webhook queued'], 200);
     }
 
-    // =====================================================================
-    // 3. WEBHOOK PAYPAL (IDEMPOTENT)
-    // =====================================================================
     public function paypalWebhook(Request $request)
     {
         $payload = $request->all();
         $eventId = (string) ($payload['id'] ?? '');
 
-        return $this->handleIdempotentWebhook('paypal', $eventId, $payload, function ($data) {
-            $eventType = $data['event_type'] ?? null;
-
-            if ($eventType === 'PAYMENT.CAPTURE.COMPLETED') {
-                $externalId = $data['resource']['custom_id'] ?? null;
-
-                if (! $externalId) {
-                    Log::error('PayPal Webhook: Custom ID (External ID) tidak ditemukan di payload.');
-                    return 'External ID missing in payload';
-                }
-
-                $payment = Payment::where('external_id', $externalId)->lockForUpdate()->first();
-                if (! $payment) {
-                    Log::error("PayPal Webhook: Payment tidak ditemukan untuk External ID {$externalId}");
-                    return "Payment not found for {$externalId}";
-                }
-
-                $transaction = Transaction::lockForUpdate()->find($payment->transaction_id);
-                if (! $transaction) {
-                    return 'Transaction not found';
-                }
-
-                if ($payment->status === 'PAID' || in_array($transaction->status, ['processing', 'completed'])) {
-                    return 'Already processed';
-                }
-
-                $payment->update(['status' => 'PAID']);
-                $this->sendFacebookConversionAPI($transaction);
-
-                $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
-
-                $transaction->update([
-                    'status' => $targetTransactionStatus,
-                    'payment_method' => 'PAYPAL',
-                ]);
-
-                if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
-                    $transaction->update(['commission_status' => 'settled']);
-
-                    $affiliateUser = \App\Models\User::find($transaction->affiliate_id);
-                    if ($affiliateUser) {
-                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
-                    }
-                }
-
-                $this->dispatchShippingOrder($transaction);
-
-                return "PayPal payment {$externalId} completed successfully.";
-            }
-
-            return "PayPal event {$eventType} ignored.";
-        });
+        \App\Jobs\ProcessPaymentWebhookJob::dispatch('paypal', $eventId, $payload);
+        return response()->json(['message' => 'PayPal webhook queued'], 200);
     }
 
     public function capturePayPal(Request $request)
@@ -4397,79 +4436,79 @@ class PaymentController extends Controller
     /**
      * Helper untuk membuat pesanan pengiriman logistik setelah transaksi terbayar.
      */
-    private function dispatchShippingOrder(Transaction $transaction): void
-    {
-        if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
-            DB::afterCommit(function () use ($transaction) {
-                try {
-                    $transaction->loadMissing(['address', 'user', 'details.product']);
-                    $destinationCountry = ! empty($transaction->address->region)
-                        ? $transaction->address->region
-                        : (! empty($transaction->address->details['region']) ? $transaction->address->details['region'] : 'Indonesia');
+    // private function dispatchShippingOrder(Transaction $transaction): void
+    // {
+    //     if (in_array($transaction->shipping_method, ['biteship', 'dhl'])) {
+    //         DB::afterCommit(function () use ($transaction) {
+    //             try {
+    //                 $transaction->loadMissing(['address', 'user', 'details.product']);
+    //                 $destinationCountry = ! empty($transaction->address->region)
+    //                     ? $transaction->address->region
+    //                     : (! empty($transaction->address->details['region']) ? $transaction->address->details['region'] : 'Indonesia');
 
-                    $shippingGateway = ShippingFactory::make($destinationCountry);
+    //                 $shippingGateway = ShippingFactory::make($destinationCountry);
 
-                    $items = [];
-                    foreach ($transaction->details as $detail) {
-                        $prod = $detail->product;
+    //                 $items = [];
+    //                 foreach ($transaction->details as $detail) {
+    //                     $prod = $detail->product;
 
-                        $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
-                        $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+    //                     $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+    //                     $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
 
-                        $length = $prod->length > 0 ? $prod->length : 20;
-                        $width  = $prod->width > 0  ? $prod->width  : 20;
-                        $height = $prod->height > 0 ? $prod->height : 10;
+    //                     $length = $prod->length > 0 ? $prod->length : 20;
+    //                     $width  = $prod->width > 0  ? $prod->width  : 20;
+    //                     $height = $prod->height > 0 ? $prod->height : 10;
 
-                        $items[] = [
-                            'name'     => $prod->name,
-                            'value'    => (int) $detail->price,
-                            'quantity' => (int) $detail->quantity,
-                            'weight'   => (int) $actualWeightGrams,
-                            'length'   => (int) $length,
-                            'width'    => (int) $width,
-                            'height'   => (int) $height,
-                        ];
-                    }
+    //                     $items[] = [
+    //                         'name'     => $prod->name,
+    //                         'value'    => (int) $detail->price,
+    //                         'quantity' => (int) $detail->quantity,
+    //                         'weight'   => (int) $actualWeightGrams,
+    //                         'length'   => (int) $length,
+    //                         'width'    => (int) $width,
+    //                         'height'   => (int) $height,
+    //                     ];
+    //                 }
 
-                    $transactionData = [
-                        'courier_company' => $transaction->courier_company,
-                        'courier_type' => $transaction->courier_type,
-                        'delivery_type' => $transaction->delivery_type,
-                        'delivery_date' => $transaction->delivery_date,
-                        'delivery_time' => $transaction->delivery_time,
-                        'destination' => [
-                            'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
-                            'phone' => $transaction->user->phone ?? '08123456789',
-                            'address' => $transaction->address->address_location,
-                            'postal_code' => $transaction->address->postal_code,
-                            'latitude' => $transaction->address->latitude,
-                            'longitude' => $transaction->address->longitude,
-                            'country' => $destinationCountry,
-                        ],
-                        'items' => $items,
-                    ];
+    //                 $transactionData = [
+    //                     'courier_company' => $transaction->courier_company,
+    //                     'courier_type' => $transaction->courier_type,
+    //                     'delivery_type' => $transaction->delivery_type,
+    //                     'delivery_date' => $transaction->delivery_date,
+    //                     'delivery_time' => $transaction->delivery_time,
+    //                     'destination' => [
+    //                         'name' => trim($transaction->address->first_name_address . ' ' . $transaction->address->last_name_address),
+    //                         'phone' => $transaction->user->phone ?? '08123456789',
+    //                         'address' => $transaction->address->address_location,
+    //                         'postal_code' => $transaction->address->postal_code,
+    //                         'latitude' => $transaction->address->latitude,
+    //                         'longitude' => $transaction->address->longitude,
+    //                         'country' => $destinationCountry,
+    //                     ],
+    //                     'items' => $items,
+    //                 ];
 
-                    $order = $shippingGateway->createOrder($transactionData);
+    //                 $order = $shippingGateway->createOrder($transactionData);
 
-                    if (isset($order['id'])) {
-                        $transaction->update([
-                            'biteship_order_id' => $order['id'],
-                            'tracking_number' => $order['tracking_number'],
-                            'shipping_status' => $order['status'],
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    report($e);
-                    Log::error('Shipping Callback Exception: ' . $e->getMessage());
-                }
-            });
-        } else {
-            $transaction->update([
-                'tracking_number' => 'In-Store Pickup',
-                'shipping_status' => 'ready_for_pickup',
-            ]);
-        }
-    }
+    //                 if (isset($order['id'])) {
+    //                     $transaction->update([
+    //                         'biteship_order_id' => $order['id'],
+    //                         'tracking_number' => $order['tracking_number'],
+    //                         'shipping_status' => $order['status'],
+    //                     ]);
+    //                 }
+    //             } catch (\Exception $e) {
+    //                 report($e);
+    //                 Log::error('Shipping Callback Exception: ' . $e->getMessage());
+    //             }
+    //         });
+    //     } else {
+    //         $transaction->update([
+    //             'tracking_number' => 'In-Store Pickup',
+    //             'shipping_status' => 'ready_for_pickup',
+    //         ]);
+    //     }
+    // }
 
     private function checkAndAssignMembership($user)
     {
@@ -4489,67 +4528,67 @@ class PaymentController extends Controller
     // =====================================================================
     // FUNGSI HELPER UNTUK MENGIRIM DATA KE FB CAPI
     // =====================================================================
-    private function sendFacebookConversionAPI(Transaction $transaction)
-    {
-        $pixelId = '1060021089748617';
-        $accessToken = 'EAATOy9uvwuMBSKF7gr9mSNTZCB6DYnAXDcgEmCMxLZA61GPs5hxHUfFjfNBZAQ2alYezpyGyU7zLZA6ubbM1yxADm36gBVLcYwDVyzVxfZCen9Rja5aQASYRIlgM0KgFZBbEZCWmTa60PuCGllmAJzByaa9kAvR4lWeg2SApuKCZCcWNqEnpU376xCrzfJ7hMQZDZD';
+    // private function sendFacebookConversionAPI(Transaction $transaction)
+    // {
+    //     $pixelId = '1060021089748617';
+    //     $accessToken = 'EAATOy9uvwuMBSKF7gr9mSNTZCB6DYnAXDcgEmCMxLZA61GPs5hxHUfFjfNBZAQ2alYezpyGyU7zLZA6ubbM1yxADm36gBVLcYwDVyzVxfZCen9Rja5aQASYRIlgM0KgFZBbEZCWmTa60PuCGllmAJzByaa9kAvR4lWeg2SApuKCZCcWNqEnpU376xCrzfJ7hMQZDZD';
 
-        $url = "https://graph.facebook.com/v19.0/{$pixelId}/events";
+    //     $url = "https://graph.facebook.com/v19.0/{$pixelId}/events";
 
-        $transaction->loadMissing(['user', 'details.product']);
-        $user = $transaction->user;
+    //     $transaction->loadMissing(['user', 'details.product']);
+    //     $user = $transaction->user;
 
-        if (! $user) return;
+    //     if (! $user) return;
 
-        $hashedEmail = hash('sha256', strtolower(trim($user->email)));
+    //     $hashedEmail = hash('sha256', strtolower(trim($user->email)));
 
-        $cleanPhone = preg_replace('/[^0-9]/', '', $user->phone ?? '');
-        if (! str_starts_with($cleanPhone, '62') && ! empty($cleanPhone)) {
-            $cleanPhone = '62' . ltrim($cleanPhone, '0');
-        }
-        $hashedPhone = ! empty($cleanPhone) ? hash('sha256', $cleanPhone) : null;
+    //     $cleanPhone = preg_replace('/[^0-9]/', '', $user->phone ?? '');
+    //     if (! str_starts_with($cleanPhone, '62') && ! empty($cleanPhone)) {
+    //         $cleanPhone = '62' . ltrim($cleanPhone, '0');
+    //     }
+    //     $hashedPhone = ! empty($cleanPhone) ? hash('sha256', $cleanPhone) : null;
 
-        $contents = [];
-        foreach ($transaction->details as $detail) {
-            $contents[] = [
-                'id'         => (string) $detail->product_id,
-                'quantity'   => (int) $detail->quantity,
-                'item_price' => (float) $detail->price,
-            ];
-        }
+    //     $contents = [];
+    //     foreach ($transaction->details as $detail) {
+    //         $contents[] = [
+    //             'id'         => (string) $detail->product_id,
+    //             'quantity'   => (int) $detail->quantity,
+    //             'item_price' => (float) $detail->price,
+    //         ];
+    //     }
 
-        $userData = [
-            'em' => [$hashedEmail],
-        ];
+    //     $userData = [
+    //         'em' => [$hashedEmail],
+    //     ];
 
-        if ($hashedPhone) {
-            $userData['ph'] = [$hashedPhone];
-        }
+    //     if ($hashedPhone) {
+    //         $userData['ph'] = [$hashedPhone];
+    //     }
 
-        $payload = [
-            'data' => [
-                [
-                    'event_name'    => 'Purchase',
-                    'event_time'    => time(),
-                    'action_source' => 'website',
-                    'user_data'     => $userData,
-                    'custom_data'   => [
-                        'currency' => $transaction->currency_code ?? 'IDR',
-                        'value'    => (float) $transaction->total_amount,
-                        'contents' => $contents,
-                    ],
-                ],
-            ],
-        ];
+    //     $payload = [
+    //         'data' => [
+    //             [
+    //                 'event_name'    => 'Purchase',
+    //                 'event_time'    => time(),
+    //                 'action_source' => 'website',
+    //                 'user_data'     => $userData,
+    //                 'custom_data'   => [
+    //                     'currency' => $transaction->currency_code ?? 'IDR',
+    //                     'value'    => (float) $transaction->total_amount,
+    //                     'contents' => $contents,
+    //                 ],
+    //             ],
+    //         ],
+    //     ];
 
-        try {
-            $response = Http::post($url . '?access_token=' . $accessToken, $payload);
+    //     try {
+    //         $response = Http::post($url . '?access_token=' . $accessToken, $payload);
 
-            if ($response->failed()) {
-                Log::error('Facebook CAPI Error: ' . $response->body());
-            }
-        } catch (\Exception $e) {
-            Log::error('Facebook CAPI Exception: ' . $e->getMessage());
-        }
-    }
+    //         if ($response->failed()) {
+    //             Log::error('Facebook CAPI Error: ' . $response->body());
+    //         }
+    //     } catch (\Exception $e) {
+    //         Log::error('Facebook CAPI Exception: ' . $e->getMessage());
+    //     }
+    // }
 }
