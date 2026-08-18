@@ -2686,7 +2686,7 @@ class TransactionController extends Controller
     {
         return response()->json(Transaction::with(['user', 'details.product', 'payment', 'address'])->findOrFail($id));
     }
-
+    
     public function adminShow($id)
     {
         // Mengambil transaksi dengan relasi user, detail, dan produk di dalam detail
@@ -2696,48 +2696,91 @@ class TransactionController extends Controller
         return response()->json($transaction);
     }
 
+    // public function salesReport(Request $request)
+    // {
+    //     $month = $request->query('month');
+    //     $year = $request->query('year');
+    //     $search = $request->query('search');
+
+    //     $query = TransactionDetail::query()
+    //         ->select(
+    //             'products.id',
+    //             'products.code',
+    //             'products.name',
+    //             'products.image',
+    //             'categories.name as category_name',
+    //             DB::raw('SUM(transaction_details.quantity) as total_sold'),
+    //             DB::raw('SUM(transaction_details.quantity * transaction_details.price) as total_revenue')
+    //         )
+    //         ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+    //         ->join('products', 'products.id', '=', 'transaction_details.product_id')
+    //         ->join('categories', 'categories.id', '=', 'products.category_id')
+    //         ->whereIn('transactions.status', ['completed', 'refund_rejected']);
+
+    //     if ($month && $year) {
+    //         $query->whereMonth('transactions.created_at', $month)
+    //             ->whereYear('transactions.created_at', $year);
+    //     } elseif ($year) {
+    //         $query->whereYear('transactions.created_at', $year);
+    //     }
+
+    //     if ($search) {
+    //         $query->where(function ($q) use ($search) {
+    //             $q->where('products.name', 'like', "%{$search}%")
+    //                 ->orWhere('products.code', 'like', "%{$search}%");
+    //         });
+    //     }
+
+    //     // [PERBAIKAN] Gunakan get() alih-alih paginate() untuk memberikan seluruh data ke Vue
+    //     $report = $query->groupBy('products.id', 'products.code', 'products.name', 'products.image', 'categories.name')
+    //         ->orderByDesc('total_revenue')
+    //         ->get();
+
+    //     return response()->json([
+    //         'data' => $report, // Format ini kita pertahankan agar Frontend tetap konsisten mengambil res.data.data
+    //     ]);
+    // }
+
     public function salesReport(Request $request)
     {
         $month = $request->query('month');
         $year = $request->query('year');
         $search = $request->query('search');
 
-        $query = TransactionDetail::query()
+        // Kita kini melakukan query ke tabel Agregat (Data Warehouse), BUKAN ke tabel transaksional mentah.
+        // Sangat ringan karena tidak perlu JOIN tabel.
+        $query = \App\Models\MonthlySalesAggregate::query()
             ->select(
-                'products.id',
-                'products.code',
-                'products.name',
-                'products.image',
-                'categories.name as category_name',
-                DB::raw('SUM(transaction_details.quantity) as total_sold'),
-                DB::raw('SUM(transaction_details.quantity * transaction_details.price) as total_revenue')
-            )
-            ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
-            ->join('products', 'products.id', '=', 'transaction_details.product_id')
-            ->join('categories', 'categories.id', '=', 'products.category_id')
-            ->whereIn('transactions.status', ['completed', 'refund_rejected']);
+                'product_id as id',
+                'product_code as code',
+                'product_name as name',
+                'product_image as image',
+                'category_name',
+                DB::raw('SUM(total_sold) as total_sold'),
+                DB::raw('SUM(total_revenue) as total_revenue')
+            );
 
         if ($month && $year) {
-            $query->whereMonth('transactions.created_at', $month)
-                ->whereYear('transactions.created_at', $year);
+            $query->where('month', $month)->where('year', $year);
         } elseif ($year) {
-            $query->whereYear('transactions.created_at', $year);
+            $query->where('year', $year);
         }
 
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('products.name', 'like', "%{$search}%")
-                    ->orWhere('products.code', 'like', "%{$search}%");
+                $q->where('product_name', 'like', "%{$search}%")
+                  ->orWhere('product_code', 'like', "%{$search}%");
             });
         }
 
-        // [PERBAIKAN] Gunakan get() alih-alih paginate() untuk memberikan seluruh data ke Vue
-        $report = $query->groupBy('products.id', 'products.code', 'products.name', 'products.image', 'categories.name')
+        // Kita tetap melakukan grouping akhir karena jika admin tidak memilih bulan (hanya tahun),
+        // kita perlu menjumlahkan bulan 1 sampai 12 untuk produk yang sama
+        $report = $query->groupBy('product_id', 'product_code', 'product_name', 'product_image', 'category_name')
             ->orderByDesc('total_revenue')
             ->get();
 
         return response()->json([
-            'data' => $report, // Format ini kita pertahankan agar Frontend tetap konsisten mengambil res.data.data
+            'data' => $report,
         ]);
     }
 
