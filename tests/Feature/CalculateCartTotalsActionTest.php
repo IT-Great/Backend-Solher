@@ -63,7 +63,7 @@ it('calculates normal cart totals correctly without any promos', function () {
 
     $result = $this->action->execute($this->user, $cartItems, $request, $this->promoService);
 
-    expect($result['totalAmount'])->toBe(300000) // 150k * 2
+    expect($result['totalAmount'])->toEqual(300000) // 150k * 2
         ->and($result['totalQuantity'])->toBe(2)
         ->and($result['promoDiscountAmount'])->toBe(0)
         ->and($result['pointsUsed'])->toBe(0);
@@ -206,7 +206,7 @@ it('applies SOLHER17 correctly and marks the claim as used', function () {
     $claim = PromoClaim::where('email', $this->user->email)->first();
 
     // 17% dari 2.000.000 adalah 340.000
-    expect($result['promoDiscountAmount'])->toBe(340000)
+    expect($result['promoDiscountAmount'])->toEqual(340000)
         ->and($result['appliedPromoCode'])->toBe('SOLHER17')
         ->and($claim->is_used)->toBeTruthy(); // Pastikan database ditandai terpakai
 });
