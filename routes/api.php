@@ -1047,6 +1047,7 @@ Route::get('/products', [ProductController::class, 'index']);
 Route::get('/home/best-sellers', [ProductController::class, 'getBestSellers']);
 Route::get('/products/inactive', [ProductController::class, 'inactiveProducts']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
+Route::get('/products/search', [ProductController::class, 'searchEngine']);
 Route::get('/guest/categories', [CategoryController::class, 'index']);
 Route::get('/events', [EventController::class, 'indexPublic']);
 

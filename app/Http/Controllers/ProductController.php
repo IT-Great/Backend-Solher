@@ -486,4 +486,30 @@ class ProductController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Layanan AI sedang sibuk.'], 500);
         }
     }
+
+    // =========================================================================
+    // 👇 [BARU] MEILISEARCH FULL-TEXT SEARCH ENGINE 👇
+    // =========================================================================
+    public function searchEngine(Request $request)
+    {
+        $keyword = $request->query('q', '');
+
+        // Jika keyword kosong, kembalikan response index() normal (menggunakan Cache)
+        if (empty($keyword)) {
+            return $this->index();
+        }
+
+        // Tembak memori Meilisearch untuk mendapatkan ID produk dalam 2 milidetik
+        $products = Product::search($keyword)
+            ->query(function ($builder) {
+                // Setelah ID ditemukan oleh Meilisearch, kita ambil relasinya dari MySQL
+                // dengan filter status 'active' agar konsisten dengan halaman koleksi
+                $builder->with(['category', 'bagCategory'])
+                        ->where('status', 'active');
+            })
+            ->take(150) // Batasi 150 produk paling relevan agar transfer JSON super ringan
+            ->get();
+
+        return response()->json($products, 200);
+    }
 }
