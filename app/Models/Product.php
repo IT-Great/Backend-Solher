@@ -6,10 +6,11 @@ use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Scout\Searchable;
 
 class Product extends Model
 {
-    use Auditable, HasFactory;
+    use Auditable, HasFactory, Searchable;
 
     protected $fillable = [
         'category_id',
@@ -329,4 +330,18 @@ class Product extends Model
 
     //     return $value;
     // }
+
+    public function toSearchableArray()
+    {
+        // Hanya data krusial pencarian teks yang kita kirim ke RAM Meilisearch.
+        // Kita tidak mengirimkan relasi berat agar proses indexing super cepat.
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'code' => $this->code,
+            'description' => $this->description,
+            'description_en' => $this->description_en,
+            'material' => $this->material,
+        ];
+    }
 }
