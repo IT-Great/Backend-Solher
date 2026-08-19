@@ -2193,6 +2193,9 @@ class TransactionController extends Controller
                 ];
             });
 
+            // 👇 [BARU] TEMBAKKAN EVENT SAAT PESANAN BARU BERHASIL DIBUAT 👇
+            event(new \App\Events\DashboardUpdated());
+
             // Lanjut ke Payment Gateway
             $paymentController = app(PaymentController::class);
             $request->merge([
@@ -2319,6 +2322,9 @@ class TransactionController extends Controller
                     }
                 });
 
+                // 👇 [BARU] TEMBAKKAN EVENT 👇
+                event(new \App\Events\DashboardUpdated());
+
                 return response()->json(['message' => 'Order cancelled, but automatic refund failed. Admin will process it manually.']);
             }
         }
@@ -2376,6 +2382,9 @@ class TransactionController extends Controller
             Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
         }
 
+        // 👇 [BARU] TEMBAKKAN EVENT 👇
+        event(new \App\Events\DashboardUpdated());
+
         return response()->json(['message' => 'Order cancelled successfully']);
     }
 
@@ -2410,6 +2419,9 @@ class TransactionController extends Controller
             $transaction->user->increment('point', $transaction->point);
         }
 
+        // 👇 [BARU] TEMBAKKAN EVENT 👇
+        event(new \App\Events\DashboardUpdated());
+
         return response()->json(['message' => 'Order completed!']);
     }
 
@@ -2443,6 +2455,9 @@ class TransactionController extends Controller
                 'refund_reason' => $request->reason,
                 'refund_proof_url' => $proofUrl,
             ]);
+
+            // 👇 [BARU] TEMBAKKAN EVENT 👇
+            event(new \App\Events\DashboardUpdated());
 
             return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
 
@@ -2585,6 +2600,9 @@ class TransactionController extends Controller
                 Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
             }
 
+            // 👇 [BARU] TEMBAKKAN EVENT 👇
+            event(new \App\Events\DashboardUpdated());
+
             return response()->json([
                 'message' => 'Refund processed successfully. Funds returned automatically.',
                 'type' => 'automatic',
@@ -2606,6 +2624,9 @@ class TransactionController extends Controller
                 foreach ($transaction->details as $detail) {
                     Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
                 }
+
+                // 👇 [BARU] TEMBAKKAN EVENT 👇
+                event(new \App\Events\DashboardUpdated());
 
                 return response()->json([
                     'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
@@ -2644,6 +2665,9 @@ class TransactionController extends Controller
             Log::error("Gagal kirim email Approve Refund ke {$transaction->user->email}: ".$e->getMessage());
         }
 
+        // 👇 [BARU] TEMBAKKAN EVENT 👇
+        event(new \App\Events\DashboardUpdated());
+
         return response()->json(['message' => 'Refund request approved. Email sent to customer.']);
     }
 
@@ -2677,6 +2701,8 @@ class TransactionController extends Controller
             // Jika gagal kirim email, jangan hentikan proses reject
             Log::error("Gagal kirim email Reject Refund ke {$transaction->user->email}: ".$e->getMessage());
         }
+
+        event(new \App\Events\DashboardUpdated());
 
         return response()->json(['message' => 'Refund request rejected. Email sent to customer.']);
     }
@@ -3195,6 +3221,9 @@ class TransactionController extends Controller
 
         // Flush seluruh cache untuk keamanan
         Cache::flush();
+
+        // 👇 [BARU] TEMBAKKAN EVENT 👇
+        event(new \App\Events\DashboardUpdated());
 
         return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
     }
