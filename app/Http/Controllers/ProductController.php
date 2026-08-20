@@ -486,4 +486,23 @@ class ProductController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Layanan AI sedang sibuk.'], 500);
         }
     }
+
+    public function searchEngine(Request $request)
+    {
+        $keyword = $request->query('q', '');
+
+        if (empty($keyword)) {
+            return $this->index();
+        }
+
+        $products = Product::search($keyword)
+            ->query(function ($builder) {
+                $builder->with(['category', 'bagCategory'])
+                        ->where('status', 'active');
+            })
+            ->take(150)
+            ->get();
+
+        return response()->json($products, 200);
+    }
 }
