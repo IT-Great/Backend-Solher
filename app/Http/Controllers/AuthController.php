@@ -404,10 +404,32 @@ class AuthController extends Controller
     }
 
     // Ambil semua daftar user biasa
+    // public function getAllUsers()
+    // {
+    //     // Mengambil user dengan usertype 'user' saja
+    //     $users = User::where('usertype', 'user')->latest()->get(); //
+
+    //     return response()->json($users, 200);
+    // }
+
     public function getAllUsers()
     {
-        // Mengambil user dengan usertype 'user' saja
-        $users = User::where('usertype', 'user')->latest()->get(); //
+        // 1. Kumpulkan semua ID Admin, Superadmin, dan AI Bot (Solher Care)
+        $adminIds = User::whereIn('usertype', ['admin', 'superadmin'])->pluck('id')->toArray();
+        $aiUser = User::where('email', 'ai@solher.com')->first();
+
+        if ($aiUser && !in_array($aiUser->id, $adminIds)) {
+            $adminIds[] = $aiUser->id;
+        }
+
+        // 2. Tarik data user sekaligus menghitung pesan mereka yang belum dibaca oleh admin
+        $users = User::where('usertype', 'user')
+            ->withCount(['messages as unread_count' => function ($query) use ($adminIds) {
+                $query->where('is_read', false)
+                      ->whereIn('receiver_id', $adminIds);
+            }])
+            ->latest()
+            ->get();
 
         return response()->json($users, 200);
     }

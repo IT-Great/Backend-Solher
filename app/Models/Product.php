@@ -6,13 +6,15 @@ use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Scout\Searchable;
 
 class Product extends Model
 {
-    use Auditable, HasFactory;
+    use Auditable, HasFactory, Searchable;
 
     protected $fillable = [
         'category_id',
+        'bag_category_id',
         'code',
         'slug',
         'name',
@@ -38,23 +40,30 @@ class Product extends Model
         'design',
         'design_en',      // [BARU]
         'status',
+        'is_final_sale',
     ];
 
     protected $casts = [
         'variant_images' => 'array',
         'color' => 'array',            // <--- BARU: Casting ke Array
         'strap_length' => 'array',
-        'prices' => 'array',         
+        'prices' => 'array',
         'discount_prices' => 'array',
         'price' => 'decimal:2',
         'discount_price' => 'decimal:2',
         'discount_start_date' => 'datetime', // <--- BARU
         'discount_end_date' => 'datetime',   // <--- BARU
+        'is_final_sale' => 'boolean',
     ];
 
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function bagCategory()
+    {
+        return $this->belongsTo(BagCategory::class, 'bag_category_id');
     }
 
     public function transactionDetails(): HasMany
@@ -321,4 +330,18 @@ class Product extends Model
 
     //     return $value;
     // }
+
+    public function toSearchableArray()
+    {
+        // Hanya data krusial pencarian teks yang kita kirim ke RAM Meilisearch.
+        // Kita tidak mengirimkan relasi berat agar proses indexing super cepat.
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'code' => $this->code,
+            'description' => $this->description,
+            'description_en' => $this->description_en,
+            'material' => $this->material,
+        ];
+    }
 }

@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use App\Jobs\SyncMonthlySalesJob;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -22,3 +23,10 @@ Schedule::command('currency:update-rates')
     ->timezone('Asia/Jakarta')
     ->twiceDaily(0, 12)
     ->appendOutputTo(storage_path('logs/currency-update.log'));
+
+Schedule::command('system:prune --days=90')
+    ->weeklyOn(0, '03:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::job(new SyncMonthlySalesJob)->dailyAt('00:00');

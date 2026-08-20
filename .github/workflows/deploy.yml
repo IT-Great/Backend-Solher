@@ -85,7 +85,8 @@ jobs:
           DB_PASSWORD: password
         run: |
           php artisan migrate
-          php artisan test
+          # php artisan test
+          vendor/bin/pest
 
   # ==========================================
   # JOB 2: DEPLOY KE VPS (JIKA TEST SUKSES)
@@ -110,7 +111,7 @@ jobs:
             git pull
 
             # 3. Update library PHP
-            composer install --no-interaction --prefer-dist --optimize-autoloader
+            # composer install --no-interaction --prefer-dist --optimize-autoloader
 
             # 4. Bersihkan dan buat ulang cache konfigurasi
             php artisan optimize:clear

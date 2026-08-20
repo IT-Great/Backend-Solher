@@ -64,4 +64,17 @@ class ReviewController extends Controller
 
         return response()->json(['message' => 'Review berhasil dikirim! Terima kasih atas ulasan Anda.', 'data' => $review]);
     }
+
+    // Fungsi untuk mengambil review terbaik untuk halaman depan (Homepage)
+    public function publicReviews()
+    {
+        $reviews = Review::with(['user:id,first_name,last_name', 'product:id,name,slug,image'])
+            ->where('is_approved', true) // Hanya tampilkan yang sudah di-approve
+            ->where('rating', '>=', 4)   // Hanya tampilkan review bintang 4 dan 5 untuk marketing
+            ->latest()
+            ->take(8) // Ambil 8 review terbaru
+            ->get();
+
+        return response()->json($reviews, 200);
+    }
 }

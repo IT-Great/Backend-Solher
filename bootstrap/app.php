@@ -48,6 +48,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(append: [
             SentryUserContext::class,
         ]);
+
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
