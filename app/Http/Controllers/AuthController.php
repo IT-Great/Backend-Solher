@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\ResetPasswordCodeMail;
-use App\Models\Subscriber;
-use App\Models\User;
 use Carbon\Carbon;
+use App\Models\User;
+use App\Models\Subscriber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Mail\ResetPasswordCodeMail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -251,7 +251,7 @@ class AuthController extends Controller
         }
 
         // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
-        if (! app()->environment('testing')) {
+        if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
             $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
                 'secret' => env('RECAPTCHA_SECRET_KEY'),
                 'response' => $request->captcha_token,
@@ -275,6 +275,26 @@ class AuthController extends Controller
                 ], 422);
             }
         }
+
+        // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
+        // DAN token bukan dari aplikasi mobile resmi kita
+        // if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
+        //     $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+        //         'secret' => env('RECAPTCHA_SECRET_KEY'),
+        //         'response' => $request->captcha_token,
+        //         'remoteip' => $request->ip(),
+        //     ]);
+
+        //     $captchaResult = $captchaResponse->json();
+
+        //     if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
+        //         Log::warning('Bot detected during login. Score: '.($captchaResult['score'] ?? 'null'));
+
+        //         return response()->json([
+        //             'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
+        //         ], 422);
+        //     }
+        // }
 
         // ==========================================
         // Logika utama aplikasi tetap berjalan normal
