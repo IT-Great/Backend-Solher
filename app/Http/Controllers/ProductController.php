@@ -17,7 +17,7 @@ use Intervention\Image\Drivers\Gd\Driver;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
             return Product::with(['category', 'bagCategory'])
