@@ -2,24 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use Str;
 use App\Models\Product;
 use App\Models\ProductStock;
-use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Intervention\Image\ImageManager;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Intervention\Image\Drivers\Gd\Driver;
-use Intervention\Image\ImageManager;
-use Illuminate\Support\Facades\Http;
-use Str;
 
 class ProductController extends Controller
 {
     public function index()
     {
-
         $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
             return Product::with(['category', 'bagCategory'])
 
@@ -31,15 +30,20 @@ class ProductController extends Controller
                 ->where('status', 'active')
                 ->latest()
                 ->get();
-        });
+            });
+            
+            // 👇 Tangkap parameter dari Flutter 👇
+            if ($request->has('category_id')) {
+                $query->where('category_id', $request->category_id);
+            }
 
-        $products->map(function ($product) {
+            $products->map(function ($product) {
 
-            $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
-            unset($product->transaction_details_sum_quantity);
+                $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
+                unset($product->transaction_details_sum_quantity);
 
-            return $product;
-        });
+                return $product;
+            });
 
         return response()->json($products, 200);
     }
