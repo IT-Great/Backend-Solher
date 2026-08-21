@@ -17,33 +17,65 @@ use Intervention\Image\Drivers\Gd\Driver;
 
 class ProductController extends Controller
 {
+    // public function index(Request $request)
+    // {
+    //     $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
+    //         return Product::with(['category', 'bagCategory'])
+
+    //             ->withSum(['transactionDetails' => function ($query) {
+
+    //                 $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+    //                     ->whereIn('transactions.status', ['completed']);
+    //             }], 'quantity')
+    //             ->where('status', 'active')
+    //             ->latest()
+    //             ->get();
+    //         });
+
+    //         // 👇 Tangkap parameter dari Flutter 👇
+    //         if ($request->has('category_id')) {
+    //             $query->where('category_id', $request->category_id);
+    //         }
+
+    //         $products->map(function ($product) {
+
+    //             $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
+    //             unset($product->transaction_details_sum_quantity);
+
+    //             return $product;
+    //         });
+
+    //     return response()->json($products, 200);
+    // }
+
     public function index(Request $request)
     {
+        // 1. Ambil semua data produk aktif dari cache (berupa Collection Eloquent)
         $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
             return Product::with(['category', 'bagCategory'])
-
                 ->withSum(['transactionDetails' => function ($query) {
-
                     $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
                         ->whereIn('transactions.status', ['completed']);
                 }], 'quantity')
                 ->where('status', 'active')
                 ->latest()
                 ->get();
-            });
-            
-            // 👇 Tangkap parameter dari Flutter 👇
-            if ($request->has('category_id')) {
-                $query->where('category_id', $request->category_id);
-            }
+        });
 
-            $products->map(function ($product) {
+        // 2. 👇 PERBAIKAN: Filter Collection di memori menggunakan method where() milik Collection 👇
+        if ($request->has('category_id') && $request->category_id != 0) {
+            $products = $products->where('category_id', $request->category_id)->values();
+            // Note: ->values() penting agar key array di-reset ke 0, 1, 2, dst. 
+            // Jika tidak, JSON response di Flutter akan terbaca sebagai Map/Object, bukan List/Array.
+        }
 
-                $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
-                unset($product->transaction_details_sum_quantity);
+        // 3. Format/mapping data (Berlaku untuk semua list atau yang sudah difilter)
+        $products->map(function ($product) {
+            $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
+            unset($product->transaction_details_sum_quantity);
 
-                return $product;
-            });
+            return $product;
+        });
 
         return response()->json($products, 200);
     }
@@ -113,16 +145,15 @@ class ProductController extends Controller
 
                 return $product;
             })
-            // 3. Urutkan dari yang terbesar, lalu potong 12 teratas
-            ->sortByDesc('total_sold')
-            ->take(12)
-            ->values(); // Reset urutan index array
+                // 3. Urutkan dari yang terbesar, lalu potong 12 teratas
+                ->sortByDesc('total_sold')
+                ->take(12)
+                ->values(); // Reset urutan index array
 
             return response()->json([
                 'status' => 'success',
                 'data' => $bestSellers
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
         }
@@ -213,7 +244,7 @@ class ProductController extends Controller
             $data['prices'] = $request->input('prices', null);
             $data['discount_prices'] = $request->input('discount_prices', null);
 
-            $nullableFields = ['discount_price', 'discount_start_date', 'discount_end_date', 'length', 'width', 'height', 'material', 'strap_length','description','design','description_en', 'design_en'];
+            $nullableFields = ['discount_price', 'discount_start_date', 'discount_end_date', 'length', 'width', 'height', 'material', 'strap_length', 'description', 'design', 'description_en', 'design_en'];
             foreach ($nullableFields as $field) {
                 if (! isset($data[$field]) || $data[$field] === '' || $data[$field] === 'null') {
                     $data[$field] = null;
@@ -240,7 +271,7 @@ class ProductController extends Controller
             $product = Product::create($data);
 
             if ($request->stock > 0) {
-                $batchCode = 'STK-'.now()->format('YmdHis').'-'.strtoupper(\Illuminate\Support\Str::random(4));
+                $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(\Illuminate\Support\Str::random(4));
                 ProductStock::create([
                     'product_id' => $product->id,
                     'batch_code' => $batchCode,
@@ -315,7 +346,7 @@ class ProductController extends Controller
         $data['prices'] = $request->input('prices', null);
         $data['discount_prices'] = $request->input('discount_prices', null);
 
-        $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length','description','design','description_en', 'design_en', 'discount_start_date', 'discount_end_date'];
+        $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length', 'description', 'design', 'description_en', 'design_en', 'discount_start_date', 'discount_end_date'];
 
         foreach ($nullableFields as $field) {
             if (! isset($data[$field]) || $data[$field] === '' || $data[$field] === 'null') {
@@ -400,7 +431,6 @@ class ProductController extends Controller
             Cache::tags(['catalog'])->flush();
 
             return response()->json(['message' => 'Product deleted permanently'], 200);
-
         } catch (QueryException $e) {
             report($e);
             return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi'], 422);
@@ -422,11 +452,11 @@ class ProductController extends Controller
 
         $encoded = $image->toWebp(80);
 
-        $filename = $folder.'/'.Str::random(40).'.webp';
+        $filename = $folder . '/' . Str::random(40) . '.webp';
 
         Storage::disk('public')->put($filename, $encoded->toString());
 
-        return '/storage/'.$filename;
+        return '/storage/' . $filename;
     }
 
     // =========================================================================
@@ -441,9 +471,9 @@ class ProductController extends Controller
         ]);
 
         try {
-            $productName =$request->name;
-            $material =$request->material ?? 'Bahan berkualitas tinggi';
-            $category =$request->category_name ?? 'Produk Fashion';
+            $productName = $request->name;
+            $material = $request->material ?? 'Bahan berkualitas tinggi';
+            $category = $request->category_name ?? 'Produk Fashion';
 
             $prompt = "Kamu adalah Expert E-Commerce Copywriter & Translator. Buat deskripsi produk yang menjual dan detail desain untuk produk berikut:\n\n";
             $prompt .= "- Nama Produk: {$productName}\n";
@@ -474,7 +504,8 @@ class ProductController extends Controller
                 $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
 
                 // Bersihkan markdown jika AI membandel
-                $text = preg_replace('/```json\n?/', '', $text);$text = preg_replace('/```/', '', $text);
+                $text = preg_replace('/```json\n?/', '', $text);
+                $text = preg_replace('/```/', '', $text);
 
                 $result = json_decode(trim($text), true);
 
@@ -484,7 +515,6 @@ class ProductController extends Controller
             }
 
             return response()->json(['status' => 'error', 'message' => 'Gagal memformat balasan AI.'], 500);
-
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('AI Copywriter Error: ' . $e->getMessage());
             return response()->json(['status' => 'error', 'message' => 'Layanan AI sedang sibuk.'], 500);
@@ -502,7 +532,7 @@ class ProductController extends Controller
         $products = Product::search($keyword)
             ->query(function ($builder) {
                 $builder->with(['category', 'bagCategory'])
-                        ->where('status', 'active');
+                    ->where('status', 'active');
             })
             ->take(150)
             ->get();
