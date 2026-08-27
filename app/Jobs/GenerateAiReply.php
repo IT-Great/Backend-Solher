@@ -1182,12 +1182,12 @@
 
 //                 if (isset($parts['functionCall'])) {
 //                     $functionName = $parts['functionCall']['name'];
-                    
+
 //                     if ($functionName === 'transfer_to_human') {
 //                         // KUNCI JADI MODE HUMAN 24 JAM
 //                         Cache::put('chat_mode_' . $this->receiverId, 'human', now()->addHours(24));
 //                         $aiReplyText = "Baik Kak, mohon ditunggu sebentar ya. Saya sedang menghubungkan Kakak dengan Admin Solher. Mereka akan segera membalas di obrolan ini 🙏";
-//                     } 
+//                     }
 //                 } else {
 //                     $aiReplyText = $parts['text'] ?? "Maaf kak, saya gagal memproses jawaban.";
 //                 }
@@ -1218,26 +1218,26 @@
 
 namespace App\Jobs;
 
-use App\Events\MessageSent;
-use App\Events\UserTyping;
+use App\Models\User;
 use App\Models\Message;
 use App\Models\Product;
-use App\Models\User;
+use App\Events\UserTyping;
+use App\Events\MessageSent;
 use Illuminate\Bus\Queueable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 
 class GenerateAiReply implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $tries = 3;
-    public $receiverId; 
+    public $receiverId;
     public $userMessage;
 
     public function __construct($receiverId, $userMessage)
@@ -1273,7 +1273,7 @@ class GenerateAiReply implements ShouldQueue
         }
 
         $hardcodedKnowledge = "
-        INFO: Solher Bag. WA: +62 888 388 8585 | Email: care@solherbag.com.
+        INFO: Solher Bag. WA: +62 888 388 8585 | Email: solherbag@gmail.com.
         RETUR: Maksimal 3 HARI sejak diterima. Wajib Video Unboxing utuh.
         ";
 
@@ -1333,13 +1333,38 @@ class GenerateAiReply implements ShouldQueue
                 $parts = $data['candidates'][0]['content']['parts'][0] ?? [];
                 $aiReplyText = "";
 
+                // if (isset($parts['functionCall'])) {
+                //     $functionName = $parts['functionCall']['name'];
+
+                //     if ($functionName === 'transfer_to_human') {
+                //         Cache::put('chat_mode_' . $this->receiverId, 'human', now()->addHours(24));
+                //         $aiReplyText = "Baik Kak, mohon ditunggu sebentar ya. Saya sedang menghubungkan Kakak dengan Admin Solher. Mereka akan segera membalas di obrolan ini 🙏";
+                //     }
+                // } else {
+                //     $aiReplyText = $parts['text'] ?? "Maaf kak, saya gagal memproses jawaban.";
+                // }
+
                 if (isset($parts['functionCall'])) {
                     $functionName = $parts['functionCall']['name'];
-                    
+
                     if ($functionName === 'transfer_to_human') {
+                        // 1. Ubah mode ke Human (Otomatis kembali ke AI jika tidak ada chat dalam 24 jam)
                         Cache::put('chat_mode_' . $this->receiverId, 'human', now()->addHours(24));
-                        $aiReplyText = "Baik Kak, mohon ditunggu sebentar ya. Saya sedang menghubungkan Kakak dengan Admin Solher. Mereka akan segera membalas di obrolan ini 🙏";
-                    } 
+
+                        // 2. Berikan jawaban penenang ke customer
+                        $aiReplyText = "Baik Kak, mohon ditunggu sebentar ya. Saya sedang menginfokan hal ini kepada tim Admin Solher. Mereka akan segera bergabung dan membalas di obrolan ini 🙏";
+
+                        // 3. Tarik semua data Admin & CS
+                        $admins = \App\Models\User::whereIn('usertype', ['superadmin', 'admin', 'cs'])->get();
+                        $customer = \App\Models\User::find($this->receiverId);
+
+                        // 4. Kirim Email Notifikasi ke semua Admin
+                        if ($customer) {
+                            foreach ($admins as $admin) {
+                                \Illuminate\Support\Facades\Mail::to($admin->email)->queue(new \App\Mail\AdminChatRequestMail($customer));
+                            }
+                        }
+                    }
                 } else {
                     $aiReplyText = $parts['text'] ?? "Maaf kak, saya gagal memproses jawaban.";
                 }
@@ -1351,7 +1376,7 @@ class GenerateAiReply implements ShouldQueue
                         'message' => $aiReplyText,
                         'is_read' => false,
                     ]);
-                    
+
                     // 👇 PERBAIKAN 2 MUTLAK: Hapus toOthers() dan pastikan ada ->load('sender')
                     broadcast(new MessageSent($aiMessage->load('sender')));
                 }

@@ -23,6 +23,7 @@
         "xendit/xendit-php": "^7.0"
     },
     "require-dev": {
+        "barryvdh/laravel-ide-helper": "*",
         "fakerphp/faker": "^1.23",
         "kitloong/laravel-migrations-generator": "^7.4",
         "laravel/pail": "^1.2.2",

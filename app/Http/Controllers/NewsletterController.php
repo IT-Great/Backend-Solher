@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Subscriber;
 use Illuminate\Http\Request;
 use App\Jobs\SendNewsletterJob;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Crypt;
-use App\Models\Subscriber;
+use Illuminate\Support\Facades\Storage;
 use App\Models\Campaign;     // 👇 Import Model Baru
 use App\Models\CampaignLog;  // 👇 Import Model Baru
 

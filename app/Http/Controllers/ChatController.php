@@ -544,16 +544,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
+use App\Models\Message;
+use App\Events\UserTyping;
 use App\Events\MessageRead;
 use App\Events\MessageSent;
-use App\Events\UserTyping;
-use App\Models\Message;
-use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\ChatMessageNotificationMail;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
+use App\Mail\ChatMessageNotificationMail;
 
 class ChatController extends Controller
 {
@@ -657,17 +657,38 @@ class ChatController extends Controller
         // =========================================================================
         // 👇 IDENTIFIKASI MODE OBROLAN (AI vs HUMAN) 👇
         // =========================================================================
-        $isCustomer = !in_array($me->usertype, ['admin', 'superadmin']);
-        $isReceiverAdmin = in_array($receiver->usertype, ['admin', 'superadmin']) || $receiver->email === 'ai@solher.com';
-        
-        $chatMode = 'human'; // Default asumsi manusia
+        // $isCustomer = !in_array($me->usertype, ['admin', 'superadmin']);
+        // $isReceiverAdmin = in_array($receiver->usertype, ['admin', 'superadmin']) || $receiver->email === 'ai@solher.com';
+
+        // $chatMode = 'human'; // Default asumsi manusia
+        // if ($isCustomer && $isReceiverAdmin) {
+        //     $chatMode = Cache::get('chat_mode_' . $myId, 'ai');
+
+        //     // Jika bot sedang aktif, minta bot membalas
+        //     if ($chatMode === 'ai' && $cleanMessage) {
+        //         \App\Jobs\GenerateAiReply::dispatch($myId, $cleanMessage);
+        //     }
+        // }
+
+        // =========================================================================
+        // 👇 IDENTIFIKASI MODE OBROLAN (AI vs HUMAN) 👇
+        // =========================================================================
+        $isCustomer = !in_array($me->usertype, ['admin', 'superadmin', 'cs']);
+        $isReceiverAdmin = in_array($receiver->usertype, ['admin', 'superadmin', 'cs']) || $receiver->email === 'ai@solher.com';
+
+        $chatMode = 'human';
         if ($isCustomer && $isReceiverAdmin) {
             $chatMode = Cache::get('chat_mode_' . $myId, 'ai');
-            
-            // Jika bot sedang aktif, minta bot membalas
+
             if ($chatMode === 'ai' && $cleanMessage) {
                 \App\Jobs\GenerateAiReply::dispatch($myId, $cleanMessage);
+            } elseif ($chatMode === 'human') {
+                // 👇 PERBAIKAN: Jika sedang dalam mode Human, perpanjang timer 24 jam dari sekarang!
+                Cache::put('chat_mode_' . $myId, 'human', now()->addHours(24));
             }
+        } elseif (!$isCustomer) {
+            // 👇 PERBAIKAN: Jika yang membalas adalah Admin asli, otomatis set/perpanjang mode ke Human!
+            Cache::put('chat_mode_' . $request->receiver_id, 'human', now()->addHours(24));
         }
 
         // =========================================================================
@@ -682,22 +703,22 @@ class ChatController extends Controller
 
         // 2. Jangan ganggu Admin jika pelanggan sedang ditangani oleh Bot AI
         if ($isCustomer && $isReceiverAdmin && $chatMode === 'ai') {
-            $shouldSendEmail = false; 
+            $shouldSendEmail = false;
         }
 
         if ($shouldSendEmail) {
             // Gunakan Redis Cache untuk menahan email agar tidak spamming.
             // Email hanya akan dikirim 1x setiap 15 menit untuk percakapan yang sama.
             $cooldownKey = "chat_email_cooldown_{$myId}_to_{$receiver->id}";
-            
+
             if (!Cache::has($cooldownKey)) {
                 try {
                     // Kirim ke antrean background
                     Mail::to($receiver->email)->queue(new ChatMessageNotificationMail($me, $message));
-                    
+
                     // Kunci jalur email selama 15 menit ke depan
-                    Cache::put($cooldownKey, true, now()->addMinutes(15)); 
-                    
+                    Cache::put($cooldownKey, true, now()->addMinutes(15));
+
                     Log::info("Email notifikasi chat berhasil diantrekan ke: {$receiver->email}");
                 } catch (\Exception $e) {
                     Log::error('Gagal mengirim email notifikasi chat: ' . $e->getMessage());

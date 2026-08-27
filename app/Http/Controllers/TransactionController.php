@@ -2,37 +2,37 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\RefundResultMail;
 use App\Models\Cart;
+use App\Models\User;
 use App\Models\Payment;
 use App\Models\Product;
-use App\Models\ProductStock;
 use App\Models\PromoClaim;
 use App\Models\Transaction;
-use App\Models\TransactionDetail;
-use App\Models\User;
+use Illuminate\Support\Str;
+use App\Models\ProductStock;
+use Illuminate\Http\Request;
+use Xendit\Refund\RefundApi;
+use App\Mail\RefundResultMail;
+use Xendit\XenditSdkException;
+use Xendit\Refund\CreateRefund;
 use App\Services\PaymentFactory;
 use Illuminate\Http\Client\Pool;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
+use App\Models\TransactionDetail;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 // use Xendit\Configuration;
 // use Xendit\Invoice\CreateInvoiceRequest;
 // use Xendit\Invoice\InvoiceApi;
-use Illuminate\Support\Str;
-use Xendit\Refund\CreateRefund;
-use Xendit\Refund\RefundApi;
-use Xendit\XenditSdkException;
 use App\Jobs\SendShippingUpdateJob;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
 use App\Events\ShippingStatusUpdated;
-use App\Actions\Checkout\CalculateCartTotalsAction;
-use App\Actions\Checkout\CreateTransactionAction;
-use App\Actions\Checkout\DeductInventoryAction;
 use App\Services\PromoMerdekaService;
+use Illuminate\Support\Facades\Storage;
+use App\Actions\Checkout\DeductInventoryAction;
+use App\Actions\Checkout\CreateTransactionAction;
+use App\Actions\Checkout\CalculateCartTotalsAction;
 
 class TransactionController extends Controller
 {
