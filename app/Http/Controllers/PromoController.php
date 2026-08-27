@@ -333,15 +333,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\PromoCodeMail;
-use App\Models\PromoClaim;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
-use App\Jobs\SendPromoReminderJob;
 use Carbon\Carbon;
+use App\Models\PromoClaim;
+use App\Mail\PromoCodeMail;
+use Illuminate\Support\Str;
+use Illuminate\Http\Request;
+use App\Jobs\SendPromoReminderJob;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use App\Services\PromoMerdekaService; // <-- Pastikan service dipanggil
 
 class PromoController extends Controller
@@ -611,5 +611,13 @@ class PromoController extends Controller
             'discount_value' => $claim->discount_value,
             'promo_type' => 'claim'
         ], 200);
+    }
+
+    // 👇 FUNGSI BARU UNTUK HALAMAN ADMIN VUE 👇
+    public function getAllClaims()
+    {
+        // Mengambil semua data promo claims diurutkan dari yang paling baru diklaim
+        $claims = PromoClaim::orderBy('created_at', 'desc')->get();
+        return response()->json($claims, 200);
     }
 }

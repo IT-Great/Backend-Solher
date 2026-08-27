@@ -1170,6 +1170,7 @@ Route::get('/bag-categories', [\App\Http\Controllers\BagCategoryController::clas
 Route::middleware(['auth:sanctum', 'role:users'])->group(function () {
     Route::get('/admin/users', [AuthController::class, 'getAllUsers']);
     Route::get('/admin/users/{id}', [AuthController::class, 'getUserDetail']);
+    Route::get('/admin/promo-claims', [PromoController::class, 'getAllClaims']);
 });
 
 Route::middleware(['auth:sanctum', 'role:subscribers'])->group(function () {
