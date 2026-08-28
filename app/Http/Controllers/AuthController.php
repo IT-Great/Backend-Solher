@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Socialite\Facades\Socialite;
 use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
@@ -251,7 +252,7 @@ class AuthController extends Controller
         }
 
         // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
-        if (! app()->environment('testing')) { 
+        if (! app()->environment('testing')) {
             $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
                 'secret' => env('RECAPTCHA_SECRET_KEY'),
                 'response' => $request->captcha_token,
@@ -754,5 +755,54 @@ class AuthController extends Controller
         DB::table('password_reset_codes')->where('email', $request->email)->delete();
 
         return response()->json(['message' => 'Kata sandi berhasil disetel ulang.']);
+    }
+
+    // ====================================================================
+    // 👇 LOGIKA GOOGLE OAUTH (LOGIN & REGISTER SEKALI KLIK) 👇
+    // ====================================================================
+    public function redirectToGoogle()
+    {
+        return Socialite::driver('google')->stateless()->redirect();
+    }
+
+    public function handleGoogleCallback()
+    {
+        try {
+            $googleUser = Socialite::driver('google')->stateless()->user();
+
+            // Cek apakah user dengan email ini sudah ada
+            $user = User::where('email', $googleUser->getEmail())->first();
+
+            // Jika belum ada, otomatis REGISTER
+            if (!$user) {
+                // Cek apakah dia sudah subscribe sebelumnya
+                $subscriber = Subscriber::where('email', $googleUser->getEmail())->first();
+                $isSubscribed = $subscriber ? true : false;
+
+                $user = User::create([
+                    'first_name' => $googleUser->user['given_name'] ?? $googleUser->getName(),
+                    'last_name' => $googleUser->user['family_name'] ?? ' ',
+                    'email' => $googleUser->getEmail(),
+                    'password' => Hash::make(\Illuminate\Support\Str::random(24)), // Password acak yang kuat
+                    'is_subscribed' => $isSubscribed,
+                ]);
+
+                if ($subscriber) {
+                    $subscriber->update(['is_registered' => true]);
+                }
+            }
+
+            // Generate Token Sanctum
+            $token = $user->createToken('auth_token')->plainTextToken;
+            $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+
+            // Lempar kembali ke Vue beserta Token dan Data User via URL
+            return redirect()->away($frontendUrl . '/auth/callback?token=' . $token . '&user=' . urlencode(json_encode($user)));
+
+        } catch (\Exception $e) {
+            Log::error('Google Auth Error: ' . $e->getMessage());
+            $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+            return redirect()->away($frontendUrl . '/login?error=GoogleAuthFailed');
+        }
     }
 }

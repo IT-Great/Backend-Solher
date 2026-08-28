@@ -1054,6 +1054,9 @@ Route::get('/events', [EventController::class, 'indexPublic']);
 Route::middleware('throttle:auth-limiter')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
+    // Tambahkan 2 baris ini:
+    Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle']);
+    Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
     Route::post('/admin/login', [AuthController::class, 'adminLogin']);
 });
 
@@ -1079,7 +1082,9 @@ Route::get('/payments/paypal-capture', [PaymentController::class, 'capturePayPal
 Route::post('/promo/claim', [PromoController::class, 'claim'])->middleware('throttle:3,1');
 
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user', function (Request $request) { return $request->user(); });
+    Route::get('/user', function (Request $request) {
+        return $request->user();
+    });
     Route::post('/user/update-info', [AuthController::class, 'updateProfileInfo']);
     Route::post('/user/update-image', [AuthController::class, 'updateImage']);
     Route::post('/user/update-password', [AuthController::class, 'updatePassword']);
@@ -1113,7 +1118,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('throttle:5,1')->group(function () {
         // --- KLASTER CHECKOUT ---
         Route::post('/checkout', [TransactionController::class, 'checkout'])
-             ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
+            ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
 
         Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
     });
@@ -1136,7 +1141,9 @@ Route::middleware('auth:sanctum')->group(function () {
 // =========================================================================
 
 Route::middleware(['auth:sanctum', 'role:all_staff'])->prefix('admin')->group(function () {
-    Route::get('/', function (Request $request) { return $request->user(); });
+    Route::get('/', function (Request $request) {
+        return $request->user();
+    });
     Route::post('/update-info', [AuthController::class, 'updateAdminProfileInfo']);
     Route::post('/update-image', [AuthController::class, 'updateAdminImage']);
     Route::post('/update-password', [AuthController::class, 'updateAdminPassword']);
@@ -1181,16 +1188,16 @@ Route::middleware(['auth:sanctum', 'role:subscribers'])->group(function () {
         $subscribers = Subscriber::latest()->get();
 
         $headers = [
-            "Content-type"        => "text/csv",
-            "Content-Disposition" => "attachment; filename=solher_subscribers_" . date('Y-m-d_His') . ".csv",
-            "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-            "Expires"             => "0"
+            'Content-type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename=solher_subscribers_' . date('Y-m-d_His') . '.csv',
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0'
         ];
 
         $columns = ['ID', 'Email', 'Account Type', 'Status', 'Subscribed At'];
 
-        $callback = function() use($subscribers, $columns) {
+        $callback = function () use ($subscribers, $columns) {
             $file = fopen('php://output', 'w');
             fputcsv($file, $columns);
 
@@ -1301,7 +1308,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::get('/exchange-rates', function () {
-    if (! Cache::has('exchange_rates')) {
+    if (!Cache::has('exchange_rates')) {
         Artisan::call('currency:update-rates');
     }
     $rates = Cache::get('exchange_rates', ['IDR' => 1]);
