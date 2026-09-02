@@ -26,9 +26,9 @@ use Illuminate\Support\Facades\Log;
 use App\Jobs\SendShippingUpdateJob;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Cache;
 use App\Events\ShippingStatusUpdated;
 use App\Services\PromoMerdekaService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use App\Actions\Checkout\DeductInventoryAction;
 use App\Actions\Checkout\CreateTransactionAction;
@@ -44,6 +44,41 @@ class TransactionController extends Controller
     // =================================================================================
     // [BARU] HELPER FUNGSI UNTUK MENGEMBALIKAN STOK (FIFO RESTORE & ANTI RACE CONDITION)
     // =================================================================================
+
+    // =========================================================================
+    // HELPER FUNCTIONS (Prinsip DRY - Don't Repeat Yourself)
+    // =========================================================================
+
+    // 1. Membersihkan Cache Produk
+    private function clearTransactionProductCache(Transaction $transaction)
+    {
+        foreach ($transaction->details as $detail) {
+            Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+        }
+    }
+
+    // 2. Cek Naik Level Member
+    private function checkAndAssignMembership(User $user)
+    {
+        if ($user->is_membership)
+            return;
+        $totalSpent = Transaction::where('user_id', $user->id)->where('status', 'completed')->sum('total_amount');
+        if ($totalSpent >= 100000) {
+            $user->update(['is_membership' => true]);
+        }
+    }
+
+    // 3. Cek Turun Level Member (Jika ada pembatalan / Refund)
+    private function revokeMembershipIfBelowThreshold(User $user)
+    {
+        if (!$user->is_membership)
+            return;
+        $totalSpent = Transaction::where('user_id', $user->id)->where('status', 'completed')->sum('total_amount');
+        if ($totalSpent < 100000) {
+            $user->update(['is_membership' => false]);
+        }
+    }
+
     public function restoreProductStock($productId, $quantityToRestore)
     {
         if ($quantityToRestore <= 0) {
@@ -52,7 +87,7 @@ class TransactionController extends Controller
 
         // 1. Kunci (Lock) baris produk utama untuk mencegah modifikasi berbarengan
         $product = Product::lockForUpdate()->find($productId);
-        if (! $product) {
+        if (!$product) {
             return;
         }
 
@@ -63,7 +98,7 @@ class TransactionController extends Controller
         $incompleteBatches = ProductStock::where('product_id', $productId)
             ->whereColumn('quantity', '<', 'initial_quantity')
             ->orderBy('created_at', 'asc')
-            ->lockForUpdate() // Kunci baris batch ini selama transaksi berlangsung
+            ->lockForUpdate()  // Kunci baris batch ini selama transaksi berlangsung
             ->get();
 
         foreach ($incompleteBatches as $batch) {
@@ -99,7 +134,7 @@ class TransactionController extends Controller
                 // Jika benar-benar tidak ada batch sama sekali, buat batch pengembalian khusus
                 ProductStock::create([
                     'product_id' => $productId,
-                    'batch_code' => 'RET-'.now()->format('YmdHis').'-'.strtoupper(Str::random(4)),
+                    'batch_code' => 'RET-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4)),
                     'quantity' => $remainingToRestore,
                     'initial_quantity' => $remainingToRestore,
                 ]);
@@ -2174,7 +2209,6 @@ class TransactionController extends Controller
             }
 
             $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
-
                 // 1. Kunci Baris User (Mencegah Race Condition Saldo Poin)
                 $lockedUser = User::lockForUpdate()->find($user->id);
 
@@ -2204,11 +2238,10 @@ class TransactionController extends Controller
             ]);
 
             return $paymentController->createInvoice($request);
-
         } catch (\Throwable $e) {
             report($e);
-            Log::error('CHECKOUT FATAL ERROR: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
-            return response()->json(['message' => 'Internal Server Error: '.$e->getMessage()], 500);
+            Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
         }
     }
 
@@ -2258,16 +2291,16 @@ class TransactionController extends Controller
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
-        if (! in_array($transaction->status, ['awaiting_payment', 'pending', 'processing'])) {
+        if (!in_array($transaction->status, ['awaiting_payment', 'pending', 'processing'])) {
             return response()->json(['message' => 'Cannot cancel this order.'], 400);
         }
 
         // PRE-CHECK BITESHIP (Berjalan di luar transaksi database agar tidak memberatkan server)
-        if ($transaction->status === 'processing' && $transaction->shipping_method === 'biteship' && ! empty($transaction->biteship_order_id)) {
+        if ($transaction->status === 'processing' && $transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
             try {
                 $res = Http::withHeaders([
                     'Authorization' => config('services.biteship.api_key'),
-                ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+                ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
 
                 if ($res->successful()) {
                     $data = $res->json();
@@ -2282,7 +2315,7 @@ class TransactionController extends Controller
 
                     Http::withHeaders([
                         'Authorization' => config('services.biteship.api_key'),
-                    ])->delete('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+                    ])->delete('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
                 }
             } catch (\Exception $e) {
                 report($e);
@@ -2297,7 +2330,7 @@ class TransactionController extends Controller
                     $invoiceApi = new InvoiceApi;
                     $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
 
-                    if (! empty($invoices) && count($invoices) > 0) {
+                    if (!empty($invoices) && count($invoices) > 0) {
                         $xenditInvoiceId = $invoices[0]['id'];
                         $refundApi = new RefundApi;
 
@@ -2337,7 +2370,7 @@ class TransactionController extends Controller
             if ($lockedTransaction->status !== 'refund_manual_required' && $lockedTransaction->status !== 'cancelled') {
                 $lockedTransaction->update([
                     'status' => 'cancelled',
-                    'shipping_status' => 'cancelled', // [PERBAIKAN] Sinkronisasi status pengiriman
+                    'shipping_status' => 'cancelled',  // [PERBAIKAN] Sinkronisasi status pengiriman
                 ]);
 
                 // [PERBAIKAN] KEMBALIKAN POIN YANG HANGUS
@@ -2353,7 +2386,6 @@ class TransactionController extends Controller
                 // }
 
                 if ($lockedTransaction->promo_code) {
-
                     if ($lockedTransaction->promo_code === 'SOLHERMEMBER') {
                         // Kembalikan hak pakai voucher member
                         $lockedTransaction->user->update(['has_used_member_voucher' => false]);
@@ -2400,7 +2432,6 @@ class TransactionController extends Controller
 
         // 👇 TEMPEL KODE PENCAIRAN AFILIASI DI SINI 👇
         if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
-
             // 1. Ubah status komisi menjadi cair (settled)
             $transaction->update(['commission_status' => 'settled']);
 
@@ -2430,14 +2461,14 @@ class TransactionController extends Controller
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
         // Validasi: Refund hanya bisa diajukan saat pesanan selesai atau gagal kirim
-        if (! in_array($transaction->status, ['completed', 'shipping_failed'])) {
+        if (!in_array($transaction->status, ['completed', 'shipping_failed'])) {
             return response()->json(['message' => 'Cannot request refund for this order state.'], 400);
         }
 
         // [BARU] Validasi input text dan file bukti (gambar atau video)
         $request->validate([
             'reason' => 'required|string|max:1000',
-            'proof_file' => 'required|file|mimes:jpeg,png,jpg,mp4,mov|max:10240', // Max 10MB
+            'proof_file' => 'required|file|mimes:jpeg,png,jpg,mp4,mov|max:10240',  // Max 10MB
         ]);
 
         try {
@@ -2460,10 +2491,9 @@ class TransactionController extends Controller
             event(new \App\Events\DashboardUpdated());
 
             return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
-
         } catch (\Exception $e) {
             report($e);
-            Log::error('Failed to upload refund proof: '.$e->getMessage());
+            Log::error('Failed to upload refund proof: ' . $e->getMessage());
 
             return response()->json(['message' => 'Failed to process refund request. Please try again.'], 500);
         }
@@ -2484,13 +2514,13 @@ class TransactionController extends Controller
         // =========================================================================
         $locked = Transaction::where('id', $id)
             ->where('status', 'refund_approved')
-            ->update(['status' => 'refund_processing']); // Status sementara
+            ->update(['status' => 'refund_processing']);  // Status sementara
 
-        if (! $locked) {
+        if (!$locked) {
             return response()->json(['message' => 'Refund is already being processed or not valid.'], 400);
         }
 
-        if (! $transaction->payment) {
+        if (!$transaction->payment) {
             // Rollback status karena gagal
             $transaction->update(['status' => 'refund_approved']);
 
@@ -2498,11 +2528,11 @@ class TransactionController extends Controller
         }
 
         // --- PRE-CHECK DAN EKSEKUSI PEMBATALAN KURIR ---
-        if ($transaction->shipping_method === 'biteship' && ! empty($transaction->biteship_order_id)) {
+        if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
             try {
                 $res = Http::withHeaders([
                     'Authorization' => config('services.biteship.api_key'),
-                ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+                ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
 
                 if ($res->successful()) {
                     $data = $res->json();
@@ -2520,14 +2550,14 @@ class TransactionController extends Controller
                     }
 
                     // JIKA AMAN, BATALKAN KURIR
-                    if (! in_array($biteshipStatus, ['cancelled'])) {
+                    if (!in_array($biteshipStatus, ['cancelled'])) {
                         $cancelRes = Http::withHeaders([
                             'Authorization' => config('services.biteship.api_key'),
-                        ])->delete('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+                        ])->delete('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
 
                         $cancelData = $cancelRes->json();
                         if (isset($cancelData['success']) && $cancelData['success'] === false) {
-                            $transaction->update(['status' => 'refund_approved']); // Rollback
+                            $transaction->update(['status' => 'refund_approved']);  // Rollback
 
                             return response()->json([
                                 'message' => 'Failed to cancel courier. Refund aborted to prevent loss.',
@@ -2537,8 +2567,8 @@ class TransactionController extends Controller
                 }
             } catch (\Exception $e) {
                 report($e);
-                $transaction->update(['status' => 'refund_approved']); // Rollback
-                Log::error('Biteship Pre-Check Error: '.$e->getMessage());
+                $transaction->update(['status' => 'refund_approved']);  // Rollback
+                Log::error('Biteship Pre-Check Error: ' . $e->getMessage());
 
                 return response()->json(['message' => 'Failed to verify logistics status. Try again later.'], 500);
             }
@@ -2587,7 +2617,7 @@ class TransactionController extends Controller
                 // Gunakan status dari instance sebelum diupdate (karena di atas sudah diupdate ke 'refunded')
                 $originalStatus = $transaction->getOriginal('status');
 
-                if (! in_array($originalStatus, $statusesThatAlreadyRestoredStock)) {
+                if (!in_array($originalStatus, $statusesThatAlreadyRestoredStock)) {
                     foreach ($transaction->details as $detail) {
                         $this->restoreProductStock($detail->product_id, $detail->quantity);
                     }
@@ -2634,14 +2664,14 @@ class TransactionController extends Controller
                 ], 200);
             }
 
-            $transaction->update(['status' => 'refund_approved']); // Rollback
+            $transaction->update(['status' => 'refund_approved']);  // Rollback
 
-            return response()->json(['message' => 'Xendit Refund Failed: '.$errorMessage], 422);
+            return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
         } catch (\Exception $e) {
             report($e);
-            $transaction->update(['status' => 'refund_approved']); // Rollback
+            $transaction->update(['status' => 'refund_approved']);  // Rollback
 
-            return response()->json(['message' => 'Refund Error: '.$e->getMessage()], 500);
+            return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
         }
     }
 
@@ -2662,7 +2692,7 @@ class TransactionController extends Controller
         } catch (\Exception $e) {
             report($e);
             // Jika gagal kirim email, jangan hentikan proses approve
-            Log::error("Gagal kirim email Approve Refund ke {$transaction->user->email}: ".$e->getMessage());
+            Log::error("Gagal kirim email Approve Refund ke {$transaction->user->email}: " . $e->getMessage());
         }
 
         // 👇 [BARU] TEMBAKKAN EVENT 👇
@@ -2699,7 +2729,7 @@ class TransactionController extends Controller
         } catch (\Exception $e) {
             report($e);
             // Jika gagal kirim email, jangan hentikan proses reject
-            Log::error("Gagal kirim email Reject Refund ke {$transaction->user->email}: ".$e->getMessage());
+            Log::error("Gagal kirim email Reject Refund ke {$transaction->user->email}: " . $e->getMessage());
         }
 
         event(new \App\Events\DashboardUpdated());
@@ -2794,14 +2824,16 @@ class TransactionController extends Controller
 
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('product_name', 'like', "%{$search}%")
-                  ->orWhere('product_code', 'like', "%{$search}%");
+                $q
+                    ->where('product_name', 'like', "%{$search}%")
+                    ->orWhere('product_code', 'like', "%{$search}%");
             });
         }
 
         // Kita tetap melakukan grouping akhir karena jika admin tidak memilih bulan (hanya tahun),
         // kita perlu menjumlahkan bulan 1 sampai 12 untuk produk yang sama
-        $report = $query->groupBy('product_id', 'product_code', 'product_name', 'product_image', 'category_name')
+        $report = $query
+            ->groupBy('product_id', 'product_code', 'product_name', 'product_image', 'category_name')
             ->orderByDesc('total_revenue')
             ->get();
 
@@ -2810,33 +2842,49 @@ class TransactionController extends Controller
         ]);
     }
 
-    public function trackOrder($id)
+    // public function trackOrder($id)
+    // {
+    //     $transaction = Transaction::where('user_id', request()->user()->id)->findOrFail($id);
+
+    //     // [PERBAIKAN] Validasi menggunakan biteship_order_id
+    //     if ($transaction->shipping_method !== 'biteship' || ! $transaction->biteship_order_id) {
+    //         return response()->json(['message' => 'Tracking information is not available yet.'], 400);
+    //     }
+
+    //     try {
+    //         // [PERBAIKAN] Memanggil Endpoint GET Order Biteship
+    //         $response = Http::withHeaders([
+    //             'Authorization' => config('services.biteship.api_key'),
+    //         ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+
+    //         $data = $response->json();
+
+    //         if (isset($data['success']) && $data['success'] === false) {
+    //             return response()->json(['message' => $data['error'] ?? 'Order not found in Logistics'], 400);
+    //         }
+
+    //         // Kembalikan seluruh objek respon JSON dari Biteship ke Frontend
+    //         return response()->json($data);
+    //     } catch (\Exception $e) {
+    //         report($e);
+
+    //         return response()->json(['message' => 'Failed to retrieve tracking data: '.$e->getMessage()], 500);
+    //     }
+    // }
+
+    public function trackOrder($id, BiteshipService $biteship)
     {
         $transaction = Transaction::where('user_id', request()->user()->id)->findOrFail($id);
-
-        // [PERBAIKAN] Validasi menggunakan biteship_order_id
-        if ($transaction->shipping_method !== 'biteship' || ! $transaction->biteship_order_id) {
-            return response()->json(['message' => 'Tracking information is not available yet.'], 400);
-        }
+        if ($transaction->shipping_method !== 'biteship' || !$transaction->biteship_order_id)
+            return response()->json(['message' => 'Tracking unavailable.'], 400);
 
         try {
-            // [PERBAIKAN] Memanggil Endpoint GET Order Biteship
-            $response = Http::withHeaders([
-                'Authorization' => config('services.biteship.api_key'),
-            ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
-
-            $data = $response->json();
-
-            if (isset($data['success']) && $data['success'] === false) {
-                return response()->json(['message' => $data['error'] ?? 'Order not found in Logistics'], 400);
-            }
-
-            // Kembalikan seluruh objek respon JSON dari Biteship ke Frontend
+            $data = $biteship->getOrderTracking($transaction->biteship_order_id);
+            if (isset($data['success']) && $data['success'] === false)
+                return response()->json(['message' => $data['error'] ?? 'Order not found'], 400);
             return response()->json($data);
         } catch (\Exception $e) {
-            report($e);
-
-            return response()->json(['message' => 'Failed to retrieve tracking data: '.$e->getMessage()], 500);
+            return response()->json(['message' => 'Failed to track: ' . $e->getMessage()], 500);
         }
     }
 
@@ -2861,12 +2909,12 @@ class TransactionController extends Controller
             try {
                 $response = Http::withHeaders([
                     'Authorization' => config('services.biteship.api_key'),
-                ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+                ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
 
                 if (isset($response['success']) && $response['success'] === true) {
                     $trackingData[$transaction->id] = $response->json();
                 } else {
-                    $trackingData[$transaction->id] = ['status' => 'pending']; // Fallback jika belum teralokasi
+                    $trackingData[$transaction->id] = ['status' => 'pending'];  // Fallback jika belum teralokasi
                 }
             } catch (\Exception $e) {
                 report($e);
@@ -2914,65 +2962,87 @@ class TransactionController extends Controller
     //     return response()->json($trackingData);
     // }
 
-    public function adminBulkTrackOrders(Request $request)
+    // public function adminBulkTrackOrders(Request $request)
+    // {
+    //     $request->validate([
+    //         'transaction_ids' => 'required|array',
+    //         'transaction_ids.*' => 'integer|exists:transactions,id',
+    //     ]);
+
+    //     // Batasi maksimal 20 tracking sekaligus agar API Biteship tidak memblokir Anda (Rate Limiting)
+    //     if (count($request->transaction_ids) > 20) {
+    //         return response()->json(['message' => 'Maksimal tracking massal adalah 20 pesanan sekaligus.'], 422);
+    //     }
+
+    //     $transactions = Transaction::whereIn('id', $request->transaction_ids)
+    //         ->whereNotNull('biteship_order_id')
+    //         ->where('shipping_method', 'biteship')
+    //         ->get();
+
+    //     if ($transactions->isEmpty()) {
+    //         return response()->json([]);
+    //     }
+
+    //     // [PERBAIKAN KRITIS] Tembak API Biteship secara PARALEL (Bersamaan)
+    //     $responses = Http::pool(function (Pool $pool) use ($transactions) {
+    //         foreach ($transactions as $transaction) {
+    //             $pool->as($transaction->id)
+    //                 ->withHeaders(['Authorization' => config('services.biteship.api_key')])
+    //                 ->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+    //         }
+    //     });
+
+    //     $trackingData = [];
+
+    //     // Rangkai hasil balasannya
+    //     foreach ($transactions as $transaction) {
+    //         $response = $responses[$transaction->id] ?? null;
+
+    //         if ($response && $response->ok() && isset($response['success']) && $response['success'] === true) {
+    //             $trackingData[$transaction->id] = $response->json();
+    //         } else {
+    //             $trackingData[$transaction->id] = ['status' => 'pending/error'];
+    //         }
+    //     }
+
+    //     return response()->json($trackingData);
+    // }
+
+    public function adminBulkTrackOrders(Request $request, BiteshipService $biteship)
     {
-        $request->validate([
-            'transaction_ids' => 'required|array',
-            'transaction_ids.*' => 'integer|exists:transactions,id',
-        ]);
+        $request->validate(['transaction_ids' => 'required|array', 'transaction_ids.*' => 'integer|exists:transactions,id']);
+        if (count($request->transaction_ids) > 20)
+            return response()->json(['message' => 'Max 20 tracking at once.'], 422);
 
-        // Batasi maksimal 20 tracking sekaligus agar API Biteship tidak memblokir Anda (Rate Limiting)
-        if (count($request->transaction_ids) > 20) {
-            return response()->json(['message' => 'Maksimal tracking massal adalah 20 pesanan sekaligus.'], 422);
-        }
-
-        $transactions = Transaction::whereIn('id', $request->transaction_ids)
-            ->whereNotNull('biteship_order_id')
-            ->where('shipping_method', 'biteship')
-            ->get();
-
-        if ($transactions->isEmpty()) {
+        $transactions = Transaction::whereIn('id', $request->transaction_ids)->whereNotNull('biteship_order_id')->where('shipping_method', 'biteship')->get();
+        if ($transactions->isEmpty())
             return response()->json([]);
+
+        // Tembak secara paralel melalui Service
+        $biteshipIds = $transactions->pluck('biteship_order_id', 'id')->toArray();
+        $trackingData = $biteship->getBulkTrackingParallel(array_values($biteshipIds));
+
+        // Mapping ID Transaksi Lokal ke hasil tracking Biteship
+        $finalData = [];
+        foreach ($biteshipIds as $transactionId => $bId) {
+            $finalData[$transactionId] = $trackingData[$bId] ?? ['status' => 'pending/error'];
         }
-
-        // [PERBAIKAN KRITIS] Tembak API Biteship secara PARALEL (Bersamaan)
-        $responses = Http::pool(function (Pool $pool) use ($transactions) {
-            foreach ($transactions as $transaction) {
-                $pool->as($transaction->id)
-                    ->withHeaders(['Authorization' => config('services.biteship.api_key')])
-                    ->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
-            }
-        });
-
-        $trackingData = [];
-
-        // Rangkai hasil balasannya
-        foreach ($transactions as $transaction) {
-            $response = $responses[$transaction->id] ?? null;
-
-            if ($response && $response->ok() && isset($response['success']) && $response['success'] === true) {
-                $trackingData[$transaction->id] = $response->json();
-            } else {
-                $trackingData[$transaction->id] = ['status' => 'pending/error'];
-            }
-        }
-
-        return response()->json($trackingData);
+        return response()->json($finalData);
     }
 
     // Fungsi khusus Admin untuk mengambil detail tracking 1 order
     public function adminTrackOrder($id)
     {
-        $transaction = Transaction::findOrFail($id); // HAPUS filter user_id
+        $transaction = Transaction::findOrFail($id);  // HAPUS filter user_id
 
-        if ($transaction->shipping_method !== 'biteship' || ! $transaction->biteship_order_id) {
+        if ($transaction->shipping_method !== 'biteship' || !$transaction->biteship_order_id) {
             return response()->json(['message' => 'Tracking information is not available yet.'], 400);
         }
 
         try {
             $response = Http::withHeaders([
                 'Authorization' => config('services.biteship.api_key'),
-            ])->get('https://api.biteship.com/v1/orders/'.$transaction->biteship_order_id);
+            ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
 
             $data = $response->json();
 
@@ -2984,42 +3054,61 @@ class TransactionController extends Controller
         } catch (\Exception $e) {
             report($e);
 
-            return response()->json(['message' => 'Failed to retrieve tracking data: '.$e->getMessage()], 500);
+            return response()->json(['message' => 'Failed to retrieve tracking data: ' . $e->getMessage()], 500);
         }
     }
 
-    public function printLabel(Request $request, $id)
+    // public function printLabel(Request $request, $id)
+    // {
+    //     $transaction = Transaction::findOrFail($id);
+
+    //     if (! $transaction->biteship_order_id) {
+    //         return response()->json(['message' => 'Order ID Biteship tidak ditemukan'], 404);
+    //     }
+
+    //     // Ambil query parameter dari Vue (insurance_shown, dll)
+    //     $queryString = http_build_query($request->all());
+
+    //     // Target URL Biteship (Perhatikan ini menggunakan api.biteship.com, BUKAN biteship.com)
+    //     $biteshipUrl = "https://api.biteship.com/v1/orders/{$transaction->biteship_order_id}/labels?{$queryString}";
+
+    //     try {
+    //         // Tembak URL label Biteship dengan API Key kita
+    //         $response = Http::withHeaders([
+    //             'Authorization' => config('services.biteship.api_key'),
+    //         ])->get($biteshipUrl);
+
+    //         // Jika sukses, Biteship biasanya mengembalikan langsung file PDF (application/pdf)
+    //         if ($response->successful()) {
+    //             return response($response->body(), 200)
+    //                 ->header('Content-Type', 'application/pdf')
+    //                 ->header('Content-Disposition', 'inline; filename="Resi-'.$transaction->order_id.'.pdf"');
+    //         }
+
+    //         return response()->json(['message' => 'Gagal mengambil resi dari Biteship: '.$response->body()], 400);
+    //     } catch (\Exception $e) {
+    //         report($e);
+
+    //         return response()->json(['message' => 'Terjadi kesalahan sistem: '.$e->getMessage()], 500);
+    //     }
+    // }
+
+    public function printLabel(Request $request, $id, BiteshipService $biteship)
     {
         $transaction = Transaction::findOrFail($id);
-
-        if (! $transaction->biteship_order_id) {
-            return response()->json(['message' => 'Order ID Biteship tidak ditemukan'], 404);
-        }
-
-        // Ambil query parameter dari Vue (insurance_shown, dll)
-        $queryString = http_build_query($request->all());
-
-        // Target URL Biteship (Perhatikan ini menggunakan api.biteship.com, BUKAN biteship.com)
-        $biteshipUrl = "https://api.biteship.com/v1/orders/{$transaction->biteship_order_id}/labels?{$queryString}";
+        if (!$transaction->biteship_order_id)
+            return response()->json(['message' => 'No Biteship ID'], 404);
 
         try {
-            // Tembak URL label Biteship dengan API Key kita
-            $response = Http::withHeaders([
-                'Authorization' => config('services.biteship.api_key'),
-            ])->get($biteshipUrl);
-
-            // Jika sukses, Biteship biasanya mengembalikan langsung file PDF (application/pdf)
+            $response = $biteship->getLabelPdfResponse($transaction->biteship_order_id, http_build_query($request->all()));
             if ($response->successful()) {
                 return response($response->body(), 200)
                     ->header('Content-Type', 'application/pdf')
-                    ->header('Content-Disposition', 'inline; filename="Resi-'.$transaction->order_id.'.pdf"');
+                    ->header('Content-Disposition', 'inline; filename="Resi-' . $transaction->order_id . '.pdf"');
             }
-
-            return response()->json(['message' => 'Gagal mengambil resi dari Biteship: '.$response->body()], 400);
+            return response()->json(['message' => 'Gagal mengambil resi'], 400);
         } catch (\Exception $e) {
-            report($e);
-
-            return response()->json(['message' => 'Terjadi kesalahan sistem: '.$e->getMessage()], 500);
+            return response()->json(['message' => 'System error: ' . $e->getMessage()], 500);
         }
     }
 
@@ -3153,23 +3242,23 @@ class TransactionController extends Controller
     }
 
     // --- [BARU] HELPER FUNGSI UNTUK CEK MEMBERSHIP ---
-    private function checkAndAssignMembership($user)
-    {
-        // Jika user sudah member, tidak perlu cek lagi
-        if ($user->is_membership) {
-            return;
-        }
+    // private function checkAndAssignMembership($user)
+    // {
+    //     // Jika user sudah member, tidak perlu cek lagi
+    //     if ($user->is_membership) {
+    //         return;
+    //     }
 
-        // Hitung total belanja dari semua transaksi yang BERHASIL (completed)
-        $totalSpent = Transaction::where('user_id', $user->id)
-            ->where('status', 'completed')
-            ->sum('total_amount'); // Hanya hitung harga barang, ongkir tidak termasuk
+    //     // Hitung total belanja dari semua transaksi yang BERHASIL (completed)
+    //     $totalSpent = Transaction::where('user_id', $user->id)
+    //         ->where('status', 'completed')
+    //         ->sum('total_amount'); // Hanya hitung harga barang, ongkir tidak termasuk
 
-        // Jika total belanja >= 100.000, jadikan member
-        if ($totalSpent >= 100000) {
-            $user->update(['is_membership' => true]);
-        }
-    }
+    //     // Jika total belanja >= 100.000, jadikan member
+    //     if ($totalSpent >= 100000) {
+    //         $user->update(['is_membership' => true]);
+    //     }
+    // }
 
     // =====================================================================
     // 👇 FUNGSI BARU UNTUK ADMIN MENGHAPUS TRANSAKSI PERMANEN 👇
@@ -3185,7 +3274,6 @@ class TransactionController extends Controller
 
         // Mulai transaksi database agar penghapusan konsisten
         DB::transaction(function () use ($transaction) {
-
             // 1. KEMBALIKAN STOK BARANG (Jika statusnya bukan batal/refund)
             // Karena jika statusnya sudah batal/refund, stoknya sudah kembali.
             $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];

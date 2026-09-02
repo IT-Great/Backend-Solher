@@ -366,9 +366,9 @@
 
 namespace App\Services;
 
-use App\Contracts\ShippingGatewayInterface;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
+use App\Contracts\ShippingGatewayInterface;
 
 class BiteshipService implements ShippingGatewayInterface
 {
@@ -408,9 +408,9 @@ class BiteshipService implements ShippingGatewayInterface
             'destination_latitude' => floatval($destination['latitude']),
             'destination_longitude' => floatval($destination['longitude']),
             'couriers' => 'jne,sicepat,jnt,anteraja,grab,gojek,paxel,ninja',
-            
+
             // 👇 KIRIM DATA BARANG YANG ASLI BESERTA DIMENSINYA KE API BITESHIP 👇
-            'items' => $items, 
+            'items' => $items,
         ];
 
         $response = Http::withHeaders([
@@ -483,5 +483,50 @@ class BiteshipService implements ShippingGatewayInterface
             'tracking_number' => $data['courier']['waybill_id'] ?? 'Pending',
             'status' => strtolower($data['status'] ?? 'pending')
         ];
+    }
+
+    // 👇 KUMPULAN FUNGSI BARU UNTUK CLEAN ARCHITECTURE 👇
+
+    public function getOrderTracking(string $biteshipOrderId)
+    {
+        $response = Http::withHeaders(['Authorization' => $this->apiKey])
+            ->get("{$this->baseUrl}/orders/{$biteshipOrderId}");
+
+        return $response->json();
+    }
+
+    public function cancelOrder(string $biteshipOrderId): bool
+    {
+        $response = Http::withHeaders(['Authorization' => $this->apiKey])
+            ->delete("{$this->baseUrl}/orders/{$biteshipOrderId}");
+
+        $data = $response->json();
+        return !isset($data['success']) || $data['success'] !== false;
+    }
+
+    public function getBulkTrackingParallel(array $biteshipOrderIds): array
+    {
+        $responses = Http::pool(function (Pool $pool) use ($biteshipOrderIds) {
+            foreach ($biteshipOrderIds as $id) {
+                $pool->as($id)->withHeaders(['Authorization' => $this->apiKey])->get("{$this->baseUrl}/orders/{$id}");
+            }
+        });
+
+        $trackingData = [];
+        foreach ($biteshipOrderIds as $id) {
+            $res = $responses[$id] ?? null;
+            if ($res && $res->ok() && isset($res['success']) && $res['success'] === true) {
+                $trackingData[$id] = $res->json();
+            } else {
+                $trackingData[$id] = ['status' => 'pending/error'];
+            }
+        }
+        return $trackingData;
+    }
+
+    public function getLabelPdfResponse(string $biteshipOrderId, string $queryString)
+    {
+        return Http::withHeaders(['Authorization' => $this->apiKey])
+            ->get("{$this->baseUrl}/orders/{$biteshipOrderId}/labels?{$queryString}");
     }
 }
