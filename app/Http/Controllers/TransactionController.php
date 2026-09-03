@@ -2287,7 +2287,140 @@ class TransactionController extends Controller
     //     return response()->json($transactions);
     // }
 
-    public function cancelOrder(Request $request, $id)
+    // public function cancelOrder(Request $request, $id)
+    // {
+    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+    //     if (!in_array($transaction->status, ['awaiting_payment', 'pending', 'processing'])) {
+    //         return response()->json(['message' => 'Cannot cancel this order.'], 400);
+    //     }
+
+    //     // PRE-CHECK BITESHIP (Berjalan di luar transaksi database agar tidak memberatkan server)
+    //     if ($transaction->status === 'processing' && $transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+    //         try {
+    //             $res = Http::withHeaders([
+    //                 'Authorization' => config('services.biteship.api_key'),
+    //             ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
+
+    //             if ($res->successful()) {
+    //                 $data = $res->json();
+    //                 $biteshipStatus = strtolower($data['status'] ?? '');
+
+    //                 $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'return_in_transit', 'returned', 'disposed'];
+    //                 if (in_array($biteshipStatus, $unCancellableStatuses)) {
+    //                     return response()->json([
+    //                         'message' => 'Cannot cancel: The package is already being processed by the courier.',
+    //                     ], 400);
+    //                 }
+
+    //                 Http::withHeaders([
+    //                     'Authorization' => config('services.biteship.api_key'),
+    //                 ])->delete('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
+    //             }
+    //         } catch (\Exception $e) {
+    //             report($e);
+
+    //             return response()->json(['message' => 'Failed to verify logistics status with Biteship.'], 500);
+    //         }
+
+    //         // AUTO-REFUND XENDIT
+    //         try {
+    //             $transaction->load('payment');
+    //             if ($transaction->payment && $transaction->payment->external_id) {
+    //                 $invoiceApi = new InvoiceApi;
+    //                 $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+
+    //                 if (!empty($invoices) && count($invoices) > 0) {
+    //                     $xenditInvoiceId = $invoices[0]['id'];
+    //                     $refundApi = new RefundApi;
+
+    //                     $refundRequest = new CreateRefund([
+    //                         'invoice_id' => $xenditInvoiceId,
+    //                         'reason' => 'REQUESTED_BY_CUSTOMER',
+    //                         'amount' => (int) $transaction->total_amount,
+    //                         'metadata' => ['order_id' => $transaction->order_id],
+    //                     ]);
+
+    //                     $refundApi->createRefund(null, null, $refundRequest);
+    //                 }
+    //             }
+    //         } catch (\Exception $e) {
+    //             report($e);
+    //             // JIKA REFUND GAGAL (TAPI KURIR SUDAH DIBATALKAN), LEMPAR KE REFUND MANUAL TAPI KEMBALIKAN STOKNYA
+    //             DB::transaction(function () use ($transaction) {
+    //                 $transaction->update(['status' => 'refund_manual_required']);
+    //                 foreach ($transaction->details as $detail) {
+    //                     // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore
+    //                     $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //                 }
+    //             });
+
+    //             // 👇 [BARU] TEMBAKKAN EVENT 👇
+    //             event(new \App\Events\DashboardUpdated());
+
+    //             return response()->json(['message' => 'Order cancelled, but automatic refund failed. Admin will process it manually.']);
+    //         }
+    //     }
+
+    //     // [PENTING] Bungkus pembatalan status dan pengembalian stok dalam DB Transaction
+    //     DB::transaction(function () use ($transaction) {
+    //         // Re-fetch dan Lock untuk mencegah error paralel
+    //         $lockedTransaction = Transaction::lockForUpdate()->find($transaction->id);
+
+    //         if ($lockedTransaction->status !== 'refund_manual_required' && $lockedTransaction->status !== 'cancelled') {
+    //             $lockedTransaction->update([
+    //                 'status' => 'cancelled',
+    //                 'shipping_status' => 'cancelled',  // [PERBAIKAN] Sinkronisasi status pengiriman
+    //             ]);
+
+    //             // [PERBAIKAN] KEMBALIKAN POIN YANG HANGUS
+    //             if ($lockedTransaction->points_used > 0) {
+    //                 $lockedTransaction->user->increment('point', $lockedTransaction->points_used);
+    //             }
+
+    //             // [BARU] KEMBALIKAN PROMO CODE JIKA TRANSAKSI BATAL
+    //             // if ($lockedTransaction->promo_code) {
+    //             //     PromoClaim::where('email', $lockedTransaction->user->email)
+    //             //         ->where('promo_code', $lockedTransaction->promo_code)
+    //             //         ->update(['is_used' => false, 'used_at' => null]);
+    //             // }
+
+    //             if ($lockedTransaction->promo_code) {
+    //                 if ($lockedTransaction->promo_code === 'SOLHERMEMBER') {
+    //                     // Kembalikan hak pakai voucher member
+    //                     $lockedTransaction->user->update(['has_used_member_voucher' => false]);
+    //                 } else {
+    //                     // Kembalikan kode promo biasa
+    //                     PromoClaim::where('email', $lockedTransaction->user->email)
+    //                         ->where('promo_code', $lockedTransaction->promo_code)
+    //                         ->update(['is_used' => false, 'used_at' => null]);
+    //                 }
+    //             }
+
+    //             if ($lockedTransaction->payment) {
+    //                 $lockedTransaction->payment->update(['status' => 'EXPIRED']);
+    //             }
+
+    //             // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore
+    //             foreach ($lockedTransaction->details as $detail) {
+    //                 $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //             }
+    //         }
+    //     });
+
+    //     // Cache::tags(['catalog'])->flush();
+
+    //     foreach ($transaction->details as $detail) {
+    //         Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+    //     }
+
+    //     // 👇 [BARU] TEMBAKKAN EVENT 👇
+    //     event(new \App\Events\DashboardUpdated());
+
+    //     return response()->json(['message' => 'Order cancelled successfully']);
+    // }
+
+    public function cancelOrder(Request $request, $id, CancelTransactionAction $cancelTransaction, BiteshipService $biteship)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
@@ -2295,129 +2428,18 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Cannot cancel this order.'], 400);
         }
 
-        // PRE-CHECK BITESHIP (Berjalan di luar transaksi database agar tidak memberatkan server)
-        if ($transaction->status === 'processing' && $transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
-            try {
-                $res = Http::withHeaders([
-                    'Authorization' => config('services.biteship.api_key'),
-                ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
+        try {
+            $result = $cancelTransaction->execute($transaction, $biteship);
 
-                if ($res->successful()) {
-                    $data = $res->json();
-                    $biteshipStatus = strtolower($data['status'] ?? '');
+            $this->clearTransactionProductCache($transaction);
+            $this->revokeMembershipIfBelowThreshold($transaction->user);
 
-                    $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'return_in_transit', 'returned', 'disposed'];
-                    if (in_array($biteshipStatus, $unCancellableStatuses)) {
-                        return response()->json([
-                            'message' => 'Cannot cancel: The package is already being processed by the courier.',
-                        ], 400);
-                    }
+            event(new \App\Events\DashboardUpdated());
 
-                    Http::withHeaders([
-                        'Authorization' => config('services.biteship.api_key'),
-                    ])->delete('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
-                }
-            } catch (\Exception $e) {
-                report($e);
-
-                return response()->json(['message' => 'Failed to verify logistics status with Biteship.'], 500);
-            }
-
-            // AUTO-REFUND XENDIT
-            try {
-                $transaction->load('payment');
-                if ($transaction->payment && $transaction->payment->external_id) {
-                    $invoiceApi = new InvoiceApi;
-                    $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
-
-                    if (!empty($invoices) && count($invoices) > 0) {
-                        $xenditInvoiceId = $invoices[0]['id'];
-                        $refundApi = new RefundApi;
-
-                        $refundRequest = new CreateRefund([
-                            'invoice_id' => $xenditInvoiceId,
-                            'reason' => 'REQUESTED_BY_CUSTOMER',
-                            'amount' => (int) $transaction->total_amount,
-                            'metadata' => ['order_id' => $transaction->order_id],
-                        ]);
-
-                        $refundApi->createRefund(null, null, $refundRequest);
-                    }
-                }
-            } catch (\Exception $e) {
-                report($e);
-                // JIKA REFUND GAGAL (TAPI KURIR SUDAH DIBATALKAN), LEMPAR KE REFUND MANUAL TAPI KEMBALIKAN STOKNYA
-                DB::transaction(function () use ($transaction) {
-                    $transaction->update(['status' => 'refund_manual_required']);
-                    foreach ($transaction->details as $detail) {
-                        // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore
-                        $this->restoreProductStock($detail->product_id, $detail->quantity);
-                    }
-                });
-
-                // 👇 [BARU] TEMBAKKAN EVENT 👇
-                event(new \App\Events\DashboardUpdated());
-
-                return response()->json(['message' => 'Order cancelled, but automatic refund failed. Admin will process it manually.']);
-            }
+            return response()->json(['message' => $result['message']]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
         }
-
-        // [PENTING] Bungkus pembatalan status dan pengembalian stok dalam DB Transaction
-        DB::transaction(function () use ($transaction) {
-            // Re-fetch dan Lock untuk mencegah error paralel
-            $lockedTransaction = Transaction::lockForUpdate()->find($transaction->id);
-
-            if ($lockedTransaction->status !== 'refund_manual_required' && $lockedTransaction->status !== 'cancelled') {
-                $lockedTransaction->update([
-                    'status' => 'cancelled',
-                    'shipping_status' => 'cancelled',  // [PERBAIKAN] Sinkronisasi status pengiriman
-                ]);
-
-                // [PERBAIKAN] KEMBALIKAN POIN YANG HANGUS
-                if ($lockedTransaction->points_used > 0) {
-                    $lockedTransaction->user->increment('point', $lockedTransaction->points_used);
-                }
-
-                // [BARU] KEMBALIKAN PROMO CODE JIKA TRANSAKSI BATAL
-                // if ($lockedTransaction->promo_code) {
-                //     PromoClaim::where('email', $lockedTransaction->user->email)
-                //         ->where('promo_code', $lockedTransaction->promo_code)
-                //         ->update(['is_used' => false, 'used_at' => null]);
-                // }
-
-                if ($lockedTransaction->promo_code) {
-                    if ($lockedTransaction->promo_code === 'SOLHERMEMBER') {
-                        // Kembalikan hak pakai voucher member
-                        $lockedTransaction->user->update(['has_used_member_voucher' => false]);
-                    } else {
-                        // Kembalikan kode promo biasa
-                        PromoClaim::where('email', $lockedTransaction->user->email)
-                            ->where('promo_code', $lockedTransaction->promo_code)
-                            ->update(['is_used' => false, 'used_at' => null]);
-                    }
-                }
-
-                if ($lockedTransaction->payment) {
-                    $lockedTransaction->payment->update(['status' => 'EXPIRED']);
-                }
-
-                // [PERBAIKAN] Mengembalikan stok pakai FIFO Restore
-                foreach ($lockedTransaction->details as $detail) {
-                    $this->restoreProductStock($detail->product_id, $detail->quantity);
-                }
-            }
-        });
-
-        // Cache::tags(['catalog'])->flush();
-
-        foreach ($transaction->details as $detail) {
-            Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
-        }
-
-        // 👇 [BARU] TEMBAKKAN EVENT 👇
-        event(new \App\Events\DashboardUpdated());
-
-        return response()->json(['message' => 'Order cancelled successfully']);
     }
 
     public function confirmComplete(Request $request, $id)
@@ -2456,222 +2478,270 @@ class TransactionController extends Controller
         return response()->json(['message' => 'Order completed!']);
     }
 
-    public function requestRefund(Request $request, $id)
+    // public function requestRefund(Request $request, $id)
+    // {
+    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+    //     // Validasi: Refund hanya bisa diajukan saat pesanan selesai atau gagal kirim
+    //     if (!in_array($transaction->status, ['completed', 'shipping_failed'])) {
+    //         return response()->json(['message' => 'Cannot request refund for this order state.'], 400);
+    //     }
+
+    //     // [BARU] Validasi input text dan file bukti (gambar atau video)
+    //     $request->validate([
+    //         'reason' => 'required|string|max:1000',
+    //         'proof_file' => 'required|file|mimes:jpeg,png,jpg,mp4,mov|max:10240',  // Max 10MB
+    //     ]);
+
+    //     try {
+    //         // [BARU] Upload file ke AWS S3
+    //         $file = $request->file('proof_file');
+    //         $path = $file->store('refund_proofs', [
+    //             'disk' => 's3',
+    //             'visibility' => 'public',
+    //         ]);
+    //         $proofUrl = Storage::disk('s3')->url($path);
+
+    //         // Update transaksi
+    //         $transaction->update([
+    //             'status' => 'refund_requested',
+    //             'refund_reason' => $request->reason,
+    //             'refund_proof_url' => $proofUrl,
+    //         ]);
+
+    //         // 👇 [BARU] TEMBAKKAN EVENT 👇
+    //         event(new \App\Events\DashboardUpdated());
+
+    //         return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         Log::error('Failed to upload refund proof: ' . $e->getMessage());
+
+    //         return response()->json(['message' => 'Failed to process refund request. Please try again.'], 500);
+    //     }
+    // }
+
+    public function requestRefund(Request $request, $id, FileUploadService $fileUpload)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
-        // Validasi: Refund hanya bisa diajukan saat pesanan selesai atau gagal kirim
         if (!in_array($transaction->status, ['completed', 'shipping_failed'])) {
             return response()->json(['message' => 'Cannot request refund for this order state.'], 400);
         }
 
-        // [BARU] Validasi input text dan file bukti (gambar atau video)
         $request->validate([
             'reason' => 'required|string|max:1000',
-            'proof_file' => 'required|file|mimes:jpeg,png,jpg,mp4,mov|max:10240',  // Max 10MB
+            'proof_file' => 'required|file|mimes:jpeg,png,jpg,mp4,mov|max:10240',
         ]);
 
         try {
-            // [BARU] Upload file ke AWS S3
-            $file = $request->file('proof_file');
-            $path = $file->store('refund_proofs', [
-                'disk' => 's3',
-                'visibility' => 'public',
-            ]);
-            $proofUrl = Storage::disk('s3')->url($path);
+            $proofUrl = $fileUpload->uploadToS3($request->file('proof_file'), 'refund_proofs');
 
-            // Update transaksi
             $transaction->update([
                 'status' => 'refund_requested',
                 'refund_reason' => $request->reason,
                 'refund_proof_url' => $proofUrl,
             ]);
 
-            // 👇 [BARU] TEMBAKKAN EVENT 👇
             event(new \App\Events\DashboardUpdated());
-
             return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
-        } catch (\Exception $e) {
-            report($e);
-            Log::error('Failed to upload refund proof: ' . $e->getMessage());
 
+        } catch (\Exception $e) {
+            Log::error('Upload refund proof gagal: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to process refund request. Please try again.'], 500);
         }
     }
 
     // User klik "Refund Now" setelah disetujui admin
-    public function processRefundUser(Request $request, $id)
+    // public function processRefundUser(Request $request, $id)
+    // {
+    //     // 1. Ambil data transaksi (Tanpa Lock terlebih dahulu)
+    //     $transaction = Transaction::with('payment')
+    //         ->where('user_id', $request->user()->id)
+    //         ->findOrFail($id);
+
+    //     // =========================================================================
+    //     // [PERBAIKAN] ATOMIC STATE TRANSITION (Pencegah Double Refund)
+    //     // Kita paksa ubah statusnya di database SEBELUM memanggil API Xendit.
+    //     // Jika ada 2 request masuk bersamaan, request kedua akan menghasilkan $locked = 0 (Gagal)
+    //     // =========================================================================
+    //     $locked = Transaction::where('id', $id)
+    //         ->where('status', 'refund_approved')
+    //         ->update(['status' => 'refund_processing']);  // Status sementara
+
+    //     if (!$locked) {
+    //         return response()->json(['message' => 'Refund is already being processed or not valid.'], 400);
+    //     }
+
+    //     if (!$transaction->payment) {
+    //         // Rollback status karena gagal
+    //         $transaction->update(['status' => 'refund_approved']);
+
+    //         return response()->json(['message' => 'Payment data not found.'], 404);
+    //     }
+
+    //     // --- PRE-CHECK DAN EKSEKUSI PEMBATALAN KURIR ---
+    //     if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+    //         try {
+    //             $res = Http::withHeaders([
+    //                 'Authorization' => config('services.biteship.api_key'),
+    //             ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
+
+    //             if ($res->successful()) {
+    //                 $data = $res->json();
+    //                 $biteshipStatus = strtolower($data['status'] ?? '');
+
+    //                 $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'rejected', 'return_in_transit', 'returned'];
+
+    //                 if (in_array($biteshipStatus, $unCancellableStatuses)) {
+    //                     // Rollback status karena kurir sudah jalan
+    //                     $transaction->update(['status' => 'refund_approved']);
+
+    //                     return response()->json([
+    //                         'message' => 'Cannot process refund: The package is already in transit or has issues. Please contact logistics.',
+    //                     ], 400);
+    //                 }
+
+    //                 // JIKA AMAN, BATALKAN KURIR
+    //                 if (!in_array($biteshipStatus, ['cancelled'])) {
+    //                     $cancelRes = Http::withHeaders([
+    //                         'Authorization' => config('services.biteship.api_key'),
+    //                     ])->delete('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
+
+    //                     $cancelData = $cancelRes->json();
+    //                     if (isset($cancelData['success']) && $cancelData['success'] === false) {
+    //                         $transaction->update(['status' => 'refund_approved']);  // Rollback
+
+    //                         return response()->json([
+    //                             'message' => 'Failed to cancel courier. Refund aborted to prevent loss.',
+    //                         ], 400);
+    //                     }
+    //                 }
+    //             }
+    //         } catch (\Exception $e) {
+    //             report($e);
+    //             $transaction->update(['status' => 'refund_approved']);  // Rollback
+    //             Log::error('Biteship Pre-Check Error: ' . $e->getMessage());
+
+    //             return response()->json(['message' => 'Failed to verify logistics status. Try again later.'], 500);
+    //         }
+    //     }
+
+    //     // --- EKSEKUSI REFUND KE XENDIT ---
+    //     try {
+    //         $invoiceApi = new InvoiceApi;
+    //         $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+
+    //         if (empty($invoices) || count($invoices) === 0) {
+    //             throw new \Exception('Invoice not found in Xendit.');
+    //         }
+
+    //         $xenditInvoiceId = $invoices[0]['id'];
+    //         $refundApi = new RefundApi;
+
+    //         $refundRequest = new CreateRefund([
+    //             'invoice_id' => $xenditInvoiceId,
+    //             'reason' => 'REQUESTED_BY_CUSTOMER',
+    //             'amount' => (int) $transaction->total_amount,
+    //             'metadata' => ['order_id' => $transaction->order_id],
+    //         ]);
+
+    //         $refundApi->createRefund(null, null, $refundRequest);
+
+    //         // Jika Xendit sukses, update ke status Akhir (Refunded)
+    //         DB::transaction(function () use ($transaction) {
+    //             $transaction->update(['status' => 'refunded']);
+    //             if ($transaction->payment) {
+    //                 $transaction->payment->update(['status' => 'REFUNDED']);
+    //             }
+
+    //             // // Pengembalian poin yang dipakai ada di Fix Bencana 2 di bawah
+
+    //             // foreach ($transaction->details as $detail) {
+    //             //     $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //             // }
+
+    //             // [PERBAIKAN MUTLAK: ANTI DOUBLE RESTOCK]
+    //             // Hanya kembalikan stok jika belum pernah dibatalkan sebelumnya
+    //             // Jika pesanan gagal dari processing langsung refund, kita restore.
+    //             // TAPI jika sebelumnya sudah refund_manual_required/cancelled, stok SUDAH KEMBALI.
+    //             $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned'];
+
+    //             // Gunakan status dari instance sebelum diupdate (karena di atas sudah diupdate ke 'refunded')
+    //             $originalStatus = $transaction->getOriginal('status');
+
+    //             if (!in_array($originalStatus, $statusesThatAlreadyRestoredStock)) {
+    //                 foreach ($transaction->details as $detail) {
+    //                     $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //                 }
+    //             }
+    //         });
+
+    //         // Cache::tags(['catalog'])->flush();
+
+    //         foreach ($transaction->details as $detail) {
+    //             Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+    //         }
+
+    //         // 👇 [BARU] TEMBAKKAN EVENT 👇
+    //         event(new \App\Events\DashboardUpdated());
+
+    //         return response()->json([
+    //             'message' => 'Refund processed successfully. Funds returned automatically.',
+    //             'type' => 'automatic',
+    //         ]);
+    //     } catch (XenditSdkException $e) {
+    //         report($e);
+    //         $errorMessage = $e->getMessage();
+
+    //         if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
+    //             DB::transaction(function () use ($transaction) {
+    //                 $transaction->update(['status' => 'refund_manual_required']);
+    //                 foreach ($transaction->details as $detail) {
+    //                     $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //                 }
+    //             });
+
+    //             // Cache::tags(['catalog'])->flush();
+
+    //             foreach ($transaction->details as $detail) {
+    //                 Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+    //             }
+
+    //             // 👇 [BARU] TEMBAKKAN EVENT 👇
+    //             event(new \App\Events\DashboardUpdated());
+
+    //             return response()->json([
+    //                 'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
+    //                 'code' => 'MANUAL_REFUND_NEEDED',
+    //             ], 200);
+    //         }
+
+    //         $transaction->update(['status' => 'refund_approved']);  // Rollback
+
+    //         return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         $transaction->update(['status' => 'refund_approved']);  // Rollback
+
+    //         return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
+    //     }
+    // }
+
+    public function processRefundUser(Request $request, $id, ProcessRefundAction $processRefund, BiteshipService $biteship)
     {
-        // 1. Ambil data transaksi (Tanpa Lock terlebih dahulu)
-        $transaction = Transaction::with('payment')
-            ->where('user_id', $request->user()->id)
-            ->findOrFail($id);
-
-        // =========================================================================
-        // [PERBAIKAN] ATOMIC STATE TRANSITION (Pencegah Double Refund)
-        // Kita paksa ubah statusnya di database SEBELUM memanggil API Xendit.
-        // Jika ada 2 request masuk bersamaan, request kedua akan menghasilkan $locked = 0 (Gagal)
-        // =========================================================================
-        $locked = Transaction::where('id', $id)
-            ->where('status', 'refund_approved')
-            ->update(['status' => 'refund_processing']);  // Status sementara
-
-        if (!$locked) {
-            return response()->json(['message' => 'Refund is already being processed or not valid.'], 400);
-        }
-
-        if (!$transaction->payment) {
-            // Rollback status karena gagal
-            $transaction->update(['status' => 'refund_approved']);
-
-            return response()->json(['message' => 'Payment data not found.'], 404);
-        }
-
-        // --- PRE-CHECK DAN EKSEKUSI PEMBATALAN KURIR ---
-        if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
-            try {
-                $res = Http::withHeaders([
-                    'Authorization' => config('services.biteship.api_key'),
-                ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
-
-                if ($res->successful()) {
-                    $data = $res->json();
-                    $biteshipStatus = strtolower($data['status'] ?? '');
-
-                    $unCancellableStatuses = ['picked', 'dropping_off', 'delivered', 'rejected', 'return_in_transit', 'returned'];
-
-                    if (in_array($biteshipStatus, $unCancellableStatuses)) {
-                        // Rollback status karena kurir sudah jalan
-                        $transaction->update(['status' => 'refund_approved']);
-
-                        return response()->json([
-                            'message' => 'Cannot process refund: The package is already in transit or has issues. Please contact logistics.',
-                        ], 400);
-                    }
-
-                    // JIKA AMAN, BATALKAN KURIR
-                    if (!in_array($biteshipStatus, ['cancelled'])) {
-                        $cancelRes = Http::withHeaders([
-                            'Authorization' => config('services.biteship.api_key'),
-                        ])->delete('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
-
-                        $cancelData = $cancelRes->json();
-                        if (isset($cancelData['success']) && $cancelData['success'] === false) {
-                            $transaction->update(['status' => 'refund_approved']);  // Rollback
-
-                            return response()->json([
-                                'message' => 'Failed to cancel courier. Refund aborted to prevent loss.',
-                            ], 400);
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                report($e);
-                $transaction->update(['status' => 'refund_approved']);  // Rollback
-                Log::error('Biteship Pre-Check Error: ' . $e->getMessage());
-
-                return response()->json(['message' => 'Failed to verify logistics status. Try again later.'], 500);
-            }
-        }
-
-        // --- EKSEKUSI REFUND KE XENDIT ---
         try {
-            $invoiceApi = new InvoiceApi;
-            $invoices = $invoiceApi->getInvoices(null, $transaction->payment->external_id);
+            $result = $processRefund->execute($id, $biteship);
 
-            if (empty($invoices) || count($invoices) === 0) {
-                throw new \Exception('Invoice not found in Xendit.');
-            }
+            $transaction = Transaction::with(['details', 'user'])->find($id);
+            $this->clearTransactionProductCache($transaction);
+            $this->revokeMembershipIfBelowThreshold($transaction->user);
 
-            $xenditInvoiceId = $invoices[0]['id'];
-            $refundApi = new RefundApi;
-
-            $refundRequest = new CreateRefund([
-                'invoice_id' => $xenditInvoiceId,
-                'reason' => 'REQUESTED_BY_CUSTOMER',
-                'amount' => (int) $transaction->total_amount,
-                'metadata' => ['order_id' => $transaction->order_id],
-            ]);
-
-            $refundApi->createRefund(null, null, $refundRequest);
-
-            // Jika Xendit sukses, update ke status Akhir (Refunded)
-            DB::transaction(function () use ($transaction) {
-                $transaction->update(['status' => 'refunded']);
-                if ($transaction->payment) {
-                    $transaction->payment->update(['status' => 'REFUNDED']);
-                }
-
-                // // Pengembalian poin yang dipakai ada di Fix Bencana 2 di bawah
-
-                // foreach ($transaction->details as $detail) {
-                //     $this->restoreProductStock($detail->product_id, $detail->quantity);
-                // }
-
-                // [PERBAIKAN MUTLAK: ANTI DOUBLE RESTOCK]
-                // Hanya kembalikan stok jika belum pernah dibatalkan sebelumnya
-                // Jika pesanan gagal dari processing langsung refund, kita restore.
-                // TAPI jika sebelumnya sudah refund_manual_required/cancelled, stok SUDAH KEMBALI.
-                $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned'];
-
-                // Gunakan status dari instance sebelum diupdate (karena di atas sudah diupdate ke 'refunded')
-                $originalStatus = $transaction->getOriginal('status');
-
-                if (!in_array($originalStatus, $statusesThatAlreadyRestoredStock)) {
-                    foreach ($transaction->details as $detail) {
-                        $this->restoreProductStock($detail->product_id, $detail->quantity);
-                    }
-                }
-            });
-
-            // Cache::tags(['catalog'])->flush();
-
-            foreach ($transaction->details as $detail) {
-                Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
-            }
-
-            // 👇 [BARU] TEMBAKKAN EVENT 👇
             event(new \App\Events\DashboardUpdated());
 
-            return response()->json([
-                'message' => 'Refund processed successfully. Funds returned automatically.',
-                'type' => 'automatic',
-            ]);
-        } catch (XenditSdkException $e) {
-            report($e);
-            $errorMessage = $e->getMessage();
-
-            if (str_contains(strtolower($errorMessage), 'not supported for this channel')) {
-                DB::transaction(function () use ($transaction) {
-                    $transaction->update(['status' => 'refund_manual_required']);
-                    foreach ($transaction->details as $detail) {
-                        $this->restoreProductStock($detail->product_id, $detail->quantity);
-                    }
-                });
-
-                // Cache::tags(['catalog'])->flush();
-
-                foreach ($transaction->details as $detail) {
-                    Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
-                }
-
-                // 👇 [BARU] TEMBAKKAN EVENT 👇
-                event(new \App\Events\DashboardUpdated());
-
-                return response()->json([
-                    'message' => 'Automatic refund not supported. Status updated to Manual Check. Courier has been cancelled.',
-                    'code' => 'MANUAL_REFUND_NEEDED',
-                ], 200);
-            }
-
-            $transaction->update(['status' => 'refund_approved']);  // Rollback
-
-            return response()->json(['message' => 'Xendit Refund Failed: ' . $errorMessage], 422);
+            return response()->json($result);
         } catch (\Exception $e) {
-            report($e);
-            $transaction->update(['status' => 'refund_approved']);  // Rollback
-
-            return response()->json(['message' => 'Refund Error: ' . $e->getMessage()], 500);
+            return response()->json(['message' => $e->getMessage()], 400);
         }
     }
 
@@ -3263,56 +3333,100 @@ class TransactionController extends Controller
     // =====================================================================
     // 👇 FUNGSI BARU UNTUK ADMIN MENGHAPUS TRANSAKSI PERMANEN 👇
     // =====================================================================
-    public function forceDeleteTransaction(Request $request, $id)
+    // public function forceDeleteTransaction(Request $request, $id)
+    // {
+    //     // Temukan transaksi
+    //     $transaction = Transaction::with(['details', 'payment'])->find($id);
+
+    //     if (!$transaction) {
+    //         return response()->json(['message' => 'Transaksi tidak ditemukan.'], 404);
+    //     }
+
+    //     // Mulai transaksi database agar penghapusan konsisten
+    //     DB::transaction(function () use ($transaction) {
+    //         // 1. KEMBALIKAN STOK BARANG (Jika statusnya bukan batal/refund)
+    //         // Karena jika statusnya sudah batal/refund, stoknya sudah kembali.
+    //         $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
+
+    //         if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+    //             foreach ($transaction->details as $detail) {
+    //                 $this->restoreProductStock($detail->product_id, $detail->quantity);
+    //             }
+    //         }
+
+    //         // 2. KEMBALIKAN POIN (Opsional: Jika Anda ingin poin sandbox kembali)
+    //         if ($transaction->points_used > 0 && !in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+    //             $transaction->user->increment('point', $transaction->points_used);
+    //         }
+
+    //         // 3. HAPUS DATA PEMBAYARAN TERKAIT
+    //         if ($transaction->payment) {
+    //             $transaction->payment->delete();
+    //         }
+
+    //         // 4. HAPUS DETAIL TRANSAKSI
+    //         // (Atau jika Anda sudah memakai skema 'onDelete cascade' di migrasi, ini opsional.
+    //         // Namun untuk amannya kita hapus manual)
+    //         foreach ($transaction->details as $detail) {
+    //             // Jangan lupa hapus cache per-produk yang terpengaruh
+    //             Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+    //             $detail->delete();
+    //         }
+
+    //         // 5. HAPUS TRANSAKSI UTAMA
+    //         $transaction->delete();
+    //     });
+
+    //     // Flush seluruh cache untuk keamanan
+    //     Cache::flush();
+
+    //     // 👇 [BARU] TEMBAKKAN EVENT 👇
+    //     event(new \App\Events\DashboardUpdated());
+
+    //     return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
+    // }
+
+    public function forceDeleteTransaction(Request $request, $id, BiteshipService $biteship, RestoreInventoryAction $restoreInventory)
     {
-        // Temukan transaksi
-        $transaction = Transaction::with(['details', 'payment'])->find($id);
+        $transaction = Transaction::with(['details', 'payment', 'user'])->find($id);
 
         if (!$transaction) {
             return response()->json(['message' => 'Transaksi tidak ditemukan.'], 404);
         }
 
-        // Mulai transaksi database agar penghapusan konsisten
-        DB::transaction(function () use ($transaction) {
-            // 1. KEMBALIKAN STOK BARANG (Jika statusnya bukan batal/refund)
-            // Karena jika statusnya sudah batal/refund, stoknya sudah kembali.
+        if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+            try { $biteship->cancelOrder($transaction->biteship_order_id); } catch (\Exception $e) {}
+        }
+
+        DB::transaction(function () use ($transaction, $restoreInventory) {
             $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
 
             if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
                 foreach ($transaction->details as $detail) {
-                    $this->restoreProductStock($detail->product_id, $detail->quantity);
+                    $restoreInventory->execute($detail->product_id, $detail->quantity);
                 }
             }
 
-            // 2. KEMBALIKAN POIN (Opsional: Jika Anda ingin poin sandbox kembali)
             if ($transaction->points_used > 0 && !in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
                 $transaction->user->increment('point', $transaction->points_used);
             }
 
-            // 3. HAPUS DATA PEMBAYARAN TERKAIT
             if ($transaction->payment) {
                 $transaction->payment->delete();
             }
 
-            // 4. HAPUS DETAIL TRANSAKSI
-            // (Atau jika Anda sudah memakai skema 'onDelete cascade' di migrasi, ini opsional.
-            // Namun untuk amannya kita hapus manual)
+            $this->clearTransactionProductCache($transaction);
+
             foreach ($transaction->details as $detail) {
-                // Jangan lupa hapus cache per-produk yang terpengaruh
-                Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
                 $detail->delete();
             }
 
-            // 5. HAPUS TRANSAKSI UTAMA
             $transaction->delete();
         });
 
-        // Flush seluruh cache untuk keamanan
-        Cache::flush();
+        $this->revokeMembershipIfBelowThreshold($transaction->user);
 
-        // 👇 [BARU] TEMBAKKAN EVENT 👇
         event(new \App\Events\DashboardUpdated());
-
         return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
     }
 }
