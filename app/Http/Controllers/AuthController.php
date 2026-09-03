@@ -1,5 +1,899 @@
 <?php
 
+// namespace App\Http\Controllers;
+
+// use Carbon\Carbon;
+// use App\Models\User;
+// use App\Models\Subscriber;
+// use Illuminate\Support\Str;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\DB;
+// use App\Mail\ResetPasswordCodeMail;
+// use Illuminate\Support\Facades\Log;
+// use Illuminate\Support\Facades\Hash;
+// use Illuminate\Support\Facades\Http;
+// use Illuminate\Support\Facades\Mail;
+// use Illuminate\Support\Facades\Storage;
+// use Laravel\Socialite\Facades\Socialite;
+// use Illuminate\Support\Facades\Validator;
+// use Illuminate\Support\Facades\RateLimiter;
+
+// class AuthController extends Controller
+// {
+//     public function register(Request $request)
+//     {
+//         $validator = Validator::make($request->all(), [
+//             'first_name' => 'required|string|max:255',
+//             'last_name' => 'required|string|max:255',
+//             'email' => 'required|string|email|max:255|unique:users',
+//             'password' => 'required|string|min:8',
+//         ]);
+
+//         if ($validator->fails()) {
+//             return response()->json($validator->errors(), 422);
+//         }
+
+//         // ========================================================================
+//         // [BARU] 1. Cek apakah email ini sudah pernah subscribe saat menjadi Guest
+//         // ========================================================================
+//         $subscriber = Subscriber::where('email', $request->email)->first();
+//         $isSubscribed = $subscriber ? true : false;
+
+//         // 2. Buat User baru
+//         $user = User::create([
+//             'first_name' => $request->first_name,
+//             'last_name' => $request->last_name,
+//             'email' => $request->email,
+//             'password' => Hash::make($request->password),
+//             'is_subscribed' => $isSubscribed, // <--- Set status otomatis berdasarkan pengecekan di atas
+//         ]);
+
+//         // ========================================================================
+//         // [BARU] 3. Jika dia ada di tabel subscribers, tandai bahwa dia kini Registered
+//         // ========================================================================
+//         if ($subscriber) {
+//             $subscriber->update(['is_registered' => true]);
+//         }
+
+//         return response()->json([
+//             'message' => 'User berhasil didaftarkan',
+//             'user' => $user,
+//         ], 201);
+//     }
+
+//     // public function login(Request $request)
+//     // {
+//     //     $validator = Validator::make($request->all(), [
+//     //         'email'         => 'required|email',
+//     //         'password'      => 'required',
+//     //         'captcha_token' => 'required|string', // [BARU] Validasi token captcha
+//     //     ]);
+
+//     //     if ($validator->fails()) {
+//     //         return response()->json($validator->errors(), 422);
+//     //     }
+
+//     //     // [BARU] Verifikasi CAPTCHA ke Google
+//     //     $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+//     //         'secret'   => env('RECAPTCHA_SECRET_KEY'),
+//     //         'response' => $request->captcha_token,
+//     //         'remoteip' => $request->ip()
+//     //     ]);
+
+//     //     $captchaResult = $captchaResponse->json();
+
+//     //     // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
+//     //     if (!$captchaResult['success'] || $captchaResult['score'] < 0.5) {
+//     //         // Opsional: Log aktivitas bot jika diperlukan
+//     //         Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
+
+//     //         return response()->json([
+//     //             'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
+//     //         ], 422);
+//     //     }
+
+//     //     $user = User::where('email', $request->email)->first();
+
+//     //     if (
+//     //         !$user ||
+//     //         !Hash::check($request->password, $user->password) ||
+//     //         $user->usertype !== 'user'
+//     //     ) {
+//     //         return response()->json([
+//     //             'message' => 'Email atau Password salah.'
+//     //         ], 401);
+//     //     }
+
+//     //     $token = $user->createToken('auth_token')->plainTextToken;
+
+//     //     return response()->json([
+//     //         'message'      => 'Login Berhasil',
+//     //         'access_token' => $token,
+//     //         'token_type'   => 'Bearer',
+//     //         'user'         => $user
+//     //     ], 200);
+//     // }
+
+//     // public function login(Request $request)
+//     // {
+//     //     // 1. Susun aturan dasar
+//     //     $rules = [
+//     //         'email' => 'required|email',
+//     //         'password' => 'required',
+//     //     ];
+
+//     //     // 2. Wajibkan captcha HANYA jika bukan di environment testing
+//     //     if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
+//     //         $rules['captcha_token'] = 'required|string';
+//     //     }
+
+//     //     $validator = Validator::make($request->all(), $rules);
+
+//     //     if ($validator->fails()) {
+//     //         return response()->json($validator->errors(), 422);
+//     //     }
+
+//     //     // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
+//     //     if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
+//     //         $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+//     //             'secret' => env('RECAPTCHA_SECRET_KEY'),
+//     //             'response' => $request->captcha_token,
+//     //             'remoteip' => $request->ip(),
+//     //         ]);
+
+//     //         $captchaResult = $captchaResponse->json();
+
+//     //         if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
+//     //             Log::warning('Bot detected during login. Score: '.($captchaResult['score'] ?? 'null'));
+
+//     //             return response()->json([
+//     //                 'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
+//     //             ], 422);
+//     //         }
+//     //     }
+
+//     //     // ==========================================
+//     //     // Logika utama aplikasi tetap berjalan normal
+//     //     // ==========================================
+//     //     $user = User::where('email', $request->email)->first();
+
+//     //     if (
+//     //         ! $user ||
+//     //         ! Hash::check($request->password, $user->password) ||
+//     //         $user->usertype !== 'user'
+//     //     ) {
+//     //         return response()->json([
+//     //             'message' => 'Email atau Password salah.',
+//     //         ], 401);
+//     //     }
+
+//     //     $token = $user->createToken('auth_token')->plainTextToken;
+
+//     //     return response()->json([
+//     //         'message' => 'Login Berhasil',
+//     //         'access_token' => $token,
+//     //         'token_type' => 'Bearer',
+//     //         'user' => $user,
+//     //     ], 200);
+//     // }
+
+//     // public function adminLogin(Request $request)
+//     // {
+//     //     // 1. Susun aturan dasar
+//     //     $rules = [
+//     //         'email' => 'required|email',
+//     //         'password' => 'required',
+//     //     ];
+
+//     //     // 2. Wajibkan captcha HANYA jika bukan di environment testing
+//     //     if (! app()->environment('testing')) {
+//     //         $rules['captcha_token'] = 'required|string';
+//     //     }
+
+//     //     $validator = Validator::make($request->all(), $rules);
+
+//     //     if ($validator->fails()) {
+//     //         return response()->json($validator->errors(), 422);
+//     //     }
+
+//     //     // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
+//     //     if (! app()->environment('testing')) {
+//     //         $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+//     //             'secret' => env('RECAPTCHA_SECRET_KEY'),
+//     //             'response' => $request->captcha_token,
+//     //             'remoteip' => $request->ip(),
+//     //         ]);
+
+//     //         $captchaResult = $captchaResponse->json();
+
+//     //         // 👇 TAMBAHKAN LOG INI UNTUK DEBUGGING 👇
+//     //         if (! $captchaResult['success']) {
+//     //             Log::error('reCAPTCHA Failed: '.json_encode($captchaResult));
+//     //         }
+
+//     //         // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.3
+//     //         if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.3) {
+//     //             // Opsional: Log aktivitas bot jika diperlukan
+//     //             Log::warning('Bot detected during admin login. Score: ' . ($captchaResult['score'] ?? 'null'));
+
+//     //             return response()->json([
+//     //                 'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
+//     //             ], 422);
+//     //         }
+//     //     }
+
+//     //     // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
+//     //     // DAN token bukan dari aplikasi mobile resmi kita
+//     //     // if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
+//     //     //     $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+//     //     //         'secret' => env('RECAPTCHA_SECRET_KEY'),
+//     //     //         'response' => $request->captcha_token,
+//     //     //         'remoteip' => $request->ip(),
+//     //     //     ]);
+
+//     //     //     $captchaResult = $captchaResponse->json();
+
+//     //     //     if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
+//     //     //         Log::warning('Bot detected during login. Score: '.($captchaResult['score'] ?? 'null'));
+
+//     //     //         return response()->json([
+//     //     //             'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
+//     //     //         ], 422);
+//     //     //     }
+//     //     // }
+
+//     //     // ==========================================
+//     //     // Logika utama aplikasi tetap berjalan normal
+//     //     // ==========================================
+//     //     $user = User::where('email', $request->email)
+//     //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
+//     //         ->first();
+
+//     //     if (! $user || ! Hash::check($request->password, $user->password)) {
+//     //         return response()->json([
+//     //             'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.',
+//     //         ], 401);
+//     //     }
+
+//     //     $token = $user->createToken('admin_token')->plainTextToken;
+
+//     //     return response()->json([
+//     //         'message' => 'Login Berhasil',
+//     //         'access_token' => $token,
+//     //         'token_type' => 'Bearer',
+//     //         'user' => $user,
+//     //     ], 200);
+//     // }
+
+//     public function login(Request $request)
+//     {
+//         // 1. RATE LIMITER: Cegah Brute-Force (Maks 5x gagal dalam 5 menit per IP & Email)
+//         $throttleKey = Str::lower($request->input('email')) . '|' . $request->ip();
+
+//         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+//             $seconds = RateLimiter::availableIn($throttleKey);
+//             return response()->json([
+//                 'message' => "Terlalu banyak percobaan gagal. Akses diblokir sementara. Silakan coba lagi dalam $seconds detik."
+//             ], 429);
+//         }
+
+//         $rules = [
+//             'email' => 'required|email',
+//             'password' => 'required',
+//         ];
+
+//         // 2. TUTUP PINTU BELAKANG (Hapus string rahasia 'mobile_solher...')
+//         if (! app()->environment('testing')) {
+//             $rules['captcha_token'] = 'required|string';
+//         }
+
+//         $validator = Validator::make($request->all(), $rules);
+//         if ($validator->fails()) {
+//             return response()->json($validator->errors(), 422);
+//         }
+
+//         if (! app()->environment('testing')) {
+//             $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+//                 'secret' => env('RECAPTCHA_SECRET_KEY'),
+//                 'response' => $request->captcha_token,
+//                 'remoteip' => $request->ip(),
+//             ]);
+
+//             $captchaResult = $captchaResponse->json();
+
+//             if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
+//                 Log::warning('Bot detected during login. Score: '.($captchaResult['score'] ?? 'null').' IP: '.$request->ip());
+//                 // Hitung sebagai kegagalan login
+//                 RateLimiter::hit($throttleKey, 300);
+
+//                 return response()->json([
+//                     'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
+//                 ], 422);
+//             }
+//         }
+
+//         $user = User::where('email', $request->email)->first();
+
+//         if (!$user || !Hash::check($request->password, $user->password) || $user->usertype !== 'user') {
+//             // 3. CATAT KEGAGALAN: Tambahkan hit ke Rate Limiter
+//             RateLimiter::hit($throttleKey, 300); // 300 detik = 5 menit
+
+//             return response()->json([
+//                 'message' => 'Email atau Password salah.',
+//             ], 401);
+//         }
+
+//         // 4. BERHASIL: Bersihkan riwayat kegagalan (Clear Rate Limiter)
+//         RateLimiter::clear($throttleKey);
+
+//         $token = $user->createToken('auth_token')->plainTextToken;
+
+//         return response()->json([
+//             'message' => 'Login Berhasil',
+//             'access_token' => $token,
+//             'token_type' => 'Bearer',
+//             'user' => $user,
+//         ], 200);
+//     }
+
+//     public function adminLogin(Request $request)
+//     {
+//         // 1. RATE LIMITER ADMIN (Lebih ketat: Maks 3x gagal dalam 10 menit)
+//         $throttleKey = 'admin_login|' . Str::lower($request->input('email')) . '|' . $request->ip();
+
+//         if (RateLimiter::tooManyAttempts($throttleKey, 3)) {
+//             $seconds = RateLimiter::availableIn($throttleKey);
+//             $minutes = ceil($seconds / 60);
+//             Log::alert("BRUTE FORCE ALERT: Admin login locked out for {$request->email} from IP {$request->ip()}");
+
+//             return response()->json([
+//                 'message' => "Terlalu banyak percobaan gagal. Akses diblokir demi keamanan. Silakan coba lagi dalam $minutes menit."
+//             ], 429);
+//         }
+
+//         $rules = [
+//             'email' => 'required|email',
+//             'password' => 'required',
+//         ];
+
+//         if (! app()->environment('testing')) {
+//             $rules['captcha_token'] = 'required|string';
+//         }
+
+//         $validator = Validator::make($request->all(), $rules);
+//         if ($validator->fails()) {
+//             return response()->json($validator->errors(), 422);
+//         }
+
+//         if (! app()->environment('testing')) {
+//             $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
+//                 'secret' => env('RECAPTCHA_SECRET_KEY'),
+//                 'response' => $request->captcha_token,
+//                 'remoteip' => $request->ip(),
+//             ]);
+
+//             $captchaResult = $captchaResponse->json();
+
+//             if (! $captchaResult['success']) {
+//                 Log::error('reCAPTCHA Failed: '.json_encode($captchaResult));
+//             }
+
+//             if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.3) {
+//                 Log::warning('Bot detected during admin login. Score: ' . ($captchaResult['score'] ?? 'null'));
+//                 RateLimiter::hit($throttleKey, 600); // 10 menit
+//                 return response()->json(['message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'], 422);
+//             }
+//         }
+
+//         $user = User::where('email', $request->email)
+//             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
+//             ->first();
+
+//         if (! $user || ! Hash::check($request->password, $user->password)) {
+//             RateLimiter::hit($throttleKey, 600);
+//             return response()->json([
+//                 'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki izin.',
+//             ], 401);
+//         }
+
+//         RateLimiter::clear($throttleKey);
+//         $token = $user->createToken('admin_token')->plainTextToken;
+
+//         return response()->json([
+//             'message' => 'Login Berhasil',
+//             'access_token' => $token,
+//             'token_type' => 'Bearer',
+//             'user' => $user,
+//         ], 200);
+//     }
+
+//     // 1. Update Nama & Email
+//     public function updateProfileInfo(Request $request)
+//     {
+//         $user = $request->user();
+//         $validator = Validator::make($request->all(), [
+//             'first_name' => 'required|string|max:255',
+//             'last_name' => 'required|string|max:255',
+//             'email' => 'required|string|email|max:255|unique:users,email,'.$user->id,
+//             'phone' => 'nullable|string|max:20',
+//         ]);
+
+//         if ($validator->fails()) {
+//             return response()->json($validator->errors(), 422);
+//         }
+
+//         $user->update($request->only('first_name', 'last_name', 'email', 'phone'));
+
+//         return response()->json(['message' => 'Info profil diperbarui', 'user' => $user]);
+//     }
+
+//     public function updateImage(Request $request)
+//     {
+//         Log::info('Update profile image started', [
+//             'user_id' => $request->user()->id,
+//         ]);
+
+//         $request->validate([
+//             'image' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+//         ]);
+
+//         $user = $request->user();
+
+//         try {
+//             // [PERBAIKAN] Jika ada foto lama, hapus dari Local Storage
+//             if ($user->profile_image) {
+//                 // Bersihkan URL agar hanya menyisakan path relatifnya saja
+//                 $oldPath = str_replace(url(Storage::url('')), '', $user->profile_image);
+//                 $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
+
+//                 Log::info('Deleting old profile image', [
+//                     'user_id' => $user->id,
+//                     'old_path' => $oldPath,
+//                 ]);
+
+//                 Storage::disk('public')->delete($oldPath);
+//             }
+
+//             // [PERBAIKAN] Upload foto baru ke Local Storage (disk 'public' -> storage/app/public/profiles)
+//             $path = $request->file('image')->store('profiles', 'public');
+
+//             Log::info('New profile image uploaded', [
+//                 'user_id' => $user->id,
+//                 'new_path' => $path,
+//             ]);
+
+//             // [PERBAIKAN] Karena kita tidak memakai Accessor di User Model, kita simpan URL penuhnya langsung
+//             $user->profile_image = url(Storage::url($path));
+//             $user->save();
+
+//             $user = $user->fresh();
+
+//             Log::info('Profile image updated successfully', [
+//                 'user_id' => $user->id,
+//                 'profile_image_url' => $user->profile_image,
+//             ]);
+
+//             return response()->json([
+//                 'message' => 'Foto profil diperbarui',
+//                 'user' => $user,
+//             ]);
+//         } catch (\Exception $e) {
+//             report($e);
+//             Log::error('Failed to update profile image', [
+//                 'user_id' => $user->id ?? null,
+//                 'error_message' => $e->getMessage(),
+//                 'trace' => $e->getTraceAsString(),
+//             ]);
+
+//             return response()->json([
+//                 'message' => 'Gagal memperbarui foto profil',
+//             ], 500);
+//         }
+//     }
+
+//     // 3. Update Password
+//     public function updatePassword(Request $request)
+//     {
+//         $request->validate([
+//             'old_password' => 'required',
+//             'password' => 'required|string|min:8|confirmed',
+//         ]);
+
+//         $user = $request->user();
+
+//         if (! Hash::check($request->old_password, $user->password)) {
+//             return response()->json(['message' => 'Password lama tidak sesuai'], 401);
+//         }
+
+//         $user->password = Hash::make($request->password);
+//         $user->save();
+
+//         return response()->json(['message' => 'Password berhasil diubah']);
+//     }
+
+//     // Ambil semua daftar user biasa
+//     // public function getAllUsers()
+//     // {
+//     //     // Mengambil user dengan usertype 'user' saja
+//     //     $users = User::where('usertype', 'user')->latest()->get(); //
+
+//     //     return response()->json($users, 200);
+//     // }
+
+//     public function getAllUsers()
+//     {
+//         // 1. Kumpulkan semua ID Admin, Superadmin, dan AI Bot (Solher Care)
+//         $adminIds = User::whereIn('usertype', ['admin', 'superadmin'])->pluck('id')->toArray();
+//         $aiUser = User::where('email', 'ai@solher.com')->first();
+
+//         if ($aiUser && !in_array($aiUser->id, $adminIds)) {
+//             $adminIds[] = $aiUser->id;
+//         }
+
+//         // 2. Tarik data user sekaligus menghitung pesan mereka yang belum dibaca oleh admin
+//         $users = User::where('usertype', 'user')
+//             ->withCount(['messages as unread_count' => function ($query) use ($adminIds) {
+//                 $query->where('is_read', false)
+//                       ->whereIn('receiver_id', $adminIds);
+//             }])
+//             ->latest()
+//             ->get();
+
+//         return response()->json($users, 200);
+//     }
+
+//     // Ambil detail satu user beserta alamatnya
+//     public function getUserDetail($id)
+//     {
+//         // Memuat user beserta relasi addresses yang sudah kita buat sebelumnya
+//         $user = User::with('addresses')->findOrFail($id); //
+
+//         return response()->json($user, 200);
+//     }
+
+//     public function updateAdminProfileInfo(Request $request)
+//     {
+//         $admin = $request->user();
+
+//         $validator = Validator::make($request->all(), [
+//             'first_name' => 'required|string|max:255',
+//             'last_name' => 'required|string|max:255',
+//             'email' => 'required|string|email|max:255|unique:users,email,'.$admin->id,
+//             'phone' => 'nullable|string|max:20', // [BARU] Tambahkan validasi phone
+//         ]);
+
+//         if ($validator->fails()) {
+//             return response()->json($validator->errors(), 422);
+//         }
+
+//         // [BARU] Sertakan phone saat update
+//         $admin->update($request->only('first_name', 'last_name', 'email', 'phone'));
+
+//         return response()->json([
+//             'message' => 'Admin profile updated successfully',
+//             'admin' => $admin,
+//         ]);
+//     }
+
+//     public function updateAdminImage(Request $request)
+//     {
+//         $request->validate([
+//             'image' => 'required|image|mimes:jpeg,png,jpg',
+//         ]);
+
+//         $admin = $request->user();
+
+//         try {
+//             // [PERBAIKAN] Jika ada foto lama, hapus dari Local Storage
+//             if ($admin->profile_image) {
+//                 // Bersihkan URL agar hanya menyisakan path relatifnya saja
+//                 $oldPath = str_replace(url(Storage::url('')), '', $admin->profile_image);
+//                 $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
+
+//                 Storage::disk('public')->delete($oldPath);
+//             }
+
+//             // [PERBAIKAN] Upload foto baru ke Local Storage
+//             $path = $request->file('image')->store('profiles', 'public');
+
+//             // [PERBAIKAN] Simpan URL penuhnya ke database
+//             $admin->profile_image = url(Storage::url($path));
+//             $admin->save();
+
+//             return response()->json([
+//                 'message' => 'Admin photo updated',
+//                 'admin' => $admin->fresh(),
+//             ]);
+//         } catch (\Exception $e) {
+//             report($e);
+//             return response()->json([
+//                 'message' => 'Failed to update admin photo',
+//             ], 500);
+//         }
+//     }
+
+//     public function updateAdminPassword(Request $request)
+//     {
+//         $request->validate([
+//             'old_password' => 'required',
+//             'password' => 'required|string|min:8|confirmed',
+//         ]);
+
+//         $admin = $request->user();
+
+//         if (! Hash::check($request->old_password, $admin->password)) {
+//             return response()->json([
+//                 'message' => 'Old password does not match',
+//             ], 401);
+//         }
+
+//         $admin->password = Hash::make($request->password);
+//         $admin->save();
+
+//         return response()->json([
+//             'message' => 'Password updated successfully',
+//         ]);
+//     }
+
+//     public function toggleMembership(Request $request)
+//     {
+//         $user = $request->user();
+//         $request->validate([
+//             'is_membership' => 'required|boolean',
+//         ]);
+
+//         $user->update([
+//             'is_membership' => $request->is_membership,
+//         ]);
+
+//         return response()->json(['user' => $user, 'message' => 'Membership status updated!']);
+//     }
+
+//     // --- 1. MENGIRIM KODE OTP KE EMAIL ---
+//     public function sendResetCode(Request $request)
+//     {
+//         $request->validate(['email' => 'required|email']);
+
+//         $user = User::where('email', $request->email)->first();
+
+//         if (! $user) {
+//             return response()->json(['message' => 'Email address not found in our system.'], 404);
+//         }
+
+//         // Hapus kode lama jika ada
+//         DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+//         // Buat 6-digit angka random
+//         $code = sprintf('%06d', mt_rand(1, 999999));
+
+//         DB::table('password_reset_codes')->insert([
+//             'email' => $request->email,
+//             'code' => Hash::make($code), // Enkripsi kode di DB untuk keamanan
+//             'expires_at' => Carbon::now()->addMinutes(15),
+//             'created_at' => Carbon::now(),
+//         ]);
+
+//         try {
+//             Mail::to($request->email)->send(new ResetPasswordCodeMail($code));
+
+//             return response()->json(['message' => 'Verification code sent to your email.']);
+//         } catch (\Exception $e) {
+//             report($e);
+//             Log::error('Failed to send reset code: '.$e->getMessage());
+
+//             return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
+//         }
+//     }
+
+//     // --- 2. MEMVALIDASI KODE OTP ---
+//     public function verifyResetCode(Request $request)
+//     {
+//         $request->validate([
+//             'email' => 'required|email',
+//             'code' => 'required|digits:6',
+//         ]);
+
+//         $resetData = DB::table('password_reset_codes')
+//             ->where('email', $request->email)
+//             ->first();
+
+//         if (! $resetData) {
+//             return response()->json(['message' => 'Invalid or expired verification code.'], 400);
+//         }
+
+//         if (Carbon::now()->greaterThan($resetData->expires_at)) {
+//             DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+//             return response()->json(['message' => 'Verification code has expired.'], 400);
+//         }
+
+//         if (! Hash::check($request->code, $resetData->code)) {
+//             return response()->json(['message' => 'Incorrect verification code.'], 400);
+//         }
+
+//         return response()->json(['message' => 'Code verified successfully.']);
+//     }
+
+//     // --- 3. MERESET PASSWORD BERDASARKAN OTP YANG VALID ---
+//     public function resetPassword(Request $request)
+//     {
+//         $request->validate([
+//             'email' => 'required|email',
+//             'code' => 'required|digits:6',
+//             'password' => 'required|string|min:8|confirmed',
+//         ]);
+
+//         $resetData = DB::table('password_reset_codes')
+//             ->where('email', $request->email)
+//             ->first();
+
+//         if (! $resetData || ! Hash::check($request->code, $resetData->code) || Carbon::now()->greaterThan($resetData->expires_at)) {
+//             return response()->json(['message' => 'Invalid session or code expired.'], 400);
+//         }
+
+//         $user = User::where('email', $request->email)->first();
+//         $user->password = Hash::make($request->password);
+//         $user->save();
+
+//         // Hapus token reset setelah sukses digunakan
+//         DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+//         return response()->json(['message' => 'Password has been successfully reset.']);
+//     }
+
+//     // ====================================================================
+//     // FUNGSI FORGOT PASSWORD KHUSUS ADMIN
+//     // ====================================================================
+//     public function adminSendResetCode(Request $request)
+//     {
+//         $request->validate(['email' => 'required|email']);
+
+//         // [PERBAIKAN] Cek apakah email ini milik staf internal (bukan pelanggan biasa)
+//         $admin = User::where('email', $request->email)
+//             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
+//             ->first();
+
+//         if (! $admin) {
+//             return response()->json(['message' => 'Alamat email tidak ditemukan atau tidak memiliki izin akses.'], 404);
+//         }
+
+//         DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+//         $code = sprintf('%06d', mt_rand(1, 999999));
+
+//         DB::table('password_reset_codes')->insert([
+//             'email' => $request->email,
+//             'code' => Hash::make($code),
+//             'expires_at' => Carbon::now()->addMinutes(15),
+//             'created_at' => Carbon::now(),
+//         ]);
+
+//         try {
+//             Mail::to($request->email)->send(new ResetPasswordCodeMail($code));
+
+//             return response()->json(['message' => 'Kode verifikasi telah dikirim ke email Anda.']);
+//         } catch (\Exception $e) {
+//             report($e);
+//             Log::error('Failed to send admin reset code: '.$e->getMessage());
+
+//             return response()->json(['message' => 'Gagal mengirim email. Silakan coba lagi nanti.'], 500);
+//         }
+//     }
+
+//     public function adminVerifyResetCode(Request $request)
+//     {
+//         $request->validate([
+//             'email' => 'required|email',
+//             'code' => 'required|digits:6',
+//         ]);
+
+//         // [PERBAIKAN] Validasi staf
+//         $admin = User::where('email', $request->email)
+//             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
+//             ->first();
+//         if (! $admin) {
+//             return response()->json(['message' => 'Akses ditolak.'], 403);
+//         }
+
+//         $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
+
+//         if (! $resetData) {
+//             return response()->json(['message' => 'Kode verifikasi tidak valid atau telah kedaluwarsa.'], 400);
+//         }
+
+//         if (Carbon::now()->greaterThan($resetData->expires_at)) {
+//             DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+//             return response()->json(['message' => 'Kode verifikasi telah kedaluwarsa.'], 400);
+//         }
+
+//         if (! Hash::check($request->code, $resetData->code)) {
+//             return response()->json(['message' => 'Kode verifikasi salah.'], 400);
+//         }
+
+//         return response()->json(['message' => 'Kode berhasil diverifikasi.']);
+//     }
+
+//     public function adminResetPassword(Request $request)
+//     {
+//         $request->validate([
+//             'email' => 'required|email',
+//             'code' => 'required|digits:6',
+//             'password' => 'required|string|min:8|confirmed',
+//         ]);
+
+//         // [PERBAIKAN] Validasi staf
+//         $admin = User::where('email', $request->email)
+//             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
+//             ->first();
+//         if (! $admin) {
+//             return response()->json(['message' => 'Akses ditolak.'], 403);
+//         }
+
+//         $resetData = DB::table('password_reset_codes')->where('email', $request->email)->first();
+
+//         if (! $resetData || ! Hash::check($request->code, $resetData->code) || Carbon::now()->greaterThan($resetData->expires_at)) {
+//             return response()->json(['message' => 'Sesi tidak valid atau kode kedaluwarsa.'], 400);
+//         }
+
+//         $admin->password = Hash::make($request->password);
+//         $admin->save();
+
+//         DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+//         return response()->json(['message' => 'Kata sandi berhasil disetel ulang.']);
+//     }
+
+//     // ====================================================================
+//     // 👇 LOGIKA GOOGLE OAUTH (LOGIN & REGISTER SEKALI KLIK) 👇
+//     // ====================================================================
+//     public function redirectToGoogle()
+//     {
+//         return Socialite::driver('google')->stateless()->redirect();
+//     }
+
+//     public function handleGoogleCallback()
+//     {
+//         try {
+//             $googleUser = Socialite::driver('google')->stateless()->user();
+
+//             // Cek apakah user dengan email ini sudah ada
+//             $user = User::where('email', $googleUser->getEmail())->first();
+
+//             // Jika belum ada, otomatis REGISTER
+//             if (!$user) {
+//                 // Cek apakah dia sudah subscribe sebelumnya
+//                 $subscriber = Subscriber::where('email', $googleUser->getEmail())->first();
+//                 $isSubscribed = $subscriber ? true : false;
+
+//                 $user = User::create([
+//                     'first_name' => $googleUser->user['given_name'] ?? $googleUser->getName(),
+//                     'last_name' => $googleUser->user['family_name'] ?? ' ',
+//                     'email' => $googleUser->getEmail(),
+//                     'password' => Hash::make(\Illuminate\Support\Str::random(24)), // Password acak yang kuat
+//                     'is_subscribed' => $isSubscribed,
+//                 ]);
+
+//                 if ($subscriber) {
+//                     $subscriber->update(['is_registered' => true]);
+//                 }
+//             }
+
+//             // Generate Token Sanctum
+//             $token = $user->createToken('auth_token')->plainTextToken;
+//             $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+
+//             // Lempar kembali ke Vue beserta Token dan Data User via URL
+//             return redirect()->away($frontendUrl . '/auth/callback?token=' . $token . '&user=' . urlencode(json_encode($user)));
+
+//         } catch (\Exception $e) {
+//             Log::error('Google Auth Error: ' . $e->getMessage());
+//             $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+//             return redirect()->away($frontendUrl . '/login?error=GoogleAuthFailed');
+//         }
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use Carbon\Carbon;
@@ -33,24 +927,18 @@ class AuthController extends Controller
             return response()->json($validator->errors(), 422);
         }
 
-        // ========================================================================
-        // [BARU] 1. Cek apakah email ini sudah pernah subscribe saat menjadi Guest
-        // ========================================================================
+        // Cek apakah email ini sudah pernah subscribe saat menjadi Guest
         $subscriber = Subscriber::where('email', $request->email)->first();
         $isSubscribed = $subscriber ? true : false;
 
-        // 2. Buat User baru
         $user = User::create([
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'is_subscribed' => $isSubscribed, // <--- Set status otomatis berdasarkan pengecekan di atas
+            'is_subscribed' => $isSubscribed,
         ]);
 
-        // ========================================================================
-        // [BARU] 3. Jika dia ada di tabel subscribers, tandai bahwa dia kini Registered
-        // ========================================================================
         if ($subscriber) {
             $subscriber->update(['is_registered' => true]);
         }
@@ -60,210 +948,6 @@ class AuthController extends Controller
             'user' => $user,
         ], 201);
     }
-
-    // public function login(Request $request)
-    // {
-    //     $validator = Validator::make($request->all(), [
-    //         'email'         => 'required|email',
-    //         'password'      => 'required',
-    //         'captcha_token' => 'required|string', // [BARU] Validasi token captcha
-    //     ]);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     // [BARU] Verifikasi CAPTCHA ke Google
-    //     $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-    //         'secret'   => env('RECAPTCHA_SECRET_KEY'),
-    //         'response' => $request->captcha_token,
-    //         'remoteip' => $request->ip()
-    //     ]);
-
-    //     $captchaResult = $captchaResponse->json();
-
-    //     // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.5
-    //     if (!$captchaResult['success'] || $captchaResult['score'] < 0.5) {
-    //         // Opsional: Log aktivitas bot jika diperlukan
-    //         Log::warning('Bot detected during login. Score: ' . ($captchaResult['score'] ?? 'null'));
-
-    //         return response()->json([
-    //             'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.'
-    //         ], 422);
-    //     }
-
-    //     $user = User::where('email', $request->email)->first();
-
-    //     if (
-    //         !$user ||
-    //         !Hash::check($request->password, $user->password) ||
-    //         $user->usertype !== 'user'
-    //     ) {
-    //         return response()->json([
-    //             'message' => 'Email atau Password salah.'
-    //         ], 401);
-    //     }
-
-    //     $token = $user->createToken('auth_token')->plainTextToken;
-
-    //     return response()->json([
-    //         'message'      => 'Login Berhasil',
-    //         'access_token' => $token,
-    //         'token_type'   => 'Bearer',
-    //         'user'         => $user
-    //     ], 200);
-    // }
-
-    // public function login(Request $request)
-    // {
-    //     // 1. Susun aturan dasar
-    //     $rules = [
-    //         'email' => 'required|email',
-    //         'password' => 'required',
-    //     ];
-
-    //     // 2. Wajibkan captcha HANYA jika bukan di environment testing
-    //     if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
-    //         $rules['captcha_token'] = 'required|string';
-    //     }
-
-    //     $validator = Validator::make($request->all(), $rules);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
-    //     if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
-    //         $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-    //             'secret' => env('RECAPTCHA_SECRET_KEY'),
-    //             'response' => $request->captcha_token,
-    //             'remoteip' => $request->ip(),
-    //         ]);
-
-    //         $captchaResult = $captchaResponse->json();
-
-    //         if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
-    //             Log::warning('Bot detected during login. Score: '.($captchaResult['score'] ?? 'null'));
-
-    //             return response()->json([
-    //                 'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
-    //             ], 422);
-    //         }
-    //     }
-
-    //     // ==========================================
-    //     // Logika utama aplikasi tetap berjalan normal
-    //     // ==========================================
-    //     $user = User::where('email', $request->email)->first();
-
-    //     if (
-    //         ! $user ||
-    //         ! Hash::check($request->password, $user->password) ||
-    //         $user->usertype !== 'user'
-    //     ) {
-    //         return response()->json([
-    //             'message' => 'Email atau Password salah.',
-    //         ], 401);
-    //     }
-
-    //     $token = $user->createToken('auth_token')->plainTextToken;
-
-    //     return response()->json([
-    //         'message' => 'Login Berhasil',
-    //         'access_token' => $token,
-    //         'token_type' => 'Bearer',
-    //         'user' => $user,
-    //     ], 200);
-    // }
-
-    // public function adminLogin(Request $request)
-    // {
-    //     // 1. Susun aturan dasar
-    //     $rules = [
-    //         'email' => 'required|email',
-    //         'password' => 'required',
-    //     ];
-
-    //     // 2. Wajibkan captcha HANYA jika bukan di environment testing
-    //     if (! app()->environment('testing')) {
-    //         $rules['captcha_token'] = 'required|string';
-    //     }
-
-    //     $validator = Validator::make($request->all(), $rules);
-
-    //     if ($validator->fails()) {
-    //         return response()->json($validator->errors(), 422);
-    //     }
-
-    //     // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
-    //     if (! app()->environment('testing')) {
-    //         $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-    //             'secret' => env('RECAPTCHA_SECRET_KEY'),
-    //             'response' => $request->captcha_token,
-    //             'remoteip' => $request->ip(),
-    //         ]);
-
-    //         $captchaResult = $captchaResponse->json();
-
-    //         // 👇 TAMBAHKAN LOG INI UNTUK DEBUGGING 👇
-    //         if (! $captchaResult['success']) {
-    //             Log::error('reCAPTCHA Failed: '.json_encode($captchaResult));
-    //         }
-
-    //         // Di v3, kita juga mengecek 'score'. Standard amannya adalah di atas 0.3
-    //         if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.3) {
-    //             // Opsional: Log aktivitas bot jika diperlukan
-    //             Log::warning('Bot detected during admin login. Score: ' . ($captchaResult['score'] ?? 'null'));
-
-    //             return response()->json([
-    //                 'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
-    //             ], 422);
-    //         }
-    //     }
-
-    //     // 3. Eksekusi pengecekan ke Google HANYA jika bukan di environment testing
-    //     // DAN token bukan dari aplikasi mobile resmi kita
-    //     // if (! app()->environment('testing') && $request->captcha_token !== 'mobile_solher_rahasia_123!@#') {
-    //     //     $captchaResponse = Http::asForm()->post('https://www.google.com/recaptcha/api/siteverify', [
-    //     //         'secret' => env('RECAPTCHA_SECRET_KEY'),
-    //     //         'response' => $request->captcha_token,
-    //     //         'remoteip' => $request->ip(),
-    //     //     ]);
-
-    //     //     $captchaResult = $captchaResponse->json();
-
-    //     //     if (! $captchaResult['success'] || ($captchaResult['score'] ?? 0) < 0.5) {
-    //     //         Log::warning('Bot detected during login. Score: '.($captchaResult['score'] ?? 'null'));
-
-    //     //         return response()->json([
-    //     //             'message' => 'Sistem mendeteksi aktivitas mencurigakan. Login ditolak.',
-    //     //         ], 422);
-    //     //     }
-    //     // }
-
-    //     // ==========================================
-    //     // Logika utama aplikasi tetap berjalan normal
-    //     // ==========================================
-    //     $user = User::where('email', $request->email)
-    //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
-    //         ->first();
-
-    //     if (! $user || ! Hash::check($request->password, $user->password)) {
-    //         return response()->json([
-    //             'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.',
-    //         ], 401);
-    //     }
-
-    //     $token = $user->createToken('admin_token')->plainTextToken;
-
-    //     return response()->json([
-    //         'message' => 'Login Berhasil',
-    //         'access_token' => $token,
-    //         'token_type' => 'Bearer',
-    //         'user' => $user,
-    //     ], 200);
-    // }
 
     public function login(Request $request)
     {
@@ -392,7 +1076,8 @@ class AuthController extends Controller
         if (! $user || ! Hash::check($request->password, $user->password)) {
             RateLimiter::hit($throttleKey, 600);
             return response()->json([
-                'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki izin.',
+                // 👇 [PERBAIKAN] Mengembalikan kalimat error ke aslinya agar lolos GitHub Actions 👇
+                'message' => 'Akses ditolak. Email/Password salah atau Anda tidak memiliki akses ke panel ini.',
             ], 401);
         }
 
@@ -407,7 +1092,6 @@ class AuthController extends Controller
         ], 200);
     }
 
-    // 1. Update Nama & Email
     public function updateProfileInfo(Request $request)
     {
         $user = $request->user();
@@ -440,9 +1124,7 @@ class AuthController extends Controller
         $user = $request->user();
 
         try {
-            // [PERBAIKAN] Jika ada foto lama, hapus dari Local Storage
             if ($user->profile_image) {
-                // Bersihkan URL agar hanya menyisakan path relatifnya saja
                 $oldPath = str_replace(url(Storage::url('')), '', $user->profile_image);
                 $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
 
@@ -454,7 +1136,6 @@ class AuthController extends Controller
                 Storage::disk('public')->delete($oldPath);
             }
 
-            // [PERBAIKAN] Upload foto baru ke Local Storage (disk 'public' -> storage/app/public/profiles)
             $path = $request->file('image')->store('profiles', 'public');
 
             Log::info('New profile image uploaded', [
@@ -462,7 +1143,6 @@ class AuthController extends Controller
                 'new_path' => $path,
             ]);
 
-            // [PERBAIKAN] Karena kita tidak memakai Accessor di User Model, kita simpan URL penuhnya langsung
             $user->profile_image = url(Storage::url($path));
             $user->save();
 
@@ -491,7 +1171,6 @@ class AuthController extends Controller
         }
     }
 
-    // 3. Update Password
     public function updatePassword(Request $request)
     {
         $request->validate([
@@ -511,18 +1190,8 @@ class AuthController extends Controller
         return response()->json(['message' => 'Password berhasil diubah']);
     }
 
-    // Ambil semua daftar user biasa
-    // public function getAllUsers()
-    // {
-    //     // Mengambil user dengan usertype 'user' saja
-    //     $users = User::where('usertype', 'user')->latest()->get(); //
-
-    //     return response()->json($users, 200);
-    // }
-
     public function getAllUsers()
     {
-        // 1. Kumpulkan semua ID Admin, Superadmin, dan AI Bot (Solher Care)
         $adminIds = User::whereIn('usertype', ['admin', 'superadmin'])->pluck('id')->toArray();
         $aiUser = User::where('email', 'ai@solher.com')->first();
 
@@ -530,7 +1199,6 @@ class AuthController extends Controller
             $adminIds[] = $aiUser->id;
         }
 
-        // 2. Tarik data user sekaligus menghitung pesan mereka yang belum dibaca oleh admin
         $users = User::where('usertype', 'user')
             ->withCount(['messages as unread_count' => function ($query) use ($adminIds) {
                 $query->where('is_read', false)
@@ -542,12 +1210,9 @@ class AuthController extends Controller
         return response()->json($users, 200);
     }
 
-    // Ambil detail satu user beserta alamatnya
     public function getUserDetail($id)
     {
-        // Memuat user beserta relasi addresses yang sudah kita buat sebelumnya
-        $user = User::with('addresses')->findOrFail($id); //
-
+        $user = User::with('addresses')->findOrFail($id);
         return response()->json($user, 200);
     }
 
@@ -559,14 +1224,13 @@ class AuthController extends Controller
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,'.$admin->id,
-            'phone' => 'nullable|string|max:20', // [BARU] Tambahkan validasi phone
+            'phone' => 'nullable|string|max:20',
         ]);
 
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        // [BARU] Sertakan phone saat update
         $admin->update($request->only('first_name', 'last_name', 'email', 'phone'));
 
         return response()->json([
@@ -584,19 +1248,15 @@ class AuthController extends Controller
         $admin = $request->user();
 
         try {
-            // [PERBAIKAN] Jika ada foto lama, hapus dari Local Storage
             if ($admin->profile_image) {
-                // Bersihkan URL agar hanya menyisakan path relatifnya saja
                 $oldPath = str_replace(url(Storage::url('')), '', $admin->profile_image);
                 $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
 
                 Storage::disk('public')->delete($oldPath);
             }
 
-            // [PERBAIKAN] Upload foto baru ke Local Storage
             $path = $request->file('image')->store('profiles', 'public');
 
-            // [PERBAIKAN] Simpan URL penuhnya ke database
             $admin->profile_image = url(Storage::url($path));
             $admin->save();
 
@@ -649,7 +1309,6 @@ class AuthController extends Controller
         return response()->json(['user' => $user, 'message' => 'Membership status updated!']);
     }
 
-    // --- 1. MENGIRIM KODE OTP KE EMAIL ---
     public function sendResetCode(Request $request)
     {
         $request->validate(['email' => 'required|email']);
@@ -660,15 +1319,13 @@ class AuthController extends Controller
             return response()->json(['message' => 'Email address not found in our system.'], 404);
         }
 
-        // Hapus kode lama jika ada
         DB::table('password_reset_codes')->where('email', $request->email)->delete();
 
-        // Buat 6-digit angka random
         $code = sprintf('%06d', mt_rand(1, 999999));
 
         DB::table('password_reset_codes')->insert([
             'email' => $request->email,
-            'code' => Hash::make($code), // Enkripsi kode di DB untuk keamanan
+            'code' => Hash::make($code),
             'expires_at' => Carbon::now()->addMinutes(15),
             'created_at' => Carbon::now(),
         ]);
@@ -685,7 +1342,6 @@ class AuthController extends Controller
         }
     }
 
-    // --- 2. MEMVALIDASI KODE OTP ---
     public function verifyResetCode(Request $request)
     {
         $request->validate([
@@ -714,7 +1370,6 @@ class AuthController extends Controller
         return response()->json(['message' => 'Code verified successfully.']);
     }
 
-    // --- 3. MERESET PASSWORD BERDASARKAN OTP YANG VALID ---
     public function resetPassword(Request $request)
     {
         $request->validate([
@@ -735,20 +1390,15 @@ class AuthController extends Controller
         $user->password = Hash::make($request->password);
         $user->save();
 
-        // Hapus token reset setelah sukses digunakan
         DB::table('password_reset_codes')->where('email', $request->email)->delete();
 
         return response()->json(['message' => 'Password has been successfully reset.']);
     }
 
-    // ====================================================================
-    // FUNGSI FORGOT PASSWORD KHUSUS ADMIN
-    // ====================================================================
     public function adminSendResetCode(Request $request)
     {
         $request->validate(['email' => 'required|email']);
 
-        // [PERBAIKAN] Cek apakah email ini milik staf internal (bukan pelanggan biasa)
         $admin = User::where('email', $request->email)
             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
             ->first();
@@ -787,7 +1437,6 @@ class AuthController extends Controller
             'code' => 'required|digits:6',
         ]);
 
-        // [PERBAIKAN] Validasi staf
         $admin = User::where('email', $request->email)
             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
             ->first();
@@ -822,7 +1471,6 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        // [PERBAIKAN] Validasi staf
         $admin = User::where('email', $request->email)
             ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
             ->first();
@@ -844,9 +1492,6 @@ class AuthController extends Controller
         return response()->json(['message' => 'Kata sandi berhasil disetel ulang.']);
     }
 
-    // ====================================================================
-    // 👇 LOGIKA GOOGLE OAUTH (LOGIN & REGISTER SEKALI KLIK) 👇
-    // ====================================================================
     public function redirectToGoogle()
     {
         return Socialite::driver('google')->stateless()->redirect();
@@ -857,12 +1502,9 @@ class AuthController extends Controller
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
 
-            // Cek apakah user dengan email ini sudah ada
             $user = User::where('email', $googleUser->getEmail())->first();
 
-            // Jika belum ada, otomatis REGISTER
             if (!$user) {
-                // Cek apakah dia sudah subscribe sebelumnya
                 $subscriber = Subscriber::where('email', $googleUser->getEmail())->first();
                 $isSubscribed = $subscriber ? true : false;
 
@@ -870,7 +1512,7 @@ class AuthController extends Controller
                     'first_name' => $googleUser->user['given_name'] ?? $googleUser->getName(),
                     'last_name' => $googleUser->user['family_name'] ?? ' ',
                     'email' => $googleUser->getEmail(),
-                    'password' => Hash::make(\Illuminate\Support\Str::random(24)), // Password acak yang kuat
+                    'password' => Hash::make(\Illuminate\Support\Str::random(24)),
                     'is_subscribed' => $isSubscribed,
                 ]);
 
@@ -879,11 +1521,9 @@ class AuthController extends Controller
                 }
             }
 
-            // Generate Token Sanctum
             $token = $user->createToken('auth_token')->plainTextToken;
             $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
 
-            // Lempar kembali ke Vue beserta Token dan Data User via URL
             return redirect()->away($frontendUrl . '/auth/callback?token=' . $token . '&user=' . urlencode(json_encode($user)));
 
         } catch (\Exception $e) {
