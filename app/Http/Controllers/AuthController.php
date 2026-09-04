@@ -1020,6 +1020,64 @@ class AuthController extends Controller
         ], 200);
     }
 
+    // =========================================================================
+    // 👇 FUNGSI LOGIN KHUSUS MOBILE APP 👇
+    // =========================================================================
+    public function loginMobile(Request $request)
+    {
+        // 1. RATE LIMITER: Sangat penting agar endpoint ini tidak di-bruteforce bot
+        $throttleKey = 'mobile_login|' . Str::lower($request->input('email')) . '|' . $request->ip();
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            return response()->json([
+                'message' => "Terlalu banyak percobaan. Akses diblokir sementara. Coba lagi dalam $seconds detik."
+            ], 429);
+        }
+
+        // 2. VALIDASI INPUT (Menggunakan app_secret alih-alih captcha_token)
+        $validator = Validator::make($request->all(), [
+            'email'      => 'required|email',
+            'password'   => 'required',
+            'app_secret' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json($validator->errors(), 422);
+        }
+
+        // 3. VALIDASI APP SECRET (Gembok agar endpoint ini hanya bisa diakses aplikasi Flutter Anda)
+        // Idealnya letakkan nilai rahasia ini di file .env Anda: MOBILE_APP_SECRET=SOLHER_MOBILE_SECRET_2026_XYZ!
+        $expectedSecret = env('MOBILE_APP_SECRET', 'SOLHER_MOBILE_SECRET_2026_XYZ!');
+
+        if ($request->app_secret !== $expectedSecret) {
+            Log::warning('Unauthorized mobile API hit from IP: ' . $request->ip());
+            RateLimiter::hit($throttleKey, 300);
+            return response()->json(['message' => 'Unrecognized Application Client.'], 403);
+        }
+
+        // 4. CEK KREDENSIAL USER
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password) || $user->usertype !== 'user') {
+            RateLimiter::hit($throttleKey, 300); // Catat kegagalan
+            return response()->json([
+                'message' => 'Email atau Password salah.',
+            ], 401);
+        }
+
+        // 5. BERHASIL: Bersihkan hitungan gagal dan berikan token
+        RateLimiter::clear($throttleKey);
+        $token = $user->createToken('mobile_token')->plainTextToken;
+
+        return response()->json([
+            'message'      => 'Login Berhasil',
+            'access_token' => $token,
+            'token_type'   => 'Bearer',
+            'user'         => $user,
+        ], 200);
+    }
+
     public function adminLogin(Request $request)
     {
         // 1. RATE LIMITER ADMIN (Lebih ketat: Maks 3x gagal dalam 10 menit)

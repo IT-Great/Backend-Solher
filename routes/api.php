@@ -1054,6 +1054,7 @@ Route::get('/events', [EventController::class, 'indexPublic']);
 Route::middleware('throttle:auth-limiter')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/mobile/login', [AuthController::class, 'loginMobile']);
     // Tambahkan 2 baris ini:
     Route::get('/auth/google/redirect', [AuthController::class, 'redirectToGoogle']);
     Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
