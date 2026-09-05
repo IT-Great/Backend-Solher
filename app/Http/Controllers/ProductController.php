@@ -65,7 +65,7 @@ class ProductController extends Controller
         // 2. 👇 PERBAIKAN: Filter Collection di memori menggunakan method where() milik Collection 👇
         if ($request->has('category_id') && $request->category_id != 0) {
             $products = $products->where('category_id', $request->category_id)->values();
-            // Note: ->values() penting agar key array di-reset ke 0, 1, 2, dst. 
+            // Note: ->values() penting agar key array di-reset ke 0, 1, 2, dst.
             // Jika tidak, JSON response di Flutter akan terbaca sebagai Map/Object, bukan List/Array.
         }
 
@@ -108,47 +108,71 @@ class ProductController extends Controller
 
     // Fungsi khusus untuk menarik data Best Seller dengan "Baseline Padding" (Cold Start)
     // Fungsi khusus untuk menarik data Best Seller dengan "Baseline Padding" (Cold Start)
+    // public function getBestSellers()
+    // {
+    //     try {
+    //         // 1. Tarik Data Penjualan Murni dari SQL
+    //         $products = Product::with('category')
+    //             ->where('status', 'active')
+    //             ->addSelect(['real_sold' => function ($query) {
+    //                 $query->selectRaw('COALESCE(SUM(quantity), 0)')
+    //                     ->from('transaction_details')
+    //                     ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+    //                     ->whereColumn('transaction_details.product_id', 'products.id')
+    //                     ->where('transactions.status', 'completed');
+    //             }])
+    //             ->get();
+
+    //         // 2. Manipulasi Data Fiktif dengan Aman di Level PHP (Collection)
+    //         $bestSellers = $products->map(function ($product) {
+    //             $actualSales = (int) $product->real_sold;
+
+    //             /*
+    //              * 🔥 ALGORITMA BASELINE PADDING V2 🔥
+    //              * Kita gunakan Modulo (%) 5. Hasilnya selalu berputar di angka 0, 1, 2, 3, 4.
+    //              * Jika dikali 3, variasinya hanya 0, 3, 6, 9, 12.
+    //              * Ditambah base 35, angka fiktifnya aman di rentang 35 sampai 47.
+    //              */
+    //             $fakePadding = 35 + (($product->id % 5) * 3);
+
+    //             // Bobot penjualan asli dikali 5.
+    //             // Tujuannya agar produk yang laku 3 buah (3x5=15) akan otomatis
+    //             // mengalahkan seluruh produk fiktif yang 0 penjualan.
+    //             $weightedSales = $actualSales > 0 ? ($actualSales * 5) : 0;
+
+    //             // Total akhir untuk tampilan
+    //             $product->total_sold = $fakePadding + $weightedSales;
+
+    //             return $product;
+    //         })
+    //             // 3. Urutkan dari yang terbesar, lalu potong 12 teratas
+    //             ->sortByDesc('total_sold')
+    //             ->take(12)
+    //             ->values(); // Reset urutan index array
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'data' => $bestSellers
+    //         ], 200);
+    //     } catch (\Exception $e) {
+    //         return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    //     }
+    // }
+
     public function getBestSellers()
     {
         try {
-            // 1. Tarik Data Penjualan Murni dari SQL
-            $products = Product::with('category')
+            // Algoritma Baseline Padding dieksekusi di level SQL
+            // Tidak ada lagi menarik seluruh produk ke memori PHP!
+            $bestSellers = Product::with('category')
                 ->where('status', 'active')
-                ->addSelect(['real_sold' => function ($query) {
-                    $query->selectRaw('COALESCE(SUM(quantity), 0)')
-                        ->from('transaction_details')
-                        ->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
-                        ->whereColumn('transaction_details.product_id', 'products.id')
-                        ->where('transactions.status', 'completed');
-                }])
+                ->select('products.*')
+                ->selectRaw('COALESCE((SELECT SUM(quantity) FROM transaction_details JOIN transactions ON transactions.id = transaction_details.transaction_id WHERE transaction_details.product_id = products.id AND transactions.status = "completed"), 0) as real_sold')
+                // Algoritma: (35 + ((id % 7) * 3)) + (real_sold * 5)
+                ->selectRaw('(35 + ((products.id % 7) * 3) + (COALESCE((SELECT SUM(quantity) FROM transaction_details JOIN transactions ON transactions.id = transaction_details.transaction_id WHERE transaction_details.product_id = products.id AND transactions.status = "completed"), 0) * 5)) as total_sold')
+                ->orderByDesc('total_sold')
+                ->limit(12)
                 ->get();
-
-            // 2. Manipulasi Data Fiktif dengan Aman di Level PHP (Collection)
-            $bestSellers = $products->map(function ($product) {
-                $actualSales = (int) $product->real_sold;
-
-                /*
-                 * 🔥 ALGORITMA BASELINE PADDING V2 🔥
-                 * Kita gunakan Modulo (%) 5. Hasilnya selalu berputar di angka 0, 1, 2, 3, 4.
-                 * Jika dikali 3, variasinya hanya 0, 3, 6, 9, 12.
-                 * Ditambah base 35, angka fiktifnya aman di rentang 35 sampai 47.
-                 */
-                $fakePadding = 35 + (($product->id % 5) * 3);
-
-                // Bobot penjualan asli dikali 5.
-                // Tujuannya agar produk yang laku 3 buah (3x5=15) akan otomatis
-                // mengalahkan seluruh produk fiktif yang 0 penjualan.
-                $weightedSales = $actualSales > 0 ? ($actualSales * 5) : 0;
-
-                // Total akhir untuk tampilan
-                $product->total_sold = $fakePadding + $weightedSales;
-
-                return $product;
-            })
-                // 3. Urutkan dari yang terbesar, lalu potong 12 teratas
-                ->sortByDesc('total_sold')
-                ->take(12)
-                ->values(); // Reset urutan index array
 
             return response()->json([
                 'status' => 'success',
@@ -415,19 +439,54 @@ class ProductController extends Controller
         return response()->json(['message' => 'Product activated'], 200);
     }
 
+    // public function forceDelete($id)
+    // {
+    //     $product = Product::findOrFail($id);
+
+    //     if ($product->image) {
+
+    //         $oldPath = str_replace('/storage/', '', parse_url($product->image, PHP_URL_PATH));
+    //         Storage::disk('public')->delete($oldPath);
+    //     }
+
+    //     try {
+    //         $product->delete();
+
+    //         Cache::tags(['catalog'])->flush();
+
+    //         return response()->json(['message' => 'Product deleted permanently'], 200);
+    //     } catch (QueryException $e) {
+    //         report($e);
+    //         return response()->json(['message' => 'Produk tidak bisa dihapus karena sudah memiliki riwayat transaksi'], 422);
+    //     }
+    // }
+
     public function forceDelete($id)
     {
         $product = Product::findOrFail($id);
 
-        if ($product->image) {
-
-            $oldPath = str_replace('/storage/', '', parse_url($product->image, PHP_URL_PATH));
-            Storage::disk('public')->delete($oldPath);
-        }
-
         try {
-            $product->delete();
+            // 1. Hapus gambar utama
+            if ($product->image) {
+                $oldPath = str_replace('/storage/', '', parse_url($product->image, PHP_URL_PATH));
+                Storage::disk('public')->delete($oldPath);
+            }
 
+            // 2. Hapus gambar varian (Mencegah Storage Leak)
+            if (is_array($product->variant_images)) {
+                foreach ($product->variant_images as $imgUrl) {
+                    $oldPath = str_replace('/storage/', '', parse_url($imgUrl, PHP_URL_PATH));
+                    Storage::disk('public')->delete($oldPath);
+                }
+            }
+
+            // 3. Hapus video varian (Mencegah Storage Leak)
+            if ($product->variant_video) {
+                $oldPath = str_replace('/storage/', '', parse_url($product->variant_video, PHP_URL_PATH));
+                Storage::disk('public')->delete($oldPath);
+            }
+
+            $product->delete();
             Cache::tags(['catalog'])->flush();
 
             return response()->json(['message' => 'Product deleted permanently'], 200);
@@ -494,7 +553,10 @@ class ProductController extends Controller
                 'contents' => [
                     ['role' => 'user', 'parts' => [['text' => $prompt]]]
                 ],
-                'generationConfig' => ['temperature' => 0.7]
+                'generationConfig' => [
+                    'temperature' => 0.7,
+                    'responseMimeType' => 'application/json',
+                ]
             ];
 
             $response = Http::timeout(30)->post($url, $payload);
