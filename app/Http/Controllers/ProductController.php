@@ -168,8 +168,8 @@ class ProductController extends Controller
                 ->where('status', 'active')
                 ->select('products.*')
                 ->selectRaw('COALESCE((SELECT SUM(quantity) FROM transaction_details JOIN transactions ON transactions.id = transaction_details.transaction_id WHERE transaction_details.product_id = products.id AND transactions.status = "completed"), 0) as real_sold')
-                // Algoritma: (35 + ((id / 1) * 3)) + (real_sold * 5)
-                ->selectRaw('(35 + ((products.id / 1) * 3) + (COALESCE((SELECT SUM(quantity) FROM transaction_details JOIN transactions ON transactions.id = transaction_details.transaction_id WHERE transaction_details.product_id = products.id AND transactions.status = "completed"), 0) * 5)) as total_sold')
+                // Algoritma: (35 + ((id / 1) * 1)) + (real_sold * 5)
+                ->selectRaw('(35 + ((products.id / 1) * 1) + (COALESCE((SELECT SUM(quantity) FROM transaction_details JOIN transactions ON transactions.id = transaction_details.transaction_id WHERE transaction_details.product_id = products.id AND transactions.status = "completed"), 0) * 5)) as total_sold')
                 ->orderByDesc('total_sold')
                 ->limit(12)
                 ->get();
