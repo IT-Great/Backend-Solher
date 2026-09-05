@@ -331,9 +331,301 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use Carbon\Carbon;
+// use App\Models\PromoClaim;
+// use App\Mail\PromoCodeMail;
+// use Illuminate\Support\Str;
+// use Illuminate\Http\Request;
+// use App\Jobs\SendPromoReminderJob;
+// use Illuminate\Support\Facades\Log;
+// use Illuminate\Support\Facades\Auth;
+// use Illuminate\Support\Facades\Mail;
+// use App\Services\PromoMerdekaService; // <-- Pastikan service dipanggil
+
+// class PromoController extends Controller
+// {
+//     // public function claim(Request $request)
+//     // {
+//     //     // 👇 [PERBAIKAN] Tambahkan validasi 'campaign' 👇
+//     //     $request->validate([
+//     //         'email' => 'required|email',
+//     //         'campaign' => 'nullable|string'
+//     //     ]);
+
+//     //     $campaign = $request->campaign;
+
+//     //     // =======================================================
+//     //     // LOGIKA POPUP 17 AGUSTUS
+//     //     // =======================================================
+//     //     if ($campaign === 'SOLHER17') {
+//     //         $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'SOLHER17')->first();
+//     //         if ($exists) {
+//     //             return response()->json(['message' => 'Email ini sudah mengklaim promo kemerdekaan sebelumnya.'], 400);
+//     //         }
+
+//     //         $code = 'SOLHER17';
+//     //         $discountValue = 500000; // Sekadar angka placeholder maks
+//     //         // Promo hangus pada 17 Agustus pukul 23:59:59
+//     //         $expiresAt = Carbon::create(date('Y'), 8, 17, 23, 59, 59, 'Asia/Jakarta');
+//     //     }
+//     //     // =======================================================
+//     //     // LOGIKA POPUP WELCOME DEFAULT (LAMA)
+//     //     // =======================================================
+//     //     else {
+//     //         $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'LIKE', 'SOLHER-%')->first();
+//     //         if ($exists) {
+//     //             return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
+//     //         }
+
+//     //         $code = 'SOLHER-'.strtoupper(Str::random(6));
+//     //         $discountValue = 250000;
+//     //         $expiresAt = now()->addHours(24);
+//     //     }
+
+//     //     try {
+//     //         Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
+//     //     } catch (\Exception $e) {
+//     //         report($e);
+//     //         Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
+//     //         return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
+//     //     }
+
+//     //     PromoClaim::create([
+//     //         'email' => $request->email,
+//     //         'promo_code' => $code,
+//     //         'discount_value' => $discountValue,
+//     //         'expires_at' => $expiresAt,
+//     //     ]);
+
+//     //     if ($campaign !== 'SOLHER17') {
+//     //         SendPromoReminderJob::dispatch($request->email, $code, $discountValue)->delay(now()->addHours(23));
+//     //     }
+
+//     //     return response()->json([
+//     //         'message' => 'Promo berhasil diklaim!',
+//     //         'promo_code' => $code,
+//     //     ]);
+//     // }
+
+//     public function claim(Request $request)
+//     {
+//         $request->validate([
+//             'email' => 'required|email',
+//             'campaign' => 'nullable|string'
+//         ]);
+
+//         $campaign = $request->campaign;
+
+//         // =======================================================
+//         // LOGIKA POPUP 17 AGUSTUS
+//         // =======================================================
+//         if ($campaign === 'SOLHER17') {
+//             $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'SOLHER17')->first();
+//             if ($exists) {
+//                 return response()->json(['message' => 'Email ini sudah mengklaim promo kemerdekaan sebelumnya.'], 400);
+//             }
+
+//             $code = 'SOLHER17';
+//             $discountValue = 500000; // Sekadar angka placeholder maks
+//             // Promo hangus pada 17 Agustus pukul 23:59:59
+//             $expiresAt = Carbon::create(date('Y'), 8, 17, 23, 59, 59, 'Asia/Jakarta');
+//         }
+//         // =======================================================
+//         // LOGIKA POPUP WELCOME DEFAULT (LAMA)
+//         // =======================================================
+//         else {
+//             $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'LIKE', 'SOLHER-%')->first();
+//             if ($exists) {
+//                 return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
+//             }
+
+//             $code = 'SOLHER-'.strtoupper(Str::random(6));
+//             $discountValue = 250000;
+//             $expiresAt = now()->addHours(24);
+//         }
+
+//         // 👇 [PERBAIKAN KRUSIAL] SIMPAN KE DATABASE TERLEBIH DAHULU 👇
+//         try {
+//             PromoClaim::create([
+//                 'email' => $request->email,
+//                 'promo_code' => $code,
+//                 'discount_value' => $discountValue,
+//                 'expires_at' => $expiresAt,
+//             ]);
+//         } catch (\Illuminate\Database\QueryException $e) {
+//             // Jika ada user double-click, request kedua akan masuk ke error 1062 (Duplicate Entry MySQL)
+//             if ($e->errorInfo[1] == 1062) {
+//                 return response()->json(['message' => 'Email ini sudah mengklaim promo tersebut.'], 400);
+//             }
+//             // Jika ada error database lain, lempar kembali agar terlihat di Sentry
+//             throw $e;
+//         }
+//         // 👆 ========================================================== 👆
+
+//         // 👇 JIKA DATABASE BERHASIL TERSIMPAN AMAN, BARU KIRIM EMAIL 👇
+//         try {
+//             Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
+//         } catch (\Exception $e) {
+//             report($e);
+//             Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
+
+//             // JIKA EMAIL GAGAL DIKIRIM: Kita hapus kembali klaim di database
+//             // agar user tidak terkunci dan bisa mencoba submit lagi
+//             PromoClaim::where('email', $request->email)->where('promo_code', $code)->delete();
+
+//             return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
+//         }
+
+//         // Job reminder hanya untuk promo biasa
+//         if ($campaign !== 'SOLHER17') {
+//             SendPromoReminderJob::dispatch($request->email, $code, $discountValue)->delay(now()->addHours(23));
+//         }
+
+//         return response()->json([
+//             'message' => 'Promo berhasil diklaim!',
+//             'promo_code' => $code,
+//         ]);
+//     }
+
+//     public function verify(Request $request, PromoMerdekaService $promoService)
+//     {
+//         $request->validate([
+//             'promo_code' => 'required|string',
+//             'cart_items' => 'required|array'
+//         ]);
+
+//         $user = Auth::user();
+//         $code = strtoupper(trim($request->promo_code));
+//         $cartItems = $request->cart_items;
+
+//         foreach ($cartItems as $item) {
+//             $product = \App\Models\Product::with('category')->find($item['product_id']);
+
+//             if ($product && $product->discount_price) {
+//                  $now = now();
+//                  $start = $product->discount_start_date;
+//                  $end = $product->discount_end_date;
+
+//                  $isActive = false;
+//                  if ($start && $end) { $isActive = $now->between($start, $end); }
+//                  elseif ($start) { $isActive = $now->greaterThanOrEqualTo($start); }
+//                  elseif ($end) { $isActive = $now->lessThanOrEqualTo($end); }
+//                  else { $isActive = true; }
+
+//                  if ($isActive) {
+//                      return response()->json(['message' => 'Voucher tidak dapat digunakan untuk produk yang sedang diskon.'], 400);
+//                  }
+//             }
+//         }
+
+//         // ====================================================================
+//         // 👇 [BARU] VALIDASI & KALKULASI SOLHER17 SAAT USER KLIK "APPLY" 👇
+//         // ====================================================================
+//         if ($code === 'SOLHER17') {
+//             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHER17')->first();
+//             if (!$claim) return response()->json(['message' => 'Anda belum mengklaim promo ini. Silakan klaim via pop-up terlebih dahulu.'], 400);
+//             if ($claim->is_used) return response()->json(['message' => 'Voucher kemerdekaan Anda sudah pernah digunakan.'], 400);
+
+//             // Karena servis butuh bentuk Collection Eloquent, kita tarik data keranjangnya dari DB
+//             $dbCartItems = \App\Models\Cart::with('product.category')->where('user_id', $user->id)->get();
+
+//             // Hitung secara presisi diskonnya
+//             $promoResult = $promoService->calculatePromo($dbCartItems, []);
+
+//             if (!$promoResult['is_valid']) {
+//                 return response()->json(['message' => $promoResult['message']], 400);
+//             }
+
+//             return response()->json([
+//                 'message' => $promoResult['message'],
+//                 'discount_value' => $promoResult['discount_amount'], // <-- Kirimkan diskon yg sebenarnya (bukan sekadar 500k)
+//                 'promo_type' => 'claim'
+//             ], 200);
+//         }
+//         // ====================================================================
+
+//         if ($code === 'SOLHOST34') {
+//             // ... (logika SOLHOST34 biarkan persis seperti bawaan Anda sebelumnya)
+//             $totalQuantityInCart = 0;
+//             $bagProductFound = null;
+
+//             foreach ($cartItems as $item) {
+//                 $qty = isset($item['quantity']) ? (int)$item['quantity'] : 1;
+//                 $totalQuantityInCart += $qty;
+//                 $prod = \App\Models\Product::with('category')->find($item['product_id']);
+//                 if ($prod && $prod->category) {
+//                     $catCode = strtoupper(trim($prod->category->code));
+//                     if (in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) {
+//                         $bagProductFound = $prod;
+//                     }
+//                 }
+//             }
+
+//             if ($totalQuantityInCart > 1) return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
+//             if (!$bagProductFound) return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas (Kode Kategori Valid).'], 400);
+
+//             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
+//             if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
+
+//             return response()->json([
+//                 'message' => 'Subsidi Spesial Rp 3.400.000 Berhasil Diterapkan!',
+//                 'discount_value' => 3400000,
+//                 'promo_type' => 'claim'
+//             ], 200);
+//         }
+
+//         if ($code === 'SOLHERMEMBER') {
+//             if (!$user->is_membership) return response()->json(['message' => 'Hanya untuk VIP Member.'], 400);
+//             if ($user->has_used_member_voucher) return response()->json(['message' => 'Voucher ini sudah pernah digunakan.'], 400);
+//             return response()->json(['message' => 'VIP Voucher applied!', 'discount_value' => 500000], 200);
+//         }
+
+//         if ($code === 'FIRSTORDER') {
+//             $hasOrdered = \App\Models\Transaction::where('user_id', $user->id)->where('status', 'completed')->exists();
+//             if ($hasOrdered) return response()->json(['message' => 'Voucher ini hanya untuk pembeli pertama.'], 400);
+//             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'FIRSTORDER')->where('is_used', true)->first();
+//             if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini.'], 400);
+//             return response()->json(['message' => 'First Order Voucher applied!', 'discount_value' => 250000], 200);
+//         }
+
+//         $claim = PromoClaim::where('email', $user->email)
+//             ->where('promo_code', $code)
+//             ->first();
+
+//         if (! $claim) {
+//             return response()->json(['message' => 'Invalid promo code for this email address.'], 404);
+//         }
+
+//         if (now()->greaterThan($claim->expires_at)) {
+//             return response()->json(['message' => 'This promo code has expired.'], 400);
+//         }
+
+//         if ($claim->is_used) {
+//             return response()->json(['message' => 'This promo code has already been used.'], 400);
+//         }
+
+//         return response()->json([
+//             'message' => 'Promo applied successfully!',
+//             'discount_value' => $claim->discount_value,
+//             'promo_type' => 'claim'
+//         ], 200);
+//     }
+
+//     // 👇 FUNGSI BARU UNTUK HALAMAN ADMIN VUE 👇
+//     public function getAllClaims()
+//     {
+//         // Mengambil semua data promo claims diurutkan dari yang paling baru diklaim
+//         $claims = PromoClaim::orderBy('created_at', 'desc')->get();
+//         return response()->json($claims, 200);
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use Carbon\Carbon;
+use App\Models\Product;
 use App\Models\PromoClaim;
 use App\Mail\PromoCodeMail;
 use Illuminate\Support\Str;
@@ -342,73 +634,10 @@ use App\Jobs\SendPromoReminderJob;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
-use App\Services\PromoMerdekaService; // <-- Pastikan service dipanggil
+use App\Services\PromoMerdekaService;
 
 class PromoController extends Controller
 {
-    // public function claim(Request $request)
-    // {
-    //     // 👇 [PERBAIKAN] Tambahkan validasi 'campaign' 👇
-    //     $request->validate([
-    //         'email' => 'required|email',
-    //         'campaign' => 'nullable|string'
-    //     ]);
-
-    //     $campaign = $request->campaign;
-
-    //     // =======================================================
-    //     // LOGIKA POPUP 17 AGUSTUS
-    //     // =======================================================
-    //     if ($campaign === 'SOLHER17') {
-    //         $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'SOLHER17')->first();
-    //         if ($exists) {
-    //             return response()->json(['message' => 'Email ini sudah mengklaim promo kemerdekaan sebelumnya.'], 400);
-    //         }
-
-    //         $code = 'SOLHER17';
-    //         $discountValue = 500000; // Sekadar angka placeholder maks
-    //         // Promo hangus pada 17 Agustus pukul 23:59:59
-    //         $expiresAt = Carbon::create(date('Y'), 8, 17, 23, 59, 59, 'Asia/Jakarta');
-    //     }
-    //     // =======================================================
-    //     // LOGIKA POPUP WELCOME DEFAULT (LAMA)
-    //     // =======================================================
-    //     else {
-    //         $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'LIKE', 'SOLHER-%')->first();
-    //         if ($exists) {
-    //             return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
-    //         }
-
-    //         $code = 'SOLHER-'.strtoupper(Str::random(6));
-    //         $discountValue = 250000;
-    //         $expiresAt = now()->addHours(24);
-    //     }
-
-    //     try {
-    //         Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
-    //     } catch (\Exception $e) {
-    //         report($e);
-    //         Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
-    //         return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
-    //     }
-
-    //     PromoClaim::create([
-    //         'email' => $request->email,
-    //         'promo_code' => $code,
-    //         'discount_value' => $discountValue,
-    //         'expires_at' => $expiresAt,
-    //     ]);
-
-    //     if ($campaign !== 'SOLHER17') {
-    //         SendPromoReminderJob::dispatch($request->email, $code, $discountValue)->delay(now()->addHours(23));
-    //     }
-
-    //     return response()->json([
-    //         'message' => 'Promo berhasil diklaim!',
-    //         'promo_code' => $code,
-    //     ]);
-    // }
-
     public function claim(Request $request)
     {
         $request->validate([
@@ -422,18 +651,23 @@ class PromoController extends Controller
         // LOGIKA POPUP 17 AGUSTUS
         // =======================================================
         if ($campaign === 'SOLHER17') {
+            // 👇 PERBAIKAN FATAL 1: Cegah klaim jika masa promo sudah lewat 👇
+            $promoEnd = Carbon::create(date('Y'), 8, 17, 23, 59, 59, 'Asia/Jakarta');
+            if (now()->greaterThan($promoEnd)) {
+                return response()->json(['message' => 'Mohon maaf, periode promo Kemerdekaan telah berakhir.'], 400);
+            }
+
             $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'SOLHER17')->first();
             if ($exists) {
                 return response()->json(['message' => 'Email ini sudah mengklaim promo kemerdekaan sebelumnya.'], 400);
             }
 
             $code = 'SOLHER17';
-            $discountValue = 500000; // Sekadar angka placeholder maks
-            // Promo hangus pada 17 Agustus pukul 23:59:59
-            $expiresAt = Carbon::create(date('Y'), 8, 17, 23, 59, 59, 'Asia/Jakarta');
+            $discountValue = 500000;
+            $expiresAt = $promoEnd;
         }
         // =======================================================
-        // LOGIKA POPUP WELCOME DEFAULT (LAMA)
+        // LOGIKA POPUP WELCOME DEFAULT
         // =======================================================
         else {
             $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'LIKE', 'SOLHER-%')->first();
@@ -446,7 +680,6 @@ class PromoController extends Controller
             $expiresAt = now()->addHours(24);
         }
 
-        // 👇 [PERBAIKAN KRUSIAL] SIMPAN KE DATABASE TERLEBIH DAHULU 👇
         try {
             PromoClaim::create([
                 'email' => $request->email,
@@ -455,30 +688,23 @@ class PromoController extends Controller
                 'expires_at' => $expiresAt,
             ]);
         } catch (\Illuminate\Database\QueryException $e) {
-            // Jika ada user double-click, request kedua akan masuk ke error 1062 (Duplicate Entry MySQL)
             if ($e->errorInfo[1] == 1062) {
                 return response()->json(['message' => 'Email ini sudah mengklaim promo tersebut.'], 400);
             }
-            // Jika ada error database lain, lempar kembali agar terlihat di Sentry
             throw $e;
         }
-        // 👆 ========================================================== 👆
 
-        // 👇 JIKA DATABASE BERHASIL TERSIMPAN AMAN, BARU KIRIM EMAIL 👇
         try {
+            // PERBAIKAN TIER 2: Sebaiknya gunakan ->queue() di masa depan, tapi untuk sekarang ->send() diamankan.
             Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
         } catch (\Exception $e) {
             report($e);
             Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
 
-            // JIKA EMAIL GAGAL DIKIRIM: Kita hapus kembali klaim di database
-            // agar user tidak terkunci dan bisa mencoba submit lagi
             PromoClaim::where('email', $request->email)->where('promo_code', $code)->delete();
-
             return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
         }
 
-        // Job reminder hanya untuk promo biasa
         if ($campaign !== 'SOLHER17') {
             SendPromoReminderJob::dispatch($request->email, $code, $discountValue)->delay(now()->addHours(23));
         }
@@ -500,10 +726,25 @@ class PromoController extends Controller
         $code = strtoupper(trim($request->promo_code));
         $cartItems = $request->cart_items;
 
-        foreach ($cartItems as $item) {
-            $product = \App\Models\Product::with('category')->find($item['product_id']);
+        // 👇 PERBAIKAN FATAL 2: HANCURKAN N+1 QUERY 👇
+        // Tarik semua ID produk yang ada di cart dalam 1x Query
+        $productIds = collect($cartItems)->pluck('product_id')->unique()->toArray();
+        $productsInCart = Product::with('category')->whereIn('id', $productIds)->get()->keyBy('id');
+        // 👆 ======================================== 👆
 
-            if ($product && $product->discount_price) {
+        $totalQuantityInCart = 0;
+        $bagProductFound = null;
+
+        // Loop untuk mengecek syarat diskon menggunakan data yang sudah di-load di memori
+        foreach ($cartItems as $item) {
+            $product = $productsInCart->get($item['product_id']);
+            if (!$product) continue;
+
+            $qty = isset($item['quantity']) ? (int)$item['quantity'] : 1;
+            $totalQuantityInCart += $qty;
+
+            // Cek apakah ada barang yang sedang diskon
+            if ($product->discount_price) {
                  $now = now();
                  $start = $product->discount_start_date;
                  $end = $product->discount_end_date;
@@ -518,20 +759,25 @@ class PromoController extends Controller
                      return response()->json(['message' => 'Voucher tidak dapat digunakan untuk produk yang sedang diskon.'], 400);
                  }
             }
+
+            // Identifikasi apakah ada produk kategori Tas untuk syarat SOLHOST34
+            if ($product->category) {
+                $catCode = strtoupper(trim($product->category->code));
+                if (in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) {
+                    $bagProductFound = $product;
+                }
+            }
         }
 
         // ====================================================================
-        // 👇 [BARU] VALIDASI & KALKULASI SOLHER17 SAAT USER KLIK "APPLY" 👇
+        // VALIDASI SOLHER17
         // ====================================================================
         if ($code === 'SOLHER17') {
             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHER17')->first();
             if (!$claim) return response()->json(['message' => 'Anda belum mengklaim promo ini. Silakan klaim via pop-up terlebih dahulu.'], 400);
             if ($claim->is_used) return response()->json(['message' => 'Voucher kemerdekaan Anda sudah pernah digunakan.'], 400);
 
-            // Karena servis butuh bentuk Collection Eloquent, kita tarik data keranjangnya dari DB
             $dbCartItems = \App\Models\Cart::with('product.category')->where('user_id', $user->id)->get();
-
-            // Hitung secara presisi diskonnya
             $promoResult = $promoService->calculatePromo($dbCartItems, []);
 
             if (!$promoResult['is_valid']) {
@@ -540,31 +786,17 @@ class PromoController extends Controller
 
             return response()->json([
                 'message' => $promoResult['message'],
-                'discount_value' => $promoResult['discount_amount'], // <-- Kirimkan diskon yg sebenarnya (bukan sekadar 500k)
+                'discount_value' => $promoResult['discount_amount'],
                 'promo_type' => 'claim'
             ], 200);
         }
+
         // ====================================================================
-
+        // VALIDASI SOLHOST34
+        // ====================================================================
         if ($code === 'SOLHOST34') {
-            // ... (logika SOLHOST34 biarkan persis seperti bawaan Anda sebelumnya)
-            $totalQuantityInCart = 0;
-            $bagProductFound = null;
-
-            foreach ($cartItems as $item) {
-                $qty = isset($item['quantity']) ? (int)$item['quantity'] : 1;
-                $totalQuantityInCart += $qty;
-                $prod = \App\Models\Product::with('category')->find($item['product_id']);
-                if ($prod && $prod->category) {
-                    $catCode = strtoupper(trim($prod->category->code));
-                    if (in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) {
-                        $bagProductFound = $prod;
-                    }
-                }
-            }
-
             if ($totalQuantityInCart > 1) return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
-            if (!$bagProductFound) return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas (Kode Kategori Valid).'], 400);
+            if (!$bagProductFound) return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas.'], 400);
 
             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
             if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
@@ -576,6 +808,9 @@ class PromoController extends Controller
             ], 200);
         }
 
+        // ====================================================================
+        // VALIDASI MEMBER & FIRST ORDER
+        // ====================================================================
         if ($code === 'SOLHERMEMBER') {
             if (!$user->is_membership) return response()->json(['message' => 'Hanya untuk VIP Member.'], 400);
             if ($user->has_used_member_voucher) return response()->json(['message' => 'Voucher ini sudah pernah digunakan.'], 400);
@@ -590,9 +825,10 @@ class PromoController extends Controller
             return response()->json(['message' => 'First Order Voucher applied!', 'discount_value' => 250000], 200);
         }
 
-        $claim = PromoClaim::where('email', $user->email)
-            ->where('promo_code', $code)
-            ->first();
+        // ====================================================================
+        // VALIDASI VOUCHER REGULER
+        // ====================================================================
+        $claim = PromoClaim::where('email', $user->email)->where('promo_code', $code)->first();
 
         if (! $claim) {
             return response()->json(['message' => 'Invalid promo code for this email address.'], 404);
@@ -613,11 +849,10 @@ class PromoController extends Controller
         ], 200);
     }
 
-    // 👇 FUNGSI BARU UNTUK HALAMAN ADMIN VUE 👇
+    // 👇 PERBAIKAN FATAL 3: Gunakan Pagination agar Admin Panel tidak Out of Memory 👇
     public function getAllClaims()
     {
-        // Mengambil semua data promo claims diurutkan dari yang paling baru diklaim
-        $claims = PromoClaim::orderBy('created_at', 'desc')->get();
+        $claims = PromoClaim::orderBy('created_at', 'desc')->paginate(50);
         return response()->json($claims, 200);
     }
 }
