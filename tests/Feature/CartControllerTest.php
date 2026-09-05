@@ -2,12 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\Cart;
-use App\Models\Category;
-use App\Models\Product;
-use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
+use App\Models\Cart;
+use App\Models\User;
+use App\Models\Product;
+use App\Models\Category;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 
 class CartControllerTest extends TestCase
 {
@@ -175,8 +175,11 @@ class CartControllerTest extends TestCase
                              'quantity' => 6,
                          ]);
 
+        // $response->assertStatus(422)
+        //          ->assertJson(['message' => 'Quantity exceeds available stock!']);
+
         $response->assertStatus(422)
-                 ->assertJson(['message' => 'Quantity exceeds available stock!']);
+         ->assertJson(['message' => 'Kuantitas melebihi stok yang tersedia!']);
     }
 
     /**
@@ -200,8 +203,11 @@ class CartControllerTest extends TestCase
                          ]);
 
         // Harus gagal!
+        // $response->assertStatus(422)
+        //          ->assertJson(['message' => 'Quantity exceeds available stock!']);
+
         $response->assertStatus(422)
-                 ->assertJson(['message' => 'Quantity exceeds available stock!']);
+         ->assertJson(['message' => 'Kuantitas melebihi stok yang tersedia!']);
     }
 
     /**
@@ -246,8 +252,11 @@ class CartControllerTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
                          ->deleteJson("/api/carts/{$cart->id}");
 
+        // $response->assertStatus(200)
+        //          ->assertJson(['message' => 'Item removed']);
+
         $response->assertStatus(200)
-                 ->assertJson(['message' => 'Item removed']);
+         ->assertJson(['message' => 'Item berhasil dihapus']);
 
         $this->assertDatabaseMissing('carts', [
             'id' => $cart->id
