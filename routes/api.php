@@ -1025,6 +1025,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\CategoryCoaController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProductStockController;
 use App\Http\Controllers\TransferReceivePaymentController;
 
@@ -1135,6 +1136,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/withdraw', [AffiliateController::class, 'withdraw']);
         Route::post('/apply', [AffiliateController::class, 'apply']);
     });
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
 });
 
 // =========================================================================
