@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {a
+        Schema::table('users', function (Blueprint $table) {
             //
             $table->text('fcm_token')->nullable()->after('remember_token');
         });
@@ -24,6 +24,7 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             //
+            $table->dropColumn('fcm_token');
         });
     }
 };
