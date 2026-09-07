@@ -89,10 +89,20 @@ class ProcessPaymentWebhookJob implements ShouldQueue
                 $this->sendFacebookConversionAPI($transaction);
 
                 $targetTransactionStatus = ($transaction->shipping_method === 'free') ? 'completed' : 'processing';
-                $transaction->update([
-                    'status' => $targetTransactionStatus,
-                    'payment_method' => $paymentMethod,
-                ]);
+                // $transaction->update([
+                //     'status' => $targetTransactionStatus,
+                //     'payment_method' => $paymentMethod,
+                // ]);
+
+                // 👇 PANGGIL FUNGSI EKSPLISIT JIKA SELESAI 👇
+                if ($targetTransactionStatus === 'completed') {
+                    $transaction->markAsCompleted(['payment_method' => $paymentMethod]);
+                } else {
+                    $transaction->update([
+                        'status' => 'processing',
+                        'payment_method' => $paymentMethod,
+                    ]);
+                }
 
                 // if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
                 //     $transaction->update(['commission_status' => 'settled']);

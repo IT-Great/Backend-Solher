@@ -109,11 +109,14 @@ class ProcessBiteshipWebhookJob implements ShouldQueue
             }
 
             if ($status === 'delivered' && $transaction->status === 'processing') {
-                $updates['status'] = 'completed';
+
+            // 👇 PANGGIL FUNGSI EKSPLISIT 👇
+                $transaction->markAsCompleted($updates);
+                // $updates['status'] = 'completed';
 
                 // 👇 [PERBAIKAN] Cukup panggil update().
                 // Model Observer Transaction.php otomatis membagikan poin, afiliasi, & notifikasi.
-                $transaction->update($updates);
+                // $transaction->update($updates);
             } else {
                 if (in_array($status, ['cancelled', 'rejected']) && $transaction->status === 'processing') {
                     $updates['status'] = 'refund_manual_required';

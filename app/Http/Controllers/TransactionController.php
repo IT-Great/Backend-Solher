@@ -1321,7 +1321,10 @@ class TransactionController extends Controller
 
         // 👇 Saat baris update ini tereksekusi, Model Event di atas
         // akan otomatis terpanggil dan membereskan urusan Poin, Afiliasi, & FCM! 👇
-        $transaction->update(['status' => 'completed']);
+        // $transaction->update(['status' => 'completed']);
+
+        // 👇 PANGGIL FUNGSI EKSPLISIT 👇
+        $transaction->markAsCompleted();
 
         event(new \App\Events\DashboardUpdated());
 

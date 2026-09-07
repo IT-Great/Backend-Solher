@@ -95,55 +95,66 @@ class Transaction extends Model
     // }
 
     // 👇 TAMBAHKAN BLOK EVENT MODEL INI 👇
-    protected static function booted()
+// 👇 FUNGSI STATE TRANSITION EKSPLISIT 👇
+    public function markAsCompleted(array $additionalUpdates = [])
     {
-        static::updated(function (Transaction $transaction) {
-            // [PERBAIKAN FATAL] Gunakan wasChanged(), BUKAN isDirty() di dalam event updated!
-            if ($transaction->wasChanged('status') && $transaction->status === 'completed') {
+        // Cegah eksekusi ganda jika status sudah completed
+        if ($this->status === 'completed') {
+            return;
+        }
 
-                $user = $transaction->user;
+        // Simpan pembaruan status dan data tambahan
+        $updates = array_merge(['status' => 'completed'], $additionalUpdates);
+        $this->update($updates);
 
-                if ($user) {
-                    // 1. Cek & Assign Membership Otomatis
-                    if (!$user->is_membership) {
-                        $totalSpent = Transaction::where('user_id', $user->id)
-                            ->where('status', 'completed')
-                            ->sum('total_amount');
+        $user = $this->user;
 
-                        if ($totalSpent >= 100000) {
-                            $user->update(['is_membership' => true]);
-                        }
-                    }
+        if ($user) {
+            // 1. Cek & Assign Membership Otomatis
+            if (!$user->is_membership) {
+                $totalSpent = self::where('user_id', $user->id)
+                    ->where('status', 'completed')
+                    ->sum('total_amount');
 
-                    // 2. Distribusi Poin Loyalitas
-                    $user->refresh();
-                    if ($transaction->point > 0 && $user->is_membership) {
-                        $user->increment('point', $transaction->point);
-                    }
-
-                    // 3. Kirim Notifikasi FCM
-                    if ($user->fcm_token) {
-                        app(FcmService::class)->sendPushNotification(
-                            $user->fcm_token,
-                            "Pesanan Selesai 🎉",
-                            "Terima kasih telah berbelanja! Anda mendapatkan +{$transaction->point} Poin Loyalitas."
-                        );
-                    }
-                }
-
-                // 4. Distribusi Komisi Afiliasi
-                if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
-                    DB::table('transactions')
-                        ->where('id', $transaction->id)
-                        ->update(['commission_status' => 'settled']);
-
-                    $affiliate = User::find($transaction->affiliate_id);
-                    if ($affiliate) {
-                        $affiliate->increment('commission_balance', $transaction->commission_earned);
-                    }
+                if ($totalSpent >= 100000) {
+                    $user->update(['is_membership' => true]);
                 }
             }
-        });
+
+            // 2. Distribusi Poin Loyalitas (ANTI-NULL BUG)
+            $user->refresh();
+            if ($this->point > 0 && $user->is_membership) {
+                // Konversi paksa ke (int) akan mengubah NULL menjadi 0
+                // Sehingga 0 + 15 = 15 (Berhasil disimpan)
+                $user->point = (int) $user->point + (int) $this->point;
+                $user->save();
+            }
+
+            // 3. Kirim Notifikasi FCM
+            if ($user->fcm_token) {
+                try {
+                    app(FcmService::class)->sendPushNotification(
+                        $user->fcm_token,
+                        "Pesanan Selesai 🎉",
+                        "Terima kasih telah berbelanja! Anda mendapatkan +{$this->point} Poin Loyalitas."
+                    );
+                } catch (\Exception $e) {}
+            }
+        }
+
+        // 4. Distribusi Komisi Afiliasi
+        if ($this->affiliate_id && $this->commission_status === 'pending') {
+            DB::table('transactions')
+                ->where('id', $this->id)
+                ->update(['commission_status' => 'settled']);
+
+            $affiliate = User::find($this->affiliate_id);
+            if ($affiliate) {
+                // Anti-NULL Bug untuk Afiliasi
+                $affiliate->commission_balance = (float) $affiliate->commission_balance + (float) $this->commission_earned;
+                $affiliate->save();
+            }
+        }
     }
 
     /**
