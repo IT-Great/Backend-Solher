@@ -1591,16 +1591,36 @@ class AuthController extends Controller
         }
     }
 
+    // public function updateFcmToken(Request $request)
+    // {
+    //     $request->validate(['fcm_token' => 'required|string']);
+    //     $request->user()->update(['fcm_token' => $request->fcm_token]);
+    //     return response()->json(['message' => 'FCM Token updated.']);
+    // }
+
+    // public function removeFcmToken(Request $request)
+    // {
+    //     $request->user()->update(['fcm_token' => null]);
+    //     return response()->json(['message' => 'FCM Token removed.']);
+    // }
+
     public function updateFcmToken(Request $request)
     {
         $request->validate(['fcm_token' => 'required|string']);
-        $request->user()->update(['fcm_token' => $request->fcm_token]);
+
+        $user = $request->user();
+        $user->fcm_token = $request->fcm_token; // 👈 Bypass Mass Assignment
+        $user->save();
+
         return response()->json(['message' => 'FCM Token updated.']);
     }
 
     public function removeFcmToken(Request $request)
     {
-        $request->user()->update(['fcm_token' => null]);
+        $user = $request->user();
+        $user->fcm_token = null; // 👈 Bypass Mass Assignment
+        $user->save();
+
         return response()->json(['message' => 'FCM Token removed.']);
     }
 }
