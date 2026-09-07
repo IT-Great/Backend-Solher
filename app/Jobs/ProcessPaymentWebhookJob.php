@@ -2,19 +2,19 @@
 
 namespace App\Jobs;
 
+use App\Models\User;
 use App\Models\Payment;
 use App\Models\Transaction;
-use App\Models\User;
+use Illuminate\Bus\Queueable;
 use App\Services\ShippingFactory;
 use App\Traits\IdempotentWebhook;
-use Illuminate\Bus\Queueable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class ProcessPaymentWebhookJob implements ShouldQueue
 {
@@ -94,13 +94,13 @@ class ProcessPaymentWebhookJob implements ShouldQueue
                     'payment_method' => $paymentMethod,
                 ]);
 
-                if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
-                    $transaction->update(['commission_status' => 'settled']);
-                    $affiliateUser = User::find($transaction->affiliate_id);
-                    if ($affiliateUser) {
-                        $affiliateUser->increment('commission_balance', $transaction->commission_earned);
-                    }
-                }
+                // if ($targetTransactionStatus === 'completed' && $transaction->affiliate_id && $transaction->commission_status === 'pending') {
+                //     $transaction->update(['commission_status' => 'settled']);
+                //     $affiliateUser = User::find($transaction->affiliate_id);
+                //     if ($affiliateUser) {
+                //         $affiliateUser->increment('commission_balance', $transaction->commission_earned);
+                //     }
+                // }
 
                 $this->dispatchShippingOrder($transaction);
 
@@ -134,10 +134,10 @@ class ProcessPaymentWebhookJob implements ShouldQueue
             try {
                 $transaction->loadMissing(['address', 'user', 'details.product']);
                 $destinationCountry = !empty($transaction->address->region) ? $transaction->address->region : (!empty($transaction->address->details['region']) ? $transaction->address->details['region'] : 'Indonesia');
-                
+
                 $shippingGateway = ShippingFactory::make($destinationCountry);
                 $items = [];
-                
+
                 foreach ($transaction->details as $detail) {
                     $prod = $detail->product;
                     $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
