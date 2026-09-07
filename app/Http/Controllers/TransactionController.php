@@ -1272,7 +1272,46 @@ class TransactionController extends Controller
         }
     }
 
-    public function confirmComplete(Request $request, $id, FcmService $fcmService)
+    // public function confirmComplete(Request $request, $id, FcmService $fcmService)
+    // {
+    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+    //     if ($transaction->status !== 'processing') {
+    //         return response()->json(['message' => 'Order cannot be completed yet.'], 400);
+    //     }
+
+    //     $transaction->update(['status' => 'completed']);
+
+    //     if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
+    //         $transaction->update(['commission_status' => 'settled']);
+
+    //         $affiliate = User::find($transaction->affiliate_id);
+    //         if ($affiliate) {
+    //             $affiliate->increment('commission_balance', $transaction->commission_earned);
+    //         }
+    //     }
+
+    //     $this->checkAndAssignMembership($transaction->user);
+
+    //     $transaction->user->refresh();
+    //     if ($transaction->point > 0 && $transaction->user->is_membership) {
+    //         $transaction->user->increment('point', $transaction->point);
+    //     }
+
+    //     if ($transaction->user && $transaction->user->fcm_token) {
+    //         $fcmService->sendPushNotification(
+    //             $transaction->user->fcm_token,
+    //             "Pesanan Selesai 🎉",
+    //             "Terima kasih telah berbelanja! Anda mendapatkan +{$transaction->point} Poin Loyalitas."
+    //         );
+    //     }
+
+    //     event(new \App\Events\DashboardUpdated());
+
+    //     return response()->json(['message' => 'Order completed!']);
+    // }
+
+    public function confirmComplete(Request $request, $id)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
@@ -1280,31 +1319,9 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Order cannot be completed yet.'], 400);
         }
 
+        // 👇 Saat baris update ini tereksekusi, Model Event di atas
+        // akan otomatis terpanggil dan membereskan urusan Poin, Afiliasi, & FCM! 👇
         $transaction->update(['status' => 'completed']);
-
-        if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
-            $transaction->update(['commission_status' => 'settled']);
-
-            $affiliate = User::find($transaction->affiliate_id);
-            if ($affiliate) {
-                $affiliate->increment('commission_balance', $transaction->commission_earned);
-            }
-        }
-
-        $this->checkAndAssignMembership($transaction->user);
-
-        $transaction->user->refresh();
-        if ($transaction->point > 0 && $transaction->user->is_membership) {
-            $transaction->user->increment('point', $transaction->point);
-        }
-
-        if ($transaction->user && $transaction->user->fcm_token) {
-            $fcmService->sendPushNotification(
-                $transaction->user->fcm_token,
-                "Pesanan Selesai 🎉",
-                "Terima kasih telah berbelanja! Anda mendapatkan +{$transaction->point} Poin Loyalitas."
-            );
-        }
 
         event(new \App\Events\DashboardUpdated());
 
