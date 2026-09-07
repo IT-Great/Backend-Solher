@@ -24,7 +24,7 @@ class FcmService
         if (!$fcmToken) return false;
 
         $accessToken = $this->getAccessToken();
-        $projectId = 'GANTI_DENGAN_PROJECT_ID_FIREBASE_ANDA'; // Cek di firebase-service-account.json
+        $projectId = 'solher-app'; // Cek di firebase-service-account.json
 
         $url = "https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send";
 
