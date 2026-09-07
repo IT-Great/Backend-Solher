@@ -227,83 +227,130 @@ class Transaction extends Model
     //     }
     // }
 
-    public function markAsCompleted(array $additionalUpdates = [])
+// 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE ELOQUENT) 👇
+    // public function markAsCompleted(array $additionalUpdates = [])
+    // {
+    //     // Cegah eksekusi ganda jika status sudah completed
+    //     if ($this->status === 'completed') {
+    //         return;
+    //     }
+
+    //     // Simpan pembaruan status transaksi saat ini (memicu event update internal Laravel)
+    //     $this->update(array_merge(['status' => 'completed'], $additionalUpdates));
+
+    //     // Gunakan relasi standar Eloquent agar mutator & casts tetap berjalan
+    //     $user = $this->user;
+
+    //     if ($user) {
+    //         // 1. Cek & Assign Membership Otomatis
+    //         if (!$user->is_membership) {
+    //             $totalSpent = self::where('user_id', $user->id)
+    //                 ->where('status', 'completed')
+    //                 ->sum('total_amount');
+
+    //             if ($totalSpent >= 100000) {
+    //                 $user->update(['is_membership' => true]);
+    //             }
+    //         }
+
+    //         // Segarkan data user dari database untuk memastikan status membership valid
+    //         $user->refresh();
+
+    //         // 2. Self-Healing Bug Logika Checkout Lama
+    //         $earnedPoints = (int) $this->point;
+    //         if ($earnedPoints <= 0) {
+    //             $earnedPoints = (int) floor($this->total_amount / 100000);
+    //             $this->update(['point' => $earnedPoints]);
+    //         }
+
+    //         // 3. Distribusi Poin Loyalitas Menggunakan Increment Bawaan Laravel
+    //         if ($earnedPoints > 0 && $user->is_membership) {
+    //             $user->increment('point', $earnedPoints);
+    //         }
+
+    //         // 4. Kirim Notifikasi FCM
+    //         if (!empty($user->fcm_token)) {
+    //             try {
+    //                 app(\App\Services\FcmService::class)->sendPushNotification(
+    //                     $user->fcm_token,
+    //                     "Pesanan Selesai 🎉",
+    //                     "Terima kasih telah berbelanja! Anda mendapatkan +{$earnedPoints} Poin Loyalitas."
+    //                 );
+    //             } catch (\Exception $e) {}
+    //         }
+    //     }
+
+    //     // 5. Distribusi Komisi Afiliasi
+    //     if ($this->affiliate_id && $this->commission_status === 'pending') {
+    //         $this->update(['commission_status' => 'settled']);
+
+    //         $affiliate = User::find($this->affiliate_id);
+    //         if ($affiliate) {
+    //             $affiliate->increment('commission_balance', $this->commission_earned);
+    //         }
+    //     }
+    // }
+
+    /**
+     * Relasi ke User
+     * Transaction belongsTo User
+     */
+    public function user()
     {
-        // Cegah eksekusi ganda jika status sudah completed
-        if ($this->status === 'completed') {
-            return;
-        }
+        return $this->belongsTo(User::class);
+    }
 
-        // Simpan pembaruan status transaksi saat ini
-        $updates = array_merge(['status' => 'completed'], $additionalUpdates);
-        $this->update($updates);
+    /**
+     * Relasi ke TransactionDetail
+     * Transaction hasMany TransactionDetail
+     */
+    public function details()
+    {
+        return $this->hasMany(TransactionDetail::class);
+    }
 
-        $userId = $this->user_id;
+    public function payment()
+    {
+        return $this->hasOne(Payment::class);
+    }
 
-        if ($userId) {
-            // Bypass Eloquent Cache dengan Query Builder mentah
-            $userRaw = DB::table('users')->where('id', $userId)->first();
+    public function address()
+    {
+        return $this->belongsTo(Address::class);
+    }
+}
 
-            if ($userRaw) {
-                $isMembership = (bool) $userRaw->is_membership;
+            // 2. Self-Healing Bug Logika Checkout Lama
+            $earnedPoints = (int) $this->point;
+            if ($earnedPoints <= 0) {
+                $earnedPoints = (int) floor($this->total_amount / 100000);
+                $this->update(['point' => $earnedPoints]);
+            }
 
-                // Cek & Assign Membership Otomatis
-                if (!$isMembership) {
-                    $totalSpent = DB::table('transactions')
-                        ->where('user_id', $userId)
-                        ->where('status', 'completed')
-                        ->sum('total_amount');
+            // 3. Distribusi Poin Loyalitas Menggunakan Increment Bawaan Laravel
+            if ($earnedPoints > 0 && $user->is_membership) {
+                $user->increment('point', $earnedPoints);
+            }
 
-                    if ($totalSpent >= 100000) {
-                        DB::table('users')->where('id', $userId)->update(['is_membership' => 1]);
-                        $isMembership = true;
-                    }
-                }
-
-                // [SELF-HEALING BUG FIX]
-                // Jika point di DB 0 (karena bug lama), hitung ulang on-the-fly dari total_amount
-                $earnedPoints = (int) $this->point;
-                if ($earnedPoints <= 0) {
-                    $earnedPoints = (int) floor($this->total_amount / 100000);
-                    // Update juga di DB agar record transaksi menjadi akurat
-                    $this->update(['point' => $earnedPoints]);
-                }
-
-                // Distribusi Poin Loyalitas (ANTI-NULL & ANTI-DB RAW BUG)
-                if ($earnedPoints > 0 && $isMembership) {
-                    $currentPoints = (int) $userRaw->point;
-                    DB::table('users')->where('id', $userId)->update([
-                        'point' => $currentPoints + $earnedPoints
-                    ]);
-                }
-
-                // Kirim Notifikasi FCM
-                if (!empty($userRaw->fcm_token)) {
-                    try {
-                        app(\App\Services\FcmService::class)->sendPushNotification(
-                            $userRaw->fcm_token,
-                            "Pesanan Selesai 🎉",
-                            "Terima kasih telah berbelanja! Anda mendapatkan +{$earnedPoints} Poin Loyalitas."
-                        );
-                    } catch (\Exception $e) {}
-                }
+            // 4. Kirim Notifikasi FCM
+            if (!empty($user->fcm_token)) {
+                try {
+                    app(\App\Services\FcmService::class)->sendPushNotification(
+                        $user->fcm_token,
+                        "Pesanan Selesai 🎉",
+                        "Terima kasih telah berbelanja! Anda mendapatkan +{$earnedPoints} Poin Loyalitas."
+                    );
+                } catch (\Exception $e) {}
             }
         }
 
-        // Distribusi Komisi Afiliasi (Aman dari null)
+        // 5. Distribusi Komisi Afiliasi
         if ($this->affiliate_id && $this->commission_status === 'pending') {
-            DB::table('transactions')
-                ->where('id', $this->id)
-                ->update(['commission_status' => 'settled']);
+            $this->update(['commission_status' => 'settled']);
 
-            $affiliate = DB::table('users')->where('id', $this->affiliate_id)->first();
+            $affiliate = User::find($this->affiliate_id);
             if ($affiliate) {
-                $currentComm = (float) $affiliate->commission_balance;
-                $earnedComm = (float) $this->commission_earned;
-
-                DB::table('users')->where('id', $this->affiliate_id)->update([
-                    'commission_balance' => $currentComm + $earnedComm
-                ]);
+                $affiliate->increment('commission_balance', $this->commission_earned);
             }
         }
     }
