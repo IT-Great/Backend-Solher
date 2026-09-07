@@ -2,10 +2,10 @@
 
 namespace App\Actions\Checkout;
 
-use App\Models\PromoClaim;
 use App\Models\User;
-use App\Services\PromoMerdekaService;
+use App\Models\PromoClaim;
 use Illuminate\Http\Request;
+use App\Services\PromoMerdekaService;
 
 class CalculateCartTotalsAction
 {
@@ -166,7 +166,8 @@ class CalculateCartTotalsAction
         $totalAfterPromo = max(0, $totalAmount - $promoDiscountAmount);
 
         // 3. Kalkulasi Poin Loyalitas
-        $earnedPoints = $lockedUser->is_membership ? floor($totalAmount / 100000) : 0;
+        // $earnedPoints = $lockedUser->is_membership ? floor($totalAmount / 100000) : 0;
+        $earnedPoints = floor($totalAfterPromo / 100000);
         $pointsUsed = 0;
 
         if ($request->use_points > 0 && $lockedUser->is_membership) {

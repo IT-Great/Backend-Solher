@@ -16,13 +16,14 @@ class DashboardController extends Controller
     // =========================================================================
     // MASTER ENDPOINT (SOLUSI ERROR MAX_USER_CONNECTIONS)
     // =========================================================================
-    public function getDashboardMasterData(C45Service $c45Service)
+    // public function getDashboardMasterData(C45Service $c45Service)
+    public function getDashboardMasterData()
     {
         return response()->json([
             'stats'           => $this->fetchStatsData(),
             'revenue'         => $this->fetchRevenueChartData(),
             'popular'         => $this->fetchPopularProductsData(),
-            'predicted'       => $this->fetchPredictedBestsellersData($c45Service),
+            'predicted'       => $this->fetchPredictedBestsellersData(),
             'activities'      => $this->fetchRecentActivitiesData(),
             'daily'           => $this->fetchAverageDailyRevenueData(),
 
@@ -105,118 +106,136 @@ class DashboardController extends Controller
             ->toArray();
     }
 
-    private function fetchPredictedBestsellersData(C45Service $c45Service)
+    // private function fetchPredictedBestsellersData(C45Service $c45Service)
+    // {
+    //     // 👇 BUNGKUS DENGAN CACHE 24 JAM (86400 Detik) 👇
+    //     return \Illuminate\Support\Facades\Cache::remember('c45_predictions', 86400, function() use ($c45Service) {
+
+    //     $products = Product::with('category')
+    //         ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
+    //         ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
+    //         ->leftJoin('transactions', function ($join) {
+    //             $join->on('transaction_details.transaction_id', '=', 'transactions.id')
+    //                 ->where('transactions.status', '=', 'completed');
+    //         })
+    //         ->where('products.status', 'active')
+    //         ->groupBy('products.id')
+    //         ->get();
+
+    //     if ($products->isEmpty()) {
+    //         return [];
+    //     }
+
+    //     $avgSold = $products->avg('total_sold') ?: 1;
+    //     $avgPrice = $products->avg('price') ?: 100000;
+
+    //     $dataset = [];
+    //     $predictData = [];
+
+    //     foreach ($products as $p) {
+    //         $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
+    //         $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
+    //         $hasDiscount = $p->discount_price ? 'Yes' : 'No';
+    //         $categoryName = $p->category->name ?? 'Unknown';
+
+    //         $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
+
+    //         $features = [
+    //             'category' => $categoryName,
+    //             'price_level' => $priceCategory,
+    //             'is_discounted' => $hasDiscount,
+    //             'stock_status' => $stockCategory,
+    //             'label' => $label
+    //         ];
+
+    //         $dataset[] = $features;
+    //         $predictData[$p->id] = [
+    //             'product' => $p,
+    //             'features' => $features
+    //         ];
+    //     }
+
+    //     $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
+    //     $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
+
+    //     $results = [];
+
+    //     $formatImageUrl = function($imagePath) {
+    //         if (!$imagePath) return '';
+    //         if (str_starts_with($imagePath, 'http')) {
+    //             return $imagePath;
+    //         }
+    //         $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
+    //         return $baseUrlFixed . '/storage/' . $imagePath;
+    //     };
+
+    //     foreach ($predictData as $id => $data) {
+    //         $product = $data['product'];
+    //         $features = $data['features'];
+
+    //         $prediction = $c45Service->predict($decisionTree, $features);
+    //         $statusLabel = $prediction['label'];
+    //         $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
+
+    //         if ($statusLabel === 'Laris') {
+    //             $results[] = [
+    //                 'id' => $product->id,
+    //                 'name' => $product->name,
+    //                 'image' => $formatImageUrl($product->image),
+    //                 'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
+    //                 'label' => 'High Potential (C4.5)',
+    //                 'color' => 'text-green-600',
+    //                 'score' => random_int(75, 100)
+    //             ];
+    //         }
+    //     }
+
+    //     if (empty($results)) {
+    //         $fallback = $this->fetchPopularProductsData();
+    //         $formattedFallback = [];
+
+    //         foreach($fallback as $index => $item) {
+    //             $prod = Product::where('name', $item['name'])->first();
+    //             $dynamicScore = 96 - ($index * random_int(5, 8));
+
+    //             $formattedFallback[] = [
+    //                 'id' => $prod ? $prod->id : random_int(1000, 9999),
+    //                 'name' => $item['name'],
+    //                 'image' => $prod ? $formatImageUrl($prod->image) : '',
+    //                 'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
+    //                 'label' => 'Historical Best',
+    //                 'color' => 'text-blue-600',
+    //                 'score' => max(60, $dynamicScore)
+    //             ];
+    //         }
+    //         return $formattedFallback;
+    //     }
+
+    //     usort($results, function ($a, $b) {
+    //         return $b['score'] <=> $a['score'];
+    //     });
+
+    //     return array_slice($results, 0, 100);
+
+    //     }); // End of Cache Remember
+    // }
+
+    private function fetchPredictedBestsellersData()
     {
-        // 👇 BUNGKUS DENGAN CACHE 24 JAM (86400 Detik) 👇
-        return \Illuminate\Support\Facades\Cache::remember('c45_predictions', 86400, function() use ($c45Service) {
-
-        $products = Product::with('category')
-            ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
-            ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
-            ->leftJoin('transactions', function ($join) {
-                $join->on('transaction_details.transaction_id', '=', 'transactions.id')
-                    ->where('transactions.status', '=', 'completed');
-            })
-            ->where('products.status', 'active')
-            ->groupBy('products.id')
-            ->get();
-
-        if ($products->isEmpty()) {
-            return [];
+        // 1. Prioritaskan baca dari Cache memori (Sangat Cepat - O(1))
+        if (\Illuminate\Support\Facades\Cache::has('c45_predictions_cache')) {
+            return \Illuminate\Support\Facades\Cache::get('c45_predictions_cache');
         }
 
-        $avgSold = $products->avg('total_sold') ?: 1;
-        $avgPrice = $products->avg('price') ?: 100000;
-
-        $dataset = [];
-        $predictData = [];
-
-        foreach ($products as $p) {
-            $priceCategory = $p->price > $avgPrice ? 'High' : 'Competitive';
-            $stockCategory = $p->stock < 10 ? 'Low' : 'Safe';
-            $hasDiscount = $p->discount_price ? 'Yes' : 'No';
-            $categoryName = $p->category->name ?? 'Unknown';
-
-            $label = $p->total_sold >= $avgSold ? 'Laris' : 'Tidak_Laris';
-
-            $features = [
-                'category' => $categoryName,
-                'price_level' => $priceCategory,
-                'is_discounted' => $hasDiscount,
-                'stock_status' => $stockCategory,
-                'label' => $label
-            ];
-
-            $dataset[] = $features;
-            $predictData[$p->id] = [
-                'product' => $p,
-                'features' => $features
-            ];
+        // 2. Jika server di-restart dan cache hilang, baca dari file JSON statis
+        if (\Illuminate\Support\Facades\Storage::disk('local')->exists('ml/c45_predictions.json')) {
+            $data = json_decode(\Illuminate\Support\Facades\Storage::disk('local')->get('ml/c45_predictions.json'), true);
+            \Illuminate\Support\Facades\Cache::forever('c45_predictions_cache', $data);
+            return $data;
         }
 
-        $attributes = ['category', 'price_level', 'is_discounted', 'stock_status'];
-        $decisionTree = $c45Service->buildTree($dataset, $attributes, 'label');
-
-        $results = [];
-
-        $formatImageUrl = function($imagePath) {
-            if (!$imagePath) return '';
-            if (str_starts_with($imagePath, 'http')) {
-                return $imagePath;
-            }
-            $baseUrlFixed = str_replace('/api', '', env('APP_URL', 'https://back.solher.co.id'));
-            return $baseUrlFixed . '/storage/' . $imagePath;
-        };
-
-        foreach ($predictData as $id => $data) {
-            $product = $data['product'];
-            $features = $data['features'];
-
-            $prediction = $c45Service->predict($decisionTree, $features);
-            $statusLabel = $prediction['label'];
-            $rulePath = empty($prediction['path']) ? ['Historical Base Data'] : $prediction['path'];
-
-            if ($statusLabel === 'Laris') {
-                $results[] = [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'image' => $formatImageUrl($product->image),
-                    'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
-                    'label' => 'High Potential (C4.5)',
-                    'color' => 'text-green-600',
-                    'score' => random_int(75, 100)
-                ];
-            }
-        }
-
-        if (empty($results)) {
-            $fallback = $this->fetchPopularProductsData();
-            $formattedFallback = [];
-
-            foreach($fallback as $index => $item) {
-                $prod = Product::where('name', $item['name'])->first();
-                $dynamicScore = 96 - ($index * random_int(5, 8));
-
-                $formattedFallback[] = [
-                    'id' => $prod ? $prod->id : random_int(1000, 9999),
-                    'name' => $item['name'],
-                    'image' => $prod ? $formatImageUrl($prod->image) : '',
-                    'reasons' => "Historical Best: Sold " . $item['total_sold'] . " units (Fallback Mode).",
-                    'label' => 'Historical Best',
-                    'color' => 'text-blue-600',
-                    'score' => max(60, $dynamicScore)
-                ];
-            }
-            return $formattedFallback;
-        }
-
-        usort($results, function ($a, $b) {
-            return $b['score'] <=> $a['score'];
-        });
-
-        return array_slice($results, 0, 100);
-
-        }); // End of Cache Remember
+        // 3. Fallback murni jika command cron sama sekali belum pernah dijalankan
+        return $this->fetchPopularProductsData();
     }
 
     private function fetchRecentActivitiesData()

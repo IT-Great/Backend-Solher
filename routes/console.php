@@ -1,9 +1,9 @@
 <?php
 
+use App\Jobs\SyncMonthlySalesJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
-use App\Jobs\SyncMonthlySalesJob;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -30,3 +30,5 @@ Schedule::command('system:prune --days=90')
     ->runInBackground();
 
 Schedule::job(new SyncMonthlySalesJob)->dailyAt('00:00');
+
+Schedule::command('ml:train-bestseller')->dailyAt('00:00');
