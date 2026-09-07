@@ -35,6 +35,7 @@ class User extends Authenticatable
         'has_used_member_voucher',
         'point',
         'is_subscribed',
+        'fcm_token'
     ];
 
     /**
