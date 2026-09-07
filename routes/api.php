@@ -1092,6 +1092,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/update-password', [AuthController::class, 'updatePassword']);
     Route::post('/user/toggle-membership', [AuthController::class, 'toggleMembership']);
 
+    // 👇 TAMBAHKAN DUA ENDPOINT FCM DI SINI 👇
+    Route::post('/user/fcm-token', [AuthController::class, 'updateFcmToken']);
+    Route::post('/user/remove-fcm-token', [AuthController::class, 'removeFcmToken']);
+    // 👆 ================================== 👆
+
     Route::get('/wishlists', [WishlistController::class, 'index']);
     Route::post('/wishlists/toggle', [WishlistController::class, 'toggle']);
     Route::get('/user/contact-history', [ContactController::class, 'userHistory']);

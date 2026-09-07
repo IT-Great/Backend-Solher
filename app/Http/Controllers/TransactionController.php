@@ -1050,6 +1050,7 @@ use App\Models\Product;
 use App\Models\PromoClaim;
 use App\Models\Transaction;
 use Illuminate\Support\Str;
+use App\Services\FcmService;
 use App\Models\ProductStock;
 use Illuminate\Http\Request;
 use Xendit\Refund\RefundApi;
@@ -1271,7 +1272,7 @@ class TransactionController extends Controller
         }
     }
 
-    public function confirmComplete(Request $request, $id)
+    public function confirmComplete(Request $request, $id, FcmService $fcmService)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
 
@@ -1295,6 +1296,14 @@ class TransactionController extends Controller
         $transaction->user->refresh();
         if ($transaction->point > 0 && $transaction->user->is_membership) {
             $transaction->user->increment('point', $transaction->point);
+        }
+
+        if ($transaction->user && $transaction->user->fcm_token) {
+            $fcmService->sendPushNotification(
+                $transaction->user->fcm_token,
+                "Pesanan Selesai 🎉",
+                "Terima kasih telah berbelanja! Anda mendapatkan +{$transaction->point} Poin Loyalitas."
+            );
         }
 
         event(new \App\Events\DashboardUpdated());

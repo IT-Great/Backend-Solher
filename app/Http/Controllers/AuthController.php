@@ -1590,4 +1590,17 @@ class AuthController extends Controller
             return redirect()->away($frontendUrl . '/login?error=GoogleAuthFailed');
         }
     }
+
+    public function updateFcmToken(Request $request)
+    {
+        $request->validate(['fcm_token' => 'required|string']);
+        $request->user()->update(['fcm_token' => $request->fcm_token]);
+        return response()->json(['message' => 'FCM Token updated.']);
+    }
+
+    public function removeFcmToken(Request $request)
+    {
+        $request->user()->update(['fcm_token' => null]);
+        return response()->json(['message' => 'FCM Token removed.']);
+    }
 }
