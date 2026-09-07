@@ -292,6 +292,70 @@ class Transaction extends Model
     // }
 
     // 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE ELOQUENT) 👇
+    // public function markAsCompleted(array $additionalUpdates = [])
+    // {
+    //     // Cegah eksekusi ganda jika status sudah completed
+    //     if ($this->status === 'completed') {
+    //         return;
+    //     }
+
+    //     // Simpan pembaruan status transaksi saat ini (memicu event update internal Laravel)
+    //     $this->update(array_merge(['status' => 'completed'], $additionalUpdates));
+
+    //     // Gunakan relasi standar Eloquent agar mutator & casts tetap berjalan
+    //     $user = $this->user;
+
+    //     if ($user) {
+    //         // 1. Cek & Assign Membership Otomatis
+    //         if (!$user->is_membership) {
+    //             $totalSpent = self::where('user_id', $user->id)
+    //                 ->where('status', 'completed')
+    //                 ->sum('total_amount');
+
+    //             if ($totalSpent >= 100000) {
+    //                 $user->update(['is_membership' => true]);
+    //             }
+    //         }
+
+    //         // Segarkan data user dari database untuk memastikan status membership valid
+    //         $user->refresh();
+
+    //         // 2. Self-Healing Bug Logika Checkout Lama
+    //         $earnedPoints = (int) $this->point;
+    //         if ($earnedPoints <= 0) {
+    //             $earnedPoints = (int) floor($this->total_amount / 100000);
+    //             $this->update(['point' => $earnedPoints]);
+    //         }
+
+    //         // 3. Distribusi Poin Loyalitas Menggunakan Increment Bawaan Laravel
+    //         if ($earnedPoints > 0 && $user->is_membership) {
+    //             $user->increment('point', $earnedPoints);
+    //         }
+
+    //         // 4. Kirim Notifikasi FCM
+    //         if (!empty($user->fcm_token)) {
+    //             try {
+    //                 app(\App\Services\FcmService::class)->sendPushNotification(
+    //                     $user->fcm_token,
+    //                     "Pesanan Selesai 🎉",
+    //                     "Terima kasih telah berbelanja! Anda mendapatkan +{$earnedPoints} Poin Loyalitas."
+    //                 );
+    //             } catch (\Exception $e) {}
+    //         }
+    //     }
+
+    //     // 5. Distribusi Komisi Afiliasi
+    //     if ($this->affiliate_id && $this->commission_status === 'pending') {
+    //         $this->update(['commission_status' => 'settled']);
+
+    //         $affiliate = User::find($this->affiliate_id);
+    //         if ($affiliate) {
+    //             $affiliate->increment('commission_balance', $this->commission_earned);
+    //         }
+    //     }
+    // }
+
+    // 👇 FUNGSI STATE TRANSITION EKSPLISIT (BRUTE FORCE ELOQUENT) 👇
     public function markAsCompleted(array $additionalUpdates = [])
     {
         // Cegah eksekusi ganda jika status sudah completed
@@ -299,40 +363,49 @@ class Transaction extends Model
             return;
         }
 
-        // Simpan pembaruan status transaksi saat ini (memicu event update internal Laravel)
-        $this->update(array_merge(['status' => 'completed'], $additionalUpdates));
+        // 1. Simpan pembaruan status transaksi dengan Bypass Fillable
+        foreach ($additionalUpdates as $key => $value) {
+            $this->{$key} = $value;
+        }
+        $this->status = 'completed';
+        $this->save();
 
-        // Gunakan relasi standar Eloquent agar mutator & casts tetap berjalan
-        $user = $this->user;
+        // 2. Tarik ulang user secara paksa (Mencegah Caching Relasi Pekerja Antrean)
+        $user = User::find($this->user_id);
 
         if ($user) {
-            // 1. Cek & Assign Membership Otomatis
-            if (!$user->is_membership) {
+            // Evaluasi longgar agar 1, '1', atau true lolos semua
+            $isMember = $user->is_membership == 1 || $user->is_membership == true;
+
+            // 3. Cek & Paksa Membership (Bypass Fillable)
+            if (!$isMember) {
                 $totalSpent = self::where('user_id', $user->id)
                     ->where('status', 'completed')
                     ->sum('total_amount');
 
                 if ($totalSpent >= 100000) {
-                    $user->update(['is_membership' => true]);
+                    $user->is_membership = true;
+                    $user->save();
+                    $isMember = true;
                 }
             }
 
-            // Segarkan data user dari database untuk memastikan status membership valid
-            $user->refresh();
-
-            // 2. Self-Healing Bug Logika Checkout Lama
+            // 4. Hitung Poin (Bypass Fillable & Null Bug)
             $earnedPoints = (int) $this->point;
             if ($earnedPoints <= 0) {
                 $earnedPoints = (int) floor($this->total_amount / 100000);
-                $this->update(['point' => $earnedPoints]);
+                $this->point = $earnedPoints;
+                $this->save();
             }
 
-            // 3. Distribusi Poin Loyalitas Menggunakan Increment Bawaan Laravel
-            if ($earnedPoints > 0 && $user->is_membership) {
-                $user->increment('point', $earnedPoints);
+            // 5. Eksekusi Poin Manual di PHP (Anti-NULL & Anti-Fillable Bug)
+            if ($earnedPoints > 0 && $isMember) {
+                $currentPoint = (int) $user->point;
+                $user->point = $currentPoint + $earnedPoints;
+                $user->save();
             }
 
-            // 4. Kirim Notifikasi FCM
+            // 6. Notifikasi FCM
             if (!empty($user->fcm_token)) {
                 try {
                     app(\App\Services\FcmService::class)->sendPushNotification(
@@ -344,13 +417,16 @@ class Transaction extends Model
             }
         }
 
-        // 5. Distribusi Komisi Afiliasi
+        // 7. Komisi Afiliasi (Bypass Fillable)
         if ($this->affiliate_id && $this->commission_status === 'pending') {
-            $this->update(['commission_status' => 'settled']);
+            $this->commission_status = 'settled';
+            $this->save();
 
             $affiliate = User::find($this->affiliate_id);
             if ($affiliate) {
-                $affiliate->increment('commission_balance', $this->commission_earned);
+                $currentComm = (float) $affiliate->commission_balance;
+                $affiliate->commission_balance = $currentComm + (float) $this->commission_earned;
+                $affiliate->save();
             }
         }
     }
