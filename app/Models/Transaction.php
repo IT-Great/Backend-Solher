@@ -356,6 +356,82 @@ class Transaction extends Model
     // }
 
     // 👇 FUNGSI STATE TRANSITION EKSPLISIT (BRUTE FORCE ELOQUENT) 👇
+    // public function markAsCompleted(array $additionalUpdates = [])
+    // {
+    //     // Cegah eksekusi ganda jika status sudah completed
+    //     if ($this->status === 'completed') {
+    //         return;
+    //     }
+
+    //     // 1. Simpan pembaruan status transaksi dengan Bypass Fillable
+    //     foreach ($additionalUpdates as $key => $value) {
+    //         $this->{$key} = $value;
+    //     }
+    //     $this->status = 'completed';
+    //     $this->save();
+
+    //     // 2. Tarik ulang user secara paksa (Mencegah Caching Relasi Pekerja Antrean)
+    //     $user = User::find($this->user_id);
+
+    //     if ($user) {
+    //         // Evaluasi longgar agar 1, '1', atau true lolos semua
+    //         $isMember = $user->is_membership == 1 || $user->is_membership == true;
+
+    //         // 3. Cek & Paksa Membership (Bypass Fillable)
+    //         if (!$isMember) {
+    //             $totalSpent = self::where('user_id', $user->id)
+    //                 ->where('status', 'completed')
+    //                 ->sum('total_amount');
+
+    //             if ($totalSpent >= 100000) {
+    //                 $user->is_membership = true;
+    //                 $user->save();
+    //                 $isMember = true;
+    //             }
+    //         }
+
+    //         // 4. Hitung Poin (Bypass Fillable & Null Bug)
+    //         $earnedPoints = (int) $this->point;
+    //         if ($earnedPoints <= 0) {
+    //             $earnedPoints = (int) floor($this->total_amount / 100000);
+    //             $this->point = $earnedPoints;
+    //             $this->save();
+    //         }
+
+    //         // 5. Eksekusi Poin Manual di PHP (Anti-NULL & Anti-Fillable Bug)
+    //         if ($earnedPoints > 0 && $isMember) {
+    //             $currentPoint = (int) $user->point;
+    //             $user->point = $currentPoint + $earnedPoints;
+    //             $user->save();
+    //         }
+
+    //         // 6. Notifikasi FCM
+    //         if (!empty($user->fcm_token)) {
+    //             try {
+    //                 app(\App\Services\FcmService::class)->sendPushNotification(
+    //                     $user->fcm_token,
+    //                     "Pesanan Selesai 🎉",
+    //                     "Terima kasih telah berbelanja! Anda mendapatkan +{$earnedPoints} Poin Loyalitas."
+    //                 );
+    //             } catch (\Exception $e) {}
+    //         }
+    //     }
+
+    //     // 7. Komisi Afiliasi (Bypass Fillable)
+    //     if ($this->affiliate_id && $this->commission_status === 'pending') {
+    //         $this->commission_status = 'settled';
+    //         $this->save();
+
+    //         $affiliate = User::find($this->affiliate_id);
+    //         if ($affiliate) {
+    //             $currentComm = (float) $affiliate->commission_balance;
+    //             $affiliate->commission_balance = $currentComm + (float) $this->commission_earned;
+    //             $affiliate->save();
+    //         }
+    //     }
+    // }
+
+    // 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE ELOQUENT) 👇
     public function markAsCompleted(array $additionalUpdates = [])
     {
         // Cegah eksekusi ganda jika status sudah completed
@@ -363,70 +439,54 @@ class Transaction extends Model
             return;
         }
 
-        // 1. Simpan pembaruan status transaksi dengan Bypass Fillable
-        foreach ($additionalUpdates as $key => $value) {
-            $this->{$key} = $value;
-        }
-        $this->status = 'completed';
-        $this->save();
+        // 1. Simpan pembaruan status transaksi saat ini
+        $this->update(array_merge(['status' => 'completed'], $additionalUpdates));
 
-        // 2. Tarik ulang user secara paksa (Mencegah Caching Relasi Pekerja Antrean)
-        $user = User::find($this->user_id);
+        // 2. Tarik relasi bawaan Eloquent
+        $user = $this->user;
 
         if ($user) {
-            // Evaluasi longgar agar 1, '1', atau true lolos semua
-            $isMember = $user->is_membership == 1 || $user->is_membership == true;
-
-            // 3. Cek & Paksa Membership (Bypass Fillable)
-            if (!$isMember) {
-                $totalSpent = self::where('user_id', $user->id)
+            // 3. Cek & Assign Membership Otomatis (Persis Algoritma Lama)
+            if (!$user->is_membership) {
+                $totalSpent = static::where('user_id', $user->id)
                     ->where('status', 'completed')
                     ->sum('total_amount');
 
                 if ($totalSpent >= 100000) {
-                    $user->is_membership = true;
-                    $user->save();
-                    $isMember = true;
+                    $user->update(['is_membership' => true]);
                 }
             }
 
-            // 4. Hitung Poin (Bypass Fillable & Null Bug)
-            $earnedPoints = (int) $this->point;
-            if ($earnedPoints <= 0) {
-                $earnedPoints = (int) floor($this->total_amount / 100000);
-                $this->point = $earnedPoints;
-                $this->save();
+            // 4. Segarkan data dari database (Mencegah Stale Cache)
+            $user->refresh();
+
+            // 5. Kalkulasi Poin Dinamis (Self-Healing untuk transaksi lawas dengan poin 0)
+            $pointsToAward = $this->point > 0 ? $this->point : floor($this->total_amount / 100000);
+
+            // 6. Distribusi Poin Loyalitas Menggunakan Increment (ANTI-GAGAL)
+            if ($pointsToAward > 0 && $user->is_membership) {
+                $user->increment('point', $pointsToAward);
             }
 
-            // 5. Eksekusi Poin Manual di PHP (Anti-NULL & Anti-Fillable Bug)
-            if ($earnedPoints > 0 && $isMember) {
-                $currentPoint = (int) $user->point;
-                $user->point = $currentPoint + $earnedPoints;
-                $user->save();
-            }
-
-            // 6. Notifikasi FCM
+            // 7. Kirim Notifikasi FCM
             if (!empty($user->fcm_token)) {
                 try {
                     app(\App\Services\FcmService::class)->sendPushNotification(
                         $user->fcm_token,
                         "Pesanan Selesai 🎉",
-                        "Terima kasih telah berbelanja! Anda mendapatkan +{$earnedPoints} Poin Loyalitas."
+                        "Terima kasih telah berbelanja! Anda mendapatkan +{$pointsToAward} Poin Loyalitas."
                     );
                 } catch (\Exception $e) {}
             }
         }
 
-        // 7. Komisi Afiliasi (Bypass Fillable)
+        // 8. Distribusi Komisi Afiliasi (Menggunakan Increment)
         if ($this->affiliate_id && $this->commission_status === 'pending') {
-            $this->commission_status = 'settled';
-            $this->save();
+            $this->update(['commission_status' => 'settled']);
 
             $affiliate = User::find($this->affiliate_id);
             if ($affiliate) {
-                $currentComm = (float) $affiliate->commission_balance;
-                $affiliate->commission_balance = $currentComm + (float) $this->commission_earned;
-                $affiliate->save();
+                $affiliate->increment('commission_balance', $this->commission_earned);
             }
         }
     }
