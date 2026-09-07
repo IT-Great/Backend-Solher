@@ -1360,3 +1360,20 @@ Route::get('/newsletters/click/{log_id}', [NewsletterController::class, 'trackCl
 
 Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 Route::get('/health', [\App\Http\Controllers\HealthController::class, 'check']);
+
+Route::get('/test-fcm/{userId}', function ($userId) {
+    $user = \App\Models\User::find($userId);
+
+    if (!$user || !$user->fcm_token) {
+        return "User tidak ditemukan atau fcm_token kosong!";
+    }
+
+    $fcmService = app(\App\Services\FcmService::class);
+    $success = $fcmService->sendPushNotification(
+        $user->fcm_token,
+        "Testing dari Laravel 🚀",
+        "Jika Anda membaca ini, koneksi FCM HTTP v1 berhasil 100%!"
+    );
+
+    return $success ? "Berhasil terkirim!" : "Gagal. Silakan cek storage/logs/laravel.log";
+});
