@@ -1361,6 +1361,7 @@ Route::get('/newsletters/click/{log_id}', [NewsletterController::class, 'trackCl
 Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 Route::get('/health', [\App\Http\Controllers\HealthController::class, 'check']);
 
+
 Route::get('/test-fcm/{userId}', function ($userId) {
     $user = \App\Models\User::find($userId);
 
