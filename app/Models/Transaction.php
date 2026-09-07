@@ -291,34 +291,34 @@ class Transaction extends Model
     //     }
     // }
 
-    /**
-     * Relasi ke User
-     * Transaction belongsTo User
-     */
-    public function user()
+    // 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE ELOQUENT) 👇
+    public function markAsCompleted(array $additionalUpdates = [])
     {
-        return $this->belongsTo(User::class);
-    }
+        // Cegah eksekusi ganda jika status sudah completed
+        if ($this->status === 'completed') {
+            return;
+        }
 
-    /**
-     * Relasi ke TransactionDetail
-     * Transaction hasMany TransactionDetail
-     */
-    public function details()
-    {
-        return $this->hasMany(TransactionDetail::class);
-    }
+        // Simpan pembaruan status transaksi saat ini (memicu event update internal Laravel)
+        $this->update(array_merge(['status' => 'completed'], $additionalUpdates));
 
-    public function payment()
-    {
-        return $this->hasOne(Payment::class);
-    }
+        // Gunakan relasi standar Eloquent agar mutator & casts tetap berjalan
+        $user = $this->user;
 
-    public function address()
-    {
-        return $this->belongsTo(Address::class);
-    }
-}
+        if ($user) {
+            // 1. Cek & Assign Membership Otomatis
+            if (!$user->is_membership) {
+                $totalSpent = self::where('user_id', $user->id)
+                    ->where('status', 'completed')
+                    ->sum('total_amount');
+
+                if ($totalSpent >= 100000) {
+                    $user->update(['is_membership' => true]);
+                }
+            }
+
+            // Segarkan data user dari database untuk memastikan status membership valid
+            $user->refresh();
 
             // 2. Self-Healing Bug Logika Checkout Lama
             $earnedPoints = (int) $this->point;
