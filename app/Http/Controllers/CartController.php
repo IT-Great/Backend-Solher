@@ -519,6 +519,115 @@ use App\Http\Controllers\Controller;
 
 class CartController extends Controller
 {
+    // private function calculateCartTotals($cartItems, $currency = 'IDR')
+    // {
+    //     $totalPrice = 0;
+    //     $totalDiscount = 0;
+    //     $now = now();
+    //     $groupedItems = [];
+
+    //     foreach ($cartItems as $item) {
+    //         $cat = $item->product->category;
+    //         if (!$cat) continue;
+
+    //         $rawPromo = $cat->bundle_price;
+    //         $promoConf = is_array($rawPromo) ? $rawPromo : (is_string($rawPromo) ? json_decode($rawPromo, true) : []);
+
+    //         if (is_numeric($promoConf)) {
+    //             $promoConf = ['promo_type' => 'bundle', 'price' => ['IDR' => $promoConf]];
+    //         }
+
+    //         $isActive = $cat->bundle_qty &&
+    //             (!$cat->bundle_start_date || $now >= $cat->bundle_start_date) &&
+    //             (!$cat->bundle_end_date || $now <= $cat->bundle_end_date);
+
+    //         if ($isActive && !empty($promoConf)) {
+    //             $mixGroup = !empty($promoConf['mix_group']) ? $promoConf['mix_group'] : 'CAT_' . $cat->id;
+    //             if (!isset($groupedItems[$mixGroup])) {
+    //                 $groupedItems[$mixGroup] = [
+    //                     'config' => $promoConf,
+    //                     'bundle_qty' => $cat->bundle_qty,
+    //                     'items' => collect()
+    //                 ];
+    //             }
+    //             $groupedItems[$mixGroup]['items']->push($item);
+    //         } else {
+    //             if (!isset($groupedItems['NO_PROMO'])) {
+    //                 $groupedItems['NO_PROMO'] = ['config' => null, 'items' => collect()];
+    //             }
+    //             $groupedItems['NO_PROMO']['items']->push($item);
+    //         }
+    //     }
+
+    //     foreach ($groupedItems as $groupKey => $group) {
+    //         if ($groupKey === 'NO_PROMO') {
+    //             foreach ($group['items'] as $item) {
+    //                 $totalPrice += ($item->quantity * $this->resolveProductPrice($item->product, $currency, $now));
+    //             }
+    //             continue;
+    //         }
+
+    //         $conf = $group['config'];
+    //         $type = $conf['promo_type'] ?? 'bundle';
+    //         $items = $group['items'];
+    //         $normalTotalGroup = 0;
+
+    //         foreach ($items as $item) {
+    //             $normalTotalGroup += ($item->quantity * $this->resolveProductPrice($item->product, $currency, $now));
+    //         }
+
+    //         if ($type === 'bundle') {
+    //             $bundlePrice = $conf['price'][$currency] ?? ($conf['price']['IDR'] ?? 0);
+    //             $bundleQty = $group['bundle_qty'];
+    //             $totalQty = $items->sum('quantity');
+
+    //             $bundleCount = floor($totalQty / $bundleQty);
+    //             $remainderQty = $totalQty % $bundleQty;
+
+    //             $groupPromoPrice = ($bundleCount * $bundlePrice);
+
+    //             $sortedItems = $items->sortByDesc(function ($item) use ($currency, $now) {
+    //                 return $this->resolveProductPrice($item->product, $currency, $now);
+    //             });
+
+    //             $assignedRemainder = 0;
+    //             foreach ($sortedItems as $item) {
+    //                 $normalPrice = $this->resolveProductPrice($item->product, $currency, $now);
+    //                 if ($assignedRemainder < $remainderQty) {
+    //                     $take = min($item->quantity, $remainderQty - $assignedRemainder);
+    //                     $groupPromoPrice += ($take * $normalPrice);
+    //                     $assignedRemainder += $take;
+    //                 }
+    //             }
+
+    //             $totalPrice += $groupPromoPrice;
+    //             $totalDiscount += max(0, $normalTotalGroup - $groupPromoPrice);
+
+    //         } elseif ($type === 'percent') {
+    //             $minPurchase = $conf['min_purchase'] ?? 0;
+    //             if ($normalTotalGroup >= $minPurchase) {
+    //                 $percent = $conf['percent'] ?? 0;
+    //                 $maxDiscount = $conf['max_discount'] ?? 0;
+
+    //                 $discount = $normalTotalGroup * ($percent / 100);
+    //                 if ($maxDiscount > 0 && $discount > $maxDiscount) {
+    //                     $discount = $maxDiscount;
+    //                 }
+
+    //                 $totalPrice += ($normalTotalGroup - $discount);
+    //                 $totalDiscount += $discount;
+    //             } else {
+    //                 $totalPrice += $normalTotalGroup;
+    //             }
+    //         }
+    //     }
+
+    //     return [
+    //         'total_price' => $totalPrice,
+    //         'total_discount' => $totalDiscount,
+    //     ];
+    // }
+
     private function calculateCartTotals($cartItems, $currency = 'IDR')
     {
         $totalPrice = 0;
@@ -578,7 +687,14 @@ class CartController extends Controller
 
             if ($type === 'bundle') {
                 $bundlePrice = $conf['price'][$currency] ?? ($conf['price']['IDR'] ?? 0);
-                $bundleQty = $group['bundle_qty'];
+
+                // [ANTI-BUG] Jika admin salah input harga bundle jadi 0
+                if (empty($bundlePrice) || $bundlePrice <= 0) {
+                    $totalPrice += $normalTotalGroup;
+                    continue;
+                }
+
+                $bundleQty = max(1, $group['bundle_qty']);
                 $totalQty = $items->sum('quantity');
 
                 $bundleCount = floor($totalQty / $bundleQty);
