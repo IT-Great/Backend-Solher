@@ -1173,6 +1173,11 @@ Route::middleware(['auth:sanctum', 'role:dashboard'])->prefix('admin/dashboard')
     Route::get('/predicted-bestsellers', [DashboardController::class, 'getPredictedBestsellers']);
     Route::get('/recent-activities', [DashboardController::class, 'getRecentActivities']);
     Route::get('/daily-average', [DashboardController::class, 'getAverageDailyRevenue']);
+
+    // 👇 ENDPOINT MAINTENANCE MODE 👇
+    Route::get('/../system/maintenance-status', [\App\Http\Controllers\DashboardController::class, 'getMaintenanceStatus']);
+    Route::post('/../system/takedown', [\App\Http\Controllers\DashboardController::class, 'takedownWebsiteFromGlobalExceptMe']);
+    Route::post('/../system/bringback', [\App\Http\Controllers\DashboardController::class, 'bringBackWebsite']);
 });
 
 Route::middleware(['auth:sanctum', 'role:categories'])->group(function () {

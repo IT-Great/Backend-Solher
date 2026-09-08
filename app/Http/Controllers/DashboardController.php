@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Request;
 use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Product;
@@ -613,5 +614,52 @@ class DashboardController extends Controller
 
         // Kembalikan array value-nya saja (tanpa key 1-7) agar mudah dibaca oleh Frontend
         return response()->json(array_values($chartData));
+    }
+
+    // =========================================================================
+    // SECRET MAINTENANCE MODE (FOR TESTING)
+    // =========================================================================
+
+    public function getMaintenanceStatus()
+    {
+        // Laravel membuat file 'down' di folder storage/framework jika mode maintenance aktif
+        $isDown = file_exists(storage_path('framework/down'));
+
+        return response()->json([
+            'is_maintenance' => $isDown
+        ]);
+    }
+
+    public function takedownWebsiteFromGlobalExceptMe(Request $request)
+    {
+        // Ambil IP Address asli dari laptop Anda
+        $myIp = $request->ip();
+
+        // Izinkan juga beberapa IP umum lokal untuk testing
+        $allowedIps = implode(',', [$myIp, '127.0.0.1', '::1']);
+
+        try {
+            // Jalankan artisan down dengan pengecualian IP Anda
+            // (Catatan: Webhook dari pihak ketiga biasanya tidak terpengaruh oleh ini jika mereka menembak API backend secara spesifik,
+            // Namun untuk amannya, Anda bisa menambahkan route webhook ke array $except di App\Http\Middleware\PreventRequestsDuringMaintenance)
+            \Illuminate\Support\Facades\Artisan::call('down', [
+                '--secret' => 'seanalden-test-mode', // Bypass rahasia tambahan
+                '--allow' => $allowedIps
+            ]);
+
+            return response()->json(['message' => 'Website is now in maintenance mode.']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function bringBackWebsite()
+    {
+        try {
+            \Illuminate\Support\Facades\Artisan::call('up');
+            return response()->json(['message' => 'Website is now live.']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
     }
 }

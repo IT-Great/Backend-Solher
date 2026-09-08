@@ -21,11 +21,11 @@
 //         //
 //     })->create();
 
+use Sentry\Laravel\Integration;
 use Illuminate\Foundation\Application;
+use App\Http\Middleware\SentryUserContext;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use App\Http\Middleware\SentryUserContext;
-use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -50,6 +50,15 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+
+        // 👇 TAMBAHKAN BLOK INI UNTUK PENGECUALIAN MAINTENANCE MODE 👇
+        $middleware->preventRequestsDuringMaintenance(except: [
+            'api/biteship/callback',
+            'api/payments/callback',
+            'api/payments/stripe-webhook',
+            'api/payments/paypal-webhook',
+        ]);
+        // 👆 ======================================================= 👆
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
