@@ -57,6 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/payments/callback',
             'api/payments/stripe-webhook',
             'api/payments/paypal-webhook',
+            'api/admin/*', // 👇 WAJIB: Agar tombol "Bring Back" tidak ikut terblokir!
         ]);
         // 👆 ======================================================= 👆
     })

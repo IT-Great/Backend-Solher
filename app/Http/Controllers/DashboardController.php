@@ -653,28 +653,44 @@ class DashboardController extends Controller
     //     }
     // }
 
-    public function takedownWebsiteFromGlobalExceptMe(\Illuminate\Http\Request $request)
+    // public function takedownWebsiteFromGlobalExceptMe(\Illuminate\Http\Request $request)
+    // {
+    //     // Tangkap semua kemungkinan IP asli pengguna (antisipasi Cloudflare/Proxy/Load Balancer)
+    //     $clientIp = $request->ip();
+    //     $cfIp = $request->header('CF-Connecting-IP');
+    //     $forwardedIp = $request->header('X-Forwarded-For');
+
+    //     $myIps = array_filter(array_unique([$clientIp, $cfIp, $forwardedIp, '127.0.0.1', '::1']));
+    //     $allowedIps = implode(',', $myIps);
+
+    //     try {
+    //         \Illuminate\Support\Facades\Artisan::call('down', [
+    //             '--secret' => 'seanalden-test-mode', // Kode masuk darurat (misal: solher.co.id/seanalden-test-mode)
+    //             '--allow' => $allowedIps
+    //         ]);
+
+    //         // Bersihkan route cache setelah artisan down agar sistem tidak bingung
+    //         \Illuminate\Support\Facades\Artisan::call('route:clear');
+
+    //         return response()->json([
+    //             'message' => 'Website is now in maintenance mode.',
+    //             'whitelisted_ips' => $allowedIps
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json(['message' => $e->getMessage()], 500);
+    //     }
+    // }
+
+    public function takedownWebsiteFromGlobalExceptMe()
     {
-        // Tangkap semua kemungkinan IP asli pengguna (antisipasi Cloudflare/Proxy/Load Balancer)
-        $clientIp = $request->ip();
-        $cfIp = $request->header('CF-Connecting-IP');
-        $forwardedIp = $request->header('X-Forwarded-For');
-
-        $myIps = array_filter(array_unique([$clientIp, $cfIp, $forwardedIp, '127.0.0.1', '::1']));
-        $allowedIps = implode(',', $myIps);
-
         try {
+            // Laravel modern HANYA menggunakan secret token, tidak butuh IP lagi
             \Illuminate\Support\Facades\Artisan::call('down', [
-                '--secret' => 'seanalden-test-mode', // Kode masuk darurat (misal: solher.co.id/seanalden-test-mode)
-                '--allow' => $allowedIps
+                '--secret' => 'seanalden-test-mode'
             ]);
 
-            // Bersihkan route cache setelah artisan down agar sistem tidak bingung
-            \Illuminate\Support\Facades\Artisan::call('route:clear');
-
             return response()->json([
-                'message' => 'Website is now in maintenance mode.',
-                'whitelisted_ips' => $allowedIps
+                'message' => 'Website is now in maintenance mode.'
             ]);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 500);
