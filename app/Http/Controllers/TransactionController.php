@@ -1311,6 +1311,26 @@ class TransactionController extends Controller
     //     return response()->json(['message' => 'Order completed!']);
     // }
 
+    // public function confirmComplete(Request $request, $id)
+    // {
+    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+    //     if ($transaction->status !== 'processing') {
+    //         return response()->json(['message' => 'Order cannot be completed yet.'], 400);
+    //     }
+
+    //     // 👇 Saat baris update ini tereksekusi, Model Event di atas
+    //     // akan otomatis terpanggil dan membereskan urusan Poin, Afiliasi, & FCM! 👇
+    //     // $transaction->update(['status' => 'completed']);
+
+    //     // 👇 PANGGIL FUNGSI EKSPLISIT 👇
+    //     $transaction->markAsCompleted();
+
+    //     event(new \App\Events\DashboardUpdated());
+
+    //     return response()->json(['message' => 'Order completed!']);
+    // }
+
     public function confirmComplete(Request $request, $id)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
@@ -1319,16 +1339,17 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Order cannot be completed yet.'], 400);
         }
 
-        // 👇 Saat baris update ini tereksekusi, Model Event di atas
-        // akan otomatis terpanggil dan membereskan urusan Poin, Afiliasi, & FCM! 👇
-        // $transaction->update(['status' => 'completed']);
-
-        // 👇 PANGGIL FUNGSI EKSPLISIT 👇
         $transaction->markAsCompleted();
-
         event(new \App\Events\DashboardUpdated());
 
-        return response()->json(['message' => 'Order completed!']);
+        // Tarik data user terbaru untuk pembuktian
+        $freshUser = $request->user()->fresh();
+
+        return response()->json([
+            'message' => 'Order completed!',
+            'new_point_balance' => $freshUser->point,
+            'is_member' => $freshUser->is_membership
+        ]);
     }
 
     public function requestRefund(Request $request, $id, FileUploadService $fileUpload)
