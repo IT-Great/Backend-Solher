@@ -51,15 +51,17 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
 
-        // 👇 TAMBAHKAN BLOK INI UNTUK PENGECUALIAN MAINTENANCE MODE 👇
-        $middleware->preventRequestsDuringMaintenance(except: [
-            'api/biteship/callback',
-            'api/payments/callback',
-            'api/payments/stripe-webhook',
-            'api/payments/paypal-webhook',
-            'api/admin/*', // 👇 WAJIB: Agar tombol "Bring Back" tidak ikut terblokir!
-        ]);
-        // 👆 ======================================================= 👆
+        // // 👇 TAMBAHKAN BLOK INI UNTUK PENGECUALIAN MAINTENANCE MODE 👇
+        // $middleware->preventRequestsDuringMaintenance(except: [
+        //     'api/biteship/callback',
+        //     'api/payments/callback',
+        //     'api/payments/stripe-webhook',
+        //     'api/payments/paypal-webhook',
+        //     'api/admin/*', // 👇 WAJIB: Agar tombol "Bring Back" tidak ikut terblokir!
+        // ]);
+        // // 👆 ======================================================= 👆
+
+        $middleware->append(\App\Http\Middleware\CheckMaintenanceMode::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

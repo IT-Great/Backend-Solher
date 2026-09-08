@@ -620,90 +620,117 @@ class DashboardController extends Controller
     // SECRET MAINTENANCE MODE (FOR TESTING)
     // =========================================================================
 
+    // public function getMaintenanceStatus()
+    // {
+    //     // Laravel membuat file 'down' di folder storage/framework jika mode maintenance aktif
+    //     $isDown = file_exists(storage_path('framework/down'));
+
+    //     return response()->json([
+    //         'is_maintenance' => $isDown
+    //     ]);
+    // }
+
+    // // public function takedownWebsiteFromGlobalExceptMe(Request $request)
+    // // {
+    // //     // Ambil IP Address asli dari laptop Anda
+    // //     $myIp = $request->ip();
+
+    // //     // Izinkan juga beberapa IP umum lokal untuk testing
+    // //     $allowedIps = implode(',', [$myIp, '127.0.0.1', '::1']);
+
+    // //     try {
+    // //         // Jalankan artisan down dengan pengecualian IP Anda
+    // //         // (Catatan: Webhook dari pihak ketiga biasanya tidak terpengaruh oleh ini jika mereka menembak API backend secara spesifik,
+    // //         // Namun untuk amannya, Anda bisa menambahkan route webhook ke array $except di App\Http\Middleware\PreventRequestsDuringMaintenance)
+    // //         \Illuminate\Support\Facades\Artisan::call('down', [
+    // //             '--secret' => 'seanalden-test-mode', // Bypass rahasia tambahan
+    // //             '--allow' => $allowedIps
+    // //         ]);
+
+    // //         return response()->json(['message' => 'Website is now in maintenance mode.']);
+    // //     } catch (\Exception $e) {
+    // //         return response()->json(['message' => $e->getMessage()], 500);
+    // //     }
+    // // }
+
+    // // public function takedownWebsiteFromGlobalExceptMe(\Illuminate\Http\Request $request)
+    // // {
+    // //     // Tangkap semua kemungkinan IP asli pengguna (antisipasi Cloudflare/Proxy/Load Balancer)
+    // //     $clientIp = $request->ip();
+    // //     $cfIp = $request->header('CF-Connecting-IP');
+    // //     $forwardedIp = $request->header('X-Forwarded-For');
+
+    // //     $myIps = array_filter(array_unique([$clientIp, $cfIp, $forwardedIp, '127.0.0.1', '::1']));
+    // //     $allowedIps = implode(',', $myIps);
+
+    // //     try {
+    // //         \Illuminate\Support\Facades\Artisan::call('down', [
+    // //             '--secret' => 'seanalden-test-mode', // Kode masuk darurat (misal: solher.co.id/seanalden-test-mode)
+    // //             '--allow' => $allowedIps
+    // //         ]);
+
+    // //         // Bersihkan route cache setelah artisan down agar sistem tidak bingung
+    // //         \Illuminate\Support\Facades\Artisan::call('route:clear');
+
+    // //         return response()->json([
+    // //             'message' => 'Website is now in maintenance mode.',
+    // //             'whitelisted_ips' => $allowedIps
+    // //         ]);
+    // //     } catch (\Exception $e) {
+    // //         return response()->json(['message' => $e->getMessage()], 500);
+    // //     }
+    // // }
+
+    // public function takedownWebsiteFromGlobalExceptMe()
+    // {
+    //     try {
+    //         // Laravel modern HANYA menggunakan secret token, tidak butuh IP lagi
+    //         \Illuminate\Support\Facades\Artisan::call('down', [
+    //             '--secret' => 'seanalden-test-mode'
+    //         ]);
+
+    //         return response()->json([
+    //             'message' => 'Website is now in maintenance mode.'
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json(['message' => $e->getMessage()], 500);
+    //     }
+    // }
+
+    // public function bringBackWebsite()
+    // {
+    //     try {
+    //         \Illuminate\Support\Facades\Artisan::call('up');
+    //         return response()->json(['message' => 'Website is now live.']);
+    //     } catch (\Exception $e) {
+    //         return response()->json(['message' => $e->getMessage()], 500);
+    //     }
+    // }
+
     public function getMaintenanceStatus()
     {
-        // Laravel membuat file 'down' di folder storage/framework jika mode maintenance aktif
-        $isDown = file_exists(storage_path('framework/down'));
-
         return response()->json([
-            'is_maintenance' => $isDown
+            'is_maintenance' => \Illuminate\Support\Facades\Cache::get('system_maintenance', false)
         ]);
     }
 
-    // public function takedownWebsiteFromGlobalExceptMe(Request $request)
-    // {
-    //     // Ambil IP Address asli dari laptop Anda
-    //     $myIp = $request->ip();
-
-    //     // Izinkan juga beberapa IP umum lokal untuk testing
-    //     $allowedIps = implode(',', [$myIp, '127.0.0.1', '::1']);
-
-    //     try {
-    //         // Jalankan artisan down dengan pengecualian IP Anda
-    //         // (Catatan: Webhook dari pihak ketiga biasanya tidak terpengaruh oleh ini jika mereka menembak API backend secara spesifik,
-    //         // Namun untuk amannya, Anda bisa menambahkan route webhook ke array $except di App\Http\Middleware\PreventRequestsDuringMaintenance)
-    //         \Illuminate\Support\Facades\Artisan::call('down', [
-    //             '--secret' => 'seanalden-test-mode', // Bypass rahasia tambahan
-    //             '--allow' => $allowedIps
-    //         ]);
-
-    //         return response()->json(['message' => 'Website is now in maintenance mode.']);
-    //     } catch (\Exception $e) {
-    //         return response()->json(['message' => $e->getMessage()], 500);
-    //     }
-    // }
-
-    // public function takedownWebsiteFromGlobalExceptMe(\Illuminate\Http\Request $request)
-    // {
-    //     // Tangkap semua kemungkinan IP asli pengguna (antisipasi Cloudflare/Proxy/Load Balancer)
-    //     $clientIp = $request->ip();
-    //     $cfIp = $request->header('CF-Connecting-IP');
-    //     $forwardedIp = $request->header('X-Forwarded-For');
-
-    //     $myIps = array_filter(array_unique([$clientIp, $cfIp, $forwardedIp, '127.0.0.1', '::1']));
-    //     $allowedIps = implode(',', $myIps);
-
-    //     try {
-    //         \Illuminate\Support\Facades\Artisan::call('down', [
-    //             '--secret' => 'seanalden-test-mode', // Kode masuk darurat (misal: solher.co.id/seanalden-test-mode)
-    //             '--allow' => $allowedIps
-    //         ]);
-
-    //         // Bersihkan route cache setelah artisan down agar sistem tidak bingung
-    //         \Illuminate\Support\Facades\Artisan::call('route:clear');
-
-    //         return response()->json([
-    //             'message' => 'Website is now in maintenance mode.',
-    //             'whitelisted_ips' => $allowedIps
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         return response()->json(['message' => $e->getMessage()], 500);
-    //     }
-    // }
-
     public function takedownWebsiteFromGlobalExceptMe()
     {
-        try {
-            // Laravel modern HANYA menggunakan secret token, tidak butuh IP lagi
-            \Illuminate\Support\Facades\Artisan::call('down', [
-                '--secret' => 'seanalden-test-mode'
-            ]);
+        // Mengunci akses secara global
+        \Illuminate\Support\Facades\Cache::forever('system_maintenance', true);
 
-            return response()->json([
-                'message' => 'Website is now in maintenance mode.'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
-        }
+        return response()->json([
+            'message' => 'Website is now locked for general public.'
+        ]);
     }
 
     public function bringBackWebsite()
     {
-        try {
-            \Illuminate\Support\Facades\Artisan::call('up');
-            return response()->json(['message' => 'Website is now live.']);
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
-        }
+        // Membuka kembali akses global
+        \Illuminate\Support\Facades\Cache::forget('system_maintenance');
+
+        return response()->json([
+            'message' => 'Website is now live.'
+        ]);
     }
 }
