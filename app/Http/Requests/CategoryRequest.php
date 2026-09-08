@@ -39,8 +39,8 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Foundation\Http\FormRequest;
 
 class CategoryRequest extends FormRequest
 {
@@ -69,6 +69,26 @@ class CategoryRequest extends FormRequest
     //     ];
     // }
 
+    // public function rules(): array
+    // {
+    //     $categoryId = $this->route('id');
+
+    //     return [
+    //         'code' => [
+    //             'required', 'string', 'max:50',
+    //             Rule::unique('categories', 'code')->ignore($categoryId)
+    //         ],
+    //         'name' => 'required|string|max:255',
+    //         'description' => 'nullable|string',
+
+    //         'bundle_qty' => 'nullable|integer|min:2',
+    //         // [PERBAIKAN] Validasi untuk JSON Array Multi-Currency
+    //         'bundle_price' => 'nullable|array|required_with:bundle_qty',
+    //         'bundle_start_date' => 'nullable|date',
+    //         'bundle_end_date' => 'nullable|date|after_or_equal:bundle_start_date',
+    //     ];
+    // }
+
     public function rules(): array
     {
         $categoryId = $this->route('id');
@@ -76,16 +96,11 @@ class CategoryRequest extends FormRequest
         return [
             'code' => [
                 'required', 'string', 'max:50',
-                Rule::unique('categories', 'code')->ignore($categoryId)
+                \Illuminate\Validation\Rule::unique('categories', 'code')->ignore($categoryId)
             ],
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-
-            'bundle_qty' => 'nullable|integer|min:2',
-            // [PERBAIKAN] Validasi untuk JSON Array Multi-Currency
-            'bundle_price' => 'nullable|array|required_with:bundle_qty',
-            'bundle_start_date' => 'nullable|date',
-            'bundle_end_date' => 'nullable|date|after_or_equal:bundle_start_date',
+            'promo_config' => 'nullable|array', // Validasi super simpel
         ];
     }
 }
