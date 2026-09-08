@@ -291,6 +291,224 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use App\Models\Cart;
+// use App\Models\Product;
+// use Illuminate\Http\Request;
+// use Illuminate\Support\Facades\DB;
+// use App\Http\Controllers\Controller;
+
+// class CartController extends Controller
+// {
+//     // =========================================================================
+//     // HELPER: Kalkulasi Total Keranjang Termasuk Bundle Promo Multi-Currency
+//     // =========================================================================
+//     private function calculateCartTotals($cartItems, $currency = 'IDR')
+//     {
+//         $totalPrice = 0;
+//         $totalDiscount = 0;
+
+//         $groupedByCategory = $cartItems->groupBy(function ($item) {
+//             return $item->product->category_id;
+//         });
+
+//         foreach ($groupedByCategory as $categoryId => $items) {
+//             $category = $items->first()->product->category;
+//             if (!$category) continue;
+
+//             $rawBundlePrice = $category->bundle_price;
+//             $bundlePromo = is_string($rawBundlePrice) ? json_decode($rawBundlePrice, true) : ($rawBundlePrice ?? []);
+//             if (is_numeric($bundlePromo)) {
+//                 $bundlePromo = ['IDR' => $bundlePromo];
+//             }
+
+//             $bundleQty = $category->bundle_qty;
+//             $now = now();
+//             $isPromoActive = $bundleQty && $bundlePromo &&
+//                 (!$category->bundle_start_date || $now >= $category->bundle_start_date) &&
+//                 (!$category->bundle_end_date || $now <= $category->bundle_end_date);
+
+//             $totalQtyInCategory = $items->sum('quantity');
+
+//             if ($isPromoActive && $totalQtyInCategory >= $bundleQty) {
+//                 $activeBundlePrice = $bundlePromo[$currency] ?? ($bundlePromo['IDR'] ?? 0);
+//                 $bundleCount = floor($totalQtyInCategory / $bundleQty);
+//                 $remainderQty = $totalQtyInCategory % $bundleQty;
+
+//                 $totalPrice += ($bundleCount * $activeBundlePrice);
+
+//                 $sortedItems = $items->sortBy(function ($item) use ($currency) {
+//                     return $this->resolveProductPrice($item->product, $currency);
+//                 });
+
+//                 $remainderAssigned = 0;
+//                 foreach ($sortedItems as $item) {
+//                     if ($remainderAssigned < $remainderQty) {
+//                         $takeQty = min($item->quantity, $remainderQty - $remainderAssigned);
+//                         $totalPrice += ($takeQty * $this->resolveProductPrice($item->product, $currency));
+//                         $remainderAssigned += $takeQty;
+//                     }
+//                 }
+
+//                 $originalPriceSum = 0;
+//                 foreach ($items as $item) {
+//                     $originalPriceSum += ($item->quantity * $this->resolveProductPrice($item->product, $currency));
+//                 }
+//                 $totalDiscount += max(0, $originalPriceSum - $totalPrice);
+
+//             } else {
+//                 foreach ($items as $item) {
+//                     $totalPrice += ($item->quantity * $this->resolveProductPrice($item->product, $currency));
+//                 }
+//             }
+//         }
+
+//         return [
+//             'total_price' => $totalPrice,
+//             'total_discount' => $totalDiscount,
+//         ];
+//     }
+
+//     private function resolveProductPrice($product, $currency = 'IDR')
+//     {
+//         $prices = is_string($product->prices) ? json_decode($product->prices, true) : ($product->prices ?? []);
+//         $discountPrices = is_string($product->discount_prices) ? json_decode($product->discount_prices, true) : ($product->discount_prices ?? []);
+
+//         $basePrice = $prices[$currency] ?? $product->price;
+//         $discountPrice = $discountPrices[$currency] ?? $product->discount_price;
+
+//         $now = now();
+//         if (!empty($discountPrice) &&
+//             (!$product->discount_start || $now >= $product->discount_start) &&
+//             (!$product->discount_end || $now <= $product->discount_end)) {
+//             return $discountPrice;
+//         }
+
+//         return $basePrice;
+//     }
+
+//     // =========================================================================
+
+//     public function index(Request $request)
+//     {
+//         $currency = $request->query('currency', 'IDR');
+//         $carts = Cart::with(['product.category'])
+//             ->where('user_id', $request->user()->id)
+//             ->latest()
+//             ->get();
+
+//         $calculated = $this->calculateCartTotals($carts, $currency);
+
+//         return response()->json([
+//             'items' => $carts,
+//             'summary' => [
+//                 'currency' => $currency,
+//                 'subtotal' => $calculated['total_price'] + $calculated['total_discount'],
+//                 'bundle_discount' => $calculated['total_discount'],
+//                 'grand_total' => $calculated['total_price']
+//             ]
+//         ]);
+//     }
+
+//     public function store(Request $request)
+//     {
+//         // 👇 PERBAIKAN FATAL 2: Validasi kuantitas yang solid
+//         $request->validate([
+//             'product_id' => 'required|exists:products,id',
+//             'quantity'   => 'required|integer|min:1',
+//             'color'      => 'nullable|string|max:50'
+//         ]);
+
+//         $user = $request->user();
+
+//         // 👇 PERBAIKAN TIER 2: DB Transaction untuk cegah Race Condition
+//         return DB::transaction(function () use ($request, $user) {
+//             $product = Product::lockForUpdate()->findOrFail($request->product_id);
+
+//             $cartItem = Cart::where('user_id', $user->id)
+//                 ->where('product_id', $product->id)
+//                 ->where(function($query) use ($request) {
+//                     if ($request->color) {
+//                         $query->where('color', $request->color);
+//                     } else {
+//                         $query->whereNull('color');
+//                     }
+//                 })
+//                 ->lockForUpdate() // Kunci row jika ada
+//                 ->first();
+
+//             $newQuantity = $cartItem ? $cartItem->quantity + $request->quantity : $request->quantity;
+
+//             if ($newQuantity > $product->stock) {
+//                 return response()->json(['message' => 'Kuantitas melebihi stok yang tersedia!'], 422);
+//             }
+
+//             // 👇 PERBAIKAN FATAL 3: Gunakan helper harga yang benar
+//             $price = $this->resolveProductPrice($product, 'IDR');
+
+//             if ($cartItem) {
+//                 $cartItem->update([
+//                     'quantity' => $newQuantity,
+//                     'gross_amount' => $newQuantity * $price
+//                 ]);
+//             } else {
+//                 $cartItem = Cart::create([
+//                     'user_id' => $user->id,
+//                     'product_id' => $product->id,
+//                     'quantity' => $request->quantity,
+//                     'gross_amount' => $request->quantity * $price,
+//                     'color' => $request->color
+//                 ]);
+//             }
+
+//             return response()->json([
+//                 'message' => 'Ditambahkan ke keranjang',
+//                 'cart_id' => $cartItem->id
+//             ]);
+//         });
+//     }
+
+//     public function update(Request $request, $id)
+//     {
+//         // 👇 PERBAIKAN FATAL 2: Validasi strict
+//         $request->validate([
+//             'quantity' => 'required|integer|min:1',
+//         ]);
+
+//         $user = $request->user();
+
+//         // 👇 PERBAIKAN FATAL 1: Cegah IDOR (Hanya edit punya sendiri)
+//         $cart = Cart::with('product')
+//             ->where('user_id', $user->id)
+//             ->findOrFail($id);
+
+//         if ($request->quantity > $cart->product->stock) {
+//             return response()->json(['message' => 'Stok tidak mencukupi!'], 422);
+//         }
+
+//         // 👇 PERBAIKAN FATAL 3: Selaraskan dengan harga aktif
+//         $price = $this->resolveProductPrice($cart->product, 'IDR');
+
+//         $cart->update([
+//             'quantity' => $request->quantity,
+//             'gross_amount' => $request->quantity * $price
+//         ]);
+
+//         return response()->json($cart);
+//     }
+
+//     public function destroy(Request $request, $id)
+//     {
+//         // 👇 PERBAIKAN FATAL 1: Cegah IDOR (Hanya hapus punya sendiri)
+//         Cart::where('user_id', $request->user()->id)
+//             ->findOrFail($id)
+//             ->delete();
+
+//         return response()->json(['message' => 'Item berhasil dihapus']);
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use App\Models\Cart;
@@ -301,65 +519,105 @@ use App\Http\Controllers\Controller;
 
 class CartController extends Controller
 {
-    // =========================================================================
-    // HELPER: Kalkulasi Total Keranjang Termasuk Bundle Promo Multi-Currency
-    // =========================================================================
     private function calculateCartTotals($cartItems, $currency = 'IDR')
     {
         $totalPrice = 0;
         $totalDiscount = 0;
+        $now = now();
+        $groupedItems = [];
 
-        $groupedByCategory = $cartItems->groupBy(function ($item) {
-            return $item->product->category_id;
-        });
+        foreach ($cartItems as $item) {
+            $cat = $item->product->category;
+            if (!$cat) continue;
 
-        foreach ($groupedByCategory as $categoryId => $items) {
-            $category = $items->first()->product->category;
-            if (!$category) continue;
+            $rawPromo = $cat->bundle_price;
+            $promoConf = is_array($rawPromo) ? $rawPromo : (is_string($rawPromo) ? json_decode($rawPromo, true) : []);
 
-            $rawBundlePrice = $category->bundle_price;
-            $bundlePromo = is_string($rawBundlePrice) ? json_decode($rawBundlePrice, true) : ($rawBundlePrice ?? []);
-            if (is_numeric($bundlePromo)) {
-                $bundlePromo = ['IDR' => $bundlePromo];
+            if (is_numeric($promoConf)) {
+                $promoConf = ['promo_type' => 'bundle', 'price' => ['IDR' => $promoConf]];
             }
 
-            $bundleQty = $category->bundle_qty;
-            $now = now();
-            $isPromoActive = $bundleQty && $bundlePromo &&
-                (!$category->bundle_start_date || $now >= $category->bundle_start_date) &&
-                (!$category->bundle_end_date || $now <= $category->bundle_end_date);
+            $isActive = $cat->bundle_qty &&
+                (!$cat->bundle_start_date || $now >= $cat->bundle_start_date) &&
+                (!$cat->bundle_end_date || $now <= $cat->bundle_end_date);
 
-            $totalQtyInCategory = $items->sum('quantity');
+            if ($isActive && !empty($promoConf)) {
+                $mixGroup = !empty($promoConf['mix_group']) ? $promoConf['mix_group'] : 'CAT_' . $cat->id;
+                if (!isset($groupedItems[$mixGroup])) {
+                    $groupedItems[$mixGroup] = [
+                        'config' => $promoConf,
+                        'bundle_qty' => $cat->bundle_qty,
+                        'items' => collect()
+                    ];
+                }
+                $groupedItems[$mixGroup]['items']->push($item);
+            } else {
+                if (!isset($groupedItems['NO_PROMO'])) {
+                    $groupedItems['NO_PROMO'] = ['config' => null, 'items' => collect()];
+                }
+                $groupedItems['NO_PROMO']['items']->push($item);
+            }
+        }
 
-            if ($isPromoActive && $totalQtyInCategory >= $bundleQty) {
-                $activeBundlePrice = $bundlePromo[$currency] ?? ($bundlePromo['IDR'] ?? 0);
-                $bundleCount = floor($totalQtyInCategory / $bundleQty);
-                $remainderQty = $totalQtyInCategory % $bundleQty;
+        foreach ($groupedItems as $groupKey => $group) {
+            if ($groupKey === 'NO_PROMO') {
+                foreach ($group['items'] as $item) {
+                    $totalPrice += ($item->quantity * $this->resolveProductPrice($item->product, $currency, $now));
+                }
+                continue;
+            }
 
-                $totalPrice += ($bundleCount * $activeBundlePrice);
+            $conf = $group['config'];
+            $type = $conf['promo_type'] ?? 'bundle';
+            $items = $group['items'];
+            $normalTotalGroup = 0;
 
-                $sortedItems = $items->sortBy(function ($item) use ($currency) {
-                    return $this->resolveProductPrice($item->product, $currency);
+            foreach ($items as $item) {
+                $normalTotalGroup += ($item->quantity * $this->resolveProductPrice($item->product, $currency, $now));
+            }
+
+            if ($type === 'bundle') {
+                $bundlePrice = $conf['price'][$currency] ?? ($conf['price']['IDR'] ?? 0);
+                $bundleQty = $group['bundle_qty'];
+                $totalQty = $items->sum('quantity');
+
+                $bundleCount = floor($totalQty / $bundleQty);
+                $remainderQty = $totalQty % $bundleQty;
+
+                $groupPromoPrice = ($bundleCount * $bundlePrice);
+
+                $sortedItems = $items->sortByDesc(function ($item) use ($currency, $now) {
+                    return $this->resolveProductPrice($item->product, $currency, $now);
                 });
 
-                $remainderAssigned = 0;
+                $assignedRemainder = 0;
                 foreach ($sortedItems as $item) {
-                    if ($remainderAssigned < $remainderQty) {
-                        $takeQty = min($item->quantity, $remainderQty - $remainderAssigned);
-                        $totalPrice += ($takeQty * $this->resolveProductPrice($item->product, $currency));
-                        $remainderAssigned += $takeQty;
+                    $normalPrice = $this->resolveProductPrice($item->product, $currency, $now);
+                    if ($assignedRemainder < $remainderQty) {
+                        $take = min($item->quantity, $remainderQty - $assignedRemainder);
+                        $groupPromoPrice += ($take * $normalPrice);
+                        $assignedRemainder += $take;
                     }
                 }
 
-                $originalPriceSum = 0;
-                foreach ($items as $item) {
-                    $originalPriceSum += ($item->quantity * $this->resolveProductPrice($item->product, $currency));
-                }
-                $totalDiscount += max(0, $originalPriceSum - $totalPrice);
+                $totalPrice += $groupPromoPrice;
+                $totalDiscount += max(0, $normalTotalGroup - $groupPromoPrice);
 
-            } else {
-                foreach ($items as $item) {
-                    $totalPrice += ($item->quantity * $this->resolveProductPrice($item->product, $currency));
+            } elseif ($type === 'percent') {
+                $minPurchase = $conf['min_purchase'] ?? 0;
+                if ($normalTotalGroup >= $minPurchase) {
+                    $percent = $conf['percent'] ?? 0;
+                    $maxDiscount = $conf['max_discount'] ?? 0;
+
+                    $discount = $normalTotalGroup * ($percent / 100);
+                    if ($maxDiscount > 0 && $discount > $maxDiscount) {
+                        $discount = $maxDiscount;
+                    }
+
+                    $totalPrice += ($normalTotalGroup - $discount);
+                    $totalDiscount += $discount;
+                } else {
+                    $totalPrice += $normalTotalGroup;
                 }
             }
         }
@@ -370,7 +628,7 @@ class CartController extends Controller
         ];
     }
 
-    private function resolveProductPrice($product, $currency = 'IDR')
+    private function resolveProductPrice($product, $currency, $now)
     {
         $prices = is_string($product->prices) ? json_decode($product->prices, true) : ($product->prices ?? []);
         $discountPrices = is_string($product->discount_prices) ? json_decode($product->discount_prices, true) : ($product->discount_prices ?? []);
@@ -378,17 +636,14 @@ class CartController extends Controller
         $basePrice = $prices[$currency] ?? $product->price;
         $discountPrice = $discountPrices[$currency] ?? $product->discount_price;
 
-        $now = now();
         if (!empty($discountPrice) &&
-            (!$product->discount_start || $now >= $product->discount_start) &&
-            (!$product->discount_end || $now <= $product->discount_end)) {
+            (!$product->discount_start_date || $now >= $product->discount_start_date) &&
+            (!$product->discount_end_date || $now <= $product->discount_end_date)) {
             return $discountPrice;
         }
 
         return $basePrice;
     }
-
-    // =========================================================================
 
     public function index(Request $request)
     {
@@ -413,7 +668,6 @@ class CartController extends Controller
 
     public function store(Request $request)
     {
-        // 👇 PERBAIKAN FATAL 2: Validasi kuantitas yang solid
         $request->validate([
             'product_id' => 'required|exists:products,id',
             'quantity'   => 'required|integer|min:1',
@@ -422,7 +676,6 @@ class CartController extends Controller
 
         $user = $request->user();
 
-        // 👇 PERBAIKAN TIER 2: DB Transaction untuk cegah Race Condition
         return DB::transaction(function () use ($request, $user) {
             $product = Product::lockForUpdate()->findOrFail($request->product_id);
 
@@ -435,7 +688,7 @@ class CartController extends Controller
                         $query->whereNull('color');
                     }
                 })
-                ->lockForUpdate() // Kunci row jika ada
+                ->lockForUpdate()
                 ->first();
 
             $newQuantity = $cartItem ? $cartItem->quantity + $request->quantity : $request->quantity;
@@ -444,8 +697,7 @@ class CartController extends Controller
                 return response()->json(['message' => 'Kuantitas melebihi stok yang tersedia!'], 422);
             }
 
-            // 👇 PERBAIKAN FATAL 3: Gunakan helper harga yang benar
-            $price = $this->resolveProductPrice($product, 'IDR');
+            $price = $this->resolveProductPrice($product, 'IDR', now());
 
             if ($cartItem) {
                 $cartItem->update([
@@ -471,14 +723,12 @@ class CartController extends Controller
 
     public function update(Request $request, $id)
     {
-        // 👇 PERBAIKAN FATAL 2: Validasi strict
         $request->validate([
             'quantity' => 'required|integer|min:1',
         ]);
 
         $user = $request->user();
 
-        // 👇 PERBAIKAN FATAL 1: Cegah IDOR (Hanya edit punya sendiri)
         $cart = Cart::with('product')
             ->where('user_id', $user->id)
             ->findOrFail($id);
@@ -487,8 +737,7 @@ class CartController extends Controller
             return response()->json(['message' => 'Stok tidak mencukupi!'], 422);
         }
 
-        // 👇 PERBAIKAN FATAL 3: Selaraskan dengan harga aktif
-        $price = $this->resolveProductPrice($cart->product, 'IDR');
+        $price = $this->resolveProductPrice($cart->product, 'IDR', now());
 
         $cart->update([
             'quantity' => $request->quantity,
@@ -500,7 +749,6 @@ class CartController extends Controller
 
     public function destroy(Request $request, $id)
     {
-        // 👇 PERBAIKAN FATAL 1: Cegah IDOR (Hanya hapus punya sendiri)
         Cart::where('user_id', $request->user()->id)
             ->findOrFail($id)
             ->delete();
