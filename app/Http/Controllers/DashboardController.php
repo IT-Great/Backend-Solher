@@ -788,4 +788,44 @@ class DashboardController extends Controller
             'message' => 'Website is now live.'
         ]);
     }
+
+    // =========================================================================
+    // RFM CUSTOMER SEGMENTATION ENGINE
+    // =========================================================================
+    public function getRfmSegments(\App\Services\RfmService $rfmService)
+    {
+        // Cache hasil selama 12 jam agar DB tidak kelebihan beban saat dasbor di-refresh
+        $segments = \Illuminate\Support\Facades\Cache::remember('rfm_dashboard_data', 43200, function() use ($rfmService) {
+            $rawSegments = $rfmService->getCustomerSegments();
+            $formatted = [];
+            foreach ($rawSegments as $name => $data) {
+                $formatted[] = [
+                    'name' => $name,
+                    'description' => $data['description'],
+                    'count' => count($data['users']),
+                    'color' => $data['color'],
+                    'icon' => $data['icon']
+                ];
+            }
+            return $formatted;
+        });
+
+        return response()->json($segments);
+    }
+
+    public function sendSegmentBlast(Request $request, \App\Services\RfmService $rfmService)
+    {
+        $request->validate([
+            'segment' => 'required|string',
+            'title' => 'required|string|max:100',
+            'body' => 'required|string|max:255'
+        ]);
+
+        try {
+            $sent = $rfmService->blastPushNotification($request->segment, $request->title, $request->body);
+            return response()->json(['message' => "Blast berhasil dikirim ke {$sent} pelanggan."]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 500);
+        }
+    }
 }
