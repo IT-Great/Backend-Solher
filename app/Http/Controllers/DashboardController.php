@@ -714,6 +714,61 @@ class DashboardController extends Controller
         ]);
     }
 
+    // =========================================================================
+    // EXPORT REPORT (CSV)
+    // =========================================================================
+    public function exportSalesCsv()
+    {
+        $transactions = Transaction::with(['user', 'details.product'])
+            ->where('status', 'completed')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $filename = "Solher_Sales_Report_" . Carbon::now()->format('Ymd_His') . ".csv";
+
+        $headers = [
+            "Content-type"        => "text/csv",
+            "Content-Disposition" => "attachment; filename=$filename",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ];
+
+        $callback = function() use($transactions) {
+            $file = fopen('php://output', 'w');
+
+            // Header Baris CSV
+            fputcsv($file, [
+                'Order ID', 'Transaction Date', 'Customer Name', 'Email',
+                'Total Amount (IDR)', 'Shipping Cost (IDR)', 'Promo Code',
+                'Loyalty Points Used', 'Items Purchased', 'Courier'
+            ]);
+
+            // Looping Isi Data
+            foreach ($transactions as $row) {
+                $itemNames = $row->details->map(function($d) {
+                    return $d->product ? $d->product->name . ' (Qty: ' . $d->quantity . ')' : 'Deleted Product';
+                })->implode(' | ');
+
+                fputcsv($file, [
+                    $row->order_id,
+                    $row->created_at->format('Y-m-d H:i:s'),
+                    $row->user ? $row->user->first_name . ' ' . $row->user->last_name : 'Guest',
+                    $row->user ? $row->user->email : '-',
+                    $row->total_amount,
+                    $row->shipping_cost,
+                    $row->promo_code ?? '-',
+                    $row->points_used ?? 0,
+                    $itemNames,
+                    $row->courier_company ? strtoupper($row->courier_company) : '-'
+                ]);
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
     public function takedownWebsiteFromGlobalExceptMe()
     {
         // Mengunci akses secara global

@@ -1173,6 +1173,7 @@ Route::middleware(['auth:sanctum', 'role:dashboard'])->prefix('admin/dashboard')
     Route::get('/predicted-bestsellers', [DashboardController::class, 'getPredictedBestsellers']);
     Route::get('/recent-activities', [DashboardController::class, 'getRecentActivities']);
     Route::get('/daily-average', [DashboardController::class, 'getAverageDailyRevenue']);
+    Route::get('/export-sales', [DashboardController::class, 'exportSalesCsv']);
 });
 
 // 👇 TAMBAHKAN BLOK BARU INI KHUSUS UNTUK SYSTEM CONTROL 👇
