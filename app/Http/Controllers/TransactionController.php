@@ -1169,6 +1169,69 @@ class TransactionController extends Controller
     }
 
     // --- USER ACTIONS ---
+    // public function checkout(
+    //     Request $request,
+    //     PromoMerdekaService $promoService,
+    //     CalculateCartTotalsAction $calculateTotals,
+    //     CreateTransactionAction $createTransaction,
+    //     DeductInventoryAction $deductInventory
+    // ) {
+    //     try {
+    //         $request->validate([
+    //             'address_id' => 'required',
+    //             'shipping_method' => 'required|in:free,biteship',
+    //             'use_points' => 'nullable|integer|min:0',
+    //             'cart_ids' => 'required|array',
+    //             'cart_ids.*' => 'exists:carts,id',
+    //             'shipping_cost' => 'nullable|numeric',
+    //             'courier_company' => 'nullable|string',
+    //             'courier_type' => 'nullable|string',
+    //             'delivery_type' => 'nullable|string',
+    //             'currency' => 'required|string',
+    //             'referral_code' => 'nullable|string',
+    //         ]);
+
+    //         $user = $request->user();
+
+    //         $cartItems = Cart::with('product.category')
+    //             ->where('user_id', $user->id)
+    //             ->whereIn('id', $request->cart_ids)
+    //             ->get();
+
+    //         if ($cartItems->isEmpty()) {
+    //             return response()->json(['message' => 'No items selected for checkout'], 400);
+    //         }
+
+    //         $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
+    //             $lockedUser = User::lockForUpdate()->find($user->id);
+
+    //             $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
+    //             $transaction = $createTransaction->execute($lockedUser, $request, $totals);
+    //             $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
+
+    //             return [
+    //                 'transaction' => $transaction,
+    //                 'currency' => $request->currency,
+    //             ];
+    //         });
+
+    //         event(new \App\Events\DashboardUpdated());
+
+    //         $paymentController = app(PaymentController::class);
+    //         $request->merge([
+    //             'transaction_id' => $transactionData['transaction']->id,
+    //             'currency' => $transactionData['currency']
+    //         ]);
+
+    //         return $paymentController->createInvoice($request);
+    //     } catch (\Throwable $e) {
+    //         report($e);
+    //         Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+    //         return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
+    //     }
+    // }
+
+    // --- USER ACTIONS ---
     public function checkout(
         Request $request,
         PromoMerdekaService $promoService,
@@ -1202,28 +1265,66 @@ class TransactionController extends Controller
                 return response()->json(['message' => 'No items selected for checkout'], 400);
             }
 
-            $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
-                $lockedUser = User::lockForUpdate()->find($user->id);
+            // =========================================================================
+            // [FITUR SENIOR] REDIS REDLOCK (ATOMIC LOCK) - PENCEGAH OVERSELLING
+            // =========================================================================
+            $locks = [];
 
-                $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
-                $transaction = $createTransaction->execute($lockedUser, $request, $totals);
-                $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
+            // Urutkan ID produk untuk mencegah Deadlock pada sistem Redis
+            $productIds = $cartItems->pluck('product_id')->sort()->unique();
 
-                return [
-                    'transaction' => $transaction,
-                    'currency' => $request->currency,
-                ];
-            });
+            foreach ($productIds as $pId) {
+                // Kunci produk di RAM (Redis) selama 15 detik khusus untuk transaksi ini.
+                // Parameter block(5) berarti jika ada pengguna lain yang checkout barang yang sama di detik yang sama,
+                // sistem akan menyuruh mereka "mengantre" maksimal 5 detik.
+                $lock = Cache::lock('checkout_product_' . $pId, 15);
 
-            event(new \App\Events\DashboardUpdated());
+                if (!$lock->block(5)) {
+                    // Jika antrean > 5 detik (trafik flash sale meledak), gagalkan dengan kode 429
+                    foreach ($locks as $acquiredLock) {
+                        $acquiredLock->release();
+                    }
+                    return response()->json([
+                        'message' => 'Lalu lintas antrean sangat padat untuk barang ini. Sistem sedang mengamankan stok Anda, silakan klik tombol Pay Now sekali lagi dalam beberapa detik.'
+                    ], 429);
+                }
+                $locks[] = $lock;
+            }
 
-            $paymentController = app(PaymentController::class);
-            $request->merge([
-                'transaction_id' => $transactionData['transaction']->id,
-                'currency' => $transactionData['currency']
-            ]);
+            // Jika semua kunci produk di keranjang berhasil didapat, eksekusi pemotongan stok DB!
+            try {
+                $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
+                    $lockedUser = User::lockForUpdate()->find($user->id);
 
-            return $paymentController->createInvoice($request);
+                    $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
+                    $transaction = $createTransaction->execute($lockedUser, $request, $totals);
+
+                    // Disini MySQL mengeksekusi pemotongan stok dengan rasa aman 100% tanpa Race Condition
+                    $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
+
+                    return [
+                        'transaction' => $transaction,
+                        'currency' => $request->currency,
+                    ];
+                });
+
+                event(new \App\Events\DashboardUpdated());
+
+                $paymentController = app(PaymentController::class);
+                $request->merge([
+                    'transaction_id' => $transactionData['transaction']->id,
+                    'currency' => $transactionData['currency']
+                ]);
+
+                return $paymentController->createInvoice($request);
+
+            } finally {
+                // WAJIB: Lepaskan kunci Redis segera setelah transaksi sukses/gagal
+                // agar pengunjung dalam antrean berikutnya bisa masuk
+                foreach ($locks as $lock) {
+                    $lock->release();
+                }
+            }
         } catch (\Throwable $e) {
             report($e);
             Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
