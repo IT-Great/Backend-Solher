@@ -41,68 +41,7 @@ class Transaction extends Model
         'commission_status',
     ];
 
-    // 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE RAW SQL EXECUTION) 👇
-    // public function markAsCompleted(array $additionalUpdates = [])
-    // {
-    //     // 1. Cegah eksekusi ganda
-    //     if ($this->status === 'completed') {
-    //         return;
-    //     }
-
-    //     // 2. Simpan pembaruan status transaksi
-    //     $this->status = 'completed';
-    //     foreach ($additionalUpdates as $key => $val) {
-    //         $this->{$key} = $val;
-    //     }
-    //     $this->save();
-
-    //     if (!$this->user_id) {
-    //         return;
-    //     }
-
-    //     // 3. Kalkulasi Poin Dinamis (Self-Healing jika poin di DB 0)
-    //     $earnedPoints = (int) $this->point;
-    //     if ($earnedPoints <= 0) {
-    //         $earnedPoints = (int) floor($this->total_amount / 100000);
-    //         DB::statement('UPDATE transactions SET point = ? WHERE id = ?', [$earnedPoints, $this->id]);
-    //         $this->point = $earnedPoints;
-    //     }
-
-    //     // 4. Validasi Total Belanja Langsung via SQL
-    //     $totalSpent = DB::table('transactions')
-    //         ->where('user_id', $this->user_id)
-    //         ->where('status', 'completed')
-    //         ->sum('total_amount');
-
-    //     // 5. Eksekusi Penambahan Poin & Membership dengan SQL Brutal (Anti-Gagal)
-    //     if ($totalSpent >= 100000) {
-    //         // Paksa set status membership menjadi 1 (true)
-    //         DB::statement('UPDATE users SET is_membership = 1 WHERE id = ?', [$this->user_id]);
-
-    //         if ($earnedPoints > 0) {
-    //             // Operasi matematika atomik: Ambil poin, ubah NULL jadi 0, lalu tambah poin baru
-    //             DB::statement('UPDATE users SET point = COALESCE(point, 0) + ? WHERE id = ?', [$earnedPoints, $this->user_id]);
-    //         }
-    //     }
-
-    //     // 6. Kirim Notifikasi FCM
-    //     $userFcm = DB::table('users')->where('id', $this->user_id)->value('fcm_token');
-    //     if (!empty($userFcm)) {
-    //         try {
-    //             app(FcmService::class)->sendPushNotification(
-    //                 $userFcm,
-    //                 "Pesanan Selesai 🎉",
-    //                 "Terima kasih telah berbelanja! Anda mendapatkan +{$earnedPoints} Poin Loyalitas."
-    //             );
-    //         } catch (\Exception $e) {}
-    //     }
-
-    //     // 7. Distribusi Komisi Afiliasi via Raw SQL
-    //     if ($this->affiliate_id && $this->commission_status === 'pending') {
-    //         DB::statement("UPDATE transactions SET commission_status = 'settled' WHERE id = ?", [$this->id]);
-    //         DB::statement("UPDATE users SET commission_balance = COALESCE(commission_balance, 0) + ? WHERE id = ?", [$this->commission_earned, $this->affiliate_id]);
-    //     }
-    // }
+    // 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE RAW SQL EXECUTION)
 
     public function markAsCompleted(array $additionalUpdates = [])
     {

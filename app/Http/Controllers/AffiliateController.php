@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\AffiliateApprovedMail;
-use App\Models\AffiliateApplication;
-use App\Models\Transaction;
+use Str;
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Mail\AffiliateApprovedMail;
+use App\Models\AffiliateApplication;
 use Illuminate\Support\Facades\Mail;
-use Str;
 
 class AffiliateController extends Controller
 {
@@ -61,151 +61,6 @@ class AffiliateController extends Controller
     /**
      * Memproses permintaan penarikan dana (Withdrawal)
      */
-    // public function withdraw(Request $request)
-    // {
-    //     $request->validate([
-    //         'bank_name' => 'required|string|max:100',
-    //         'account_number' => 'required|string|max:50',
-    //         'account_name' => 'required|string|max:100',
-    //         'amount' => 'required|numeric|min:10000', // Minimal tarik Rp10.000
-    //     ]);
-
-    //     $userId = $request->user()->id;
-    //     $amountToWithdraw = $request->amount;
-
-    //     try {
-    //         // Gunakan DB Transaction agar jika gagal di tengah jalan, uang akan dikembalikan (Rollback)
-    //         return DB::transaction(function () use ($userId, $request, $amountToWithdraw) {
-
-    //             // KUNCI BARIS USER INI (lockForUpdate) untuk mencegah klik ganda secara brutal (Race Condition)
-    //             $user = User::where('id', $userId)->lockForUpdate()->first();
-
-    //             // Validasi final: Pastikan saldo mencukupi
-    //             if ($user->commission_balance < $amountToWithdraw) {
-    //                 throw new \Exception('Saldo aktif Anda tidak mencukupi untuk penarikan ini.');
-    //             }
-
-    //             // 1. Buat catatan penarikan dengan status pending
-    //             $withdrawal = Withdrawal::create([
-    //                 'affiliate_id' => $user->id,
-    //                 'amount' => $amountToWithdraw,
-    //                 'bank_name' => $request->bank_name,
-    //                 'account_number' => $request->account_number,
-    //                 'account_name' => $request->account_name,
-    //                 'status' => 'pending',
-    //             ]);
-
-    //             // 2. Potong saldo komisi user
-    //             $user->decrement('commission_balance', $amountToWithdraw);
-
-    //             return response()->json([
-    //                 'status' => 'success',
-    //                 'message' => 'Permintaan penarikan dana berhasil diajukan.',
-    //                 'data' => [
-    //                     'withdrawal_id' => $withdrawal->id,
-    //                     'amount' => $amountToWithdraw,
-    //                     'remaining_balance' => $user->commission_balance
-    //                 ]
-    //             ]);
-    //         });
-
-    //     } catch (\Exception $e) {
-    //         // Tangkap error jika saldo kurang atau database gagal
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => $e->getMessage()
-    //         ], 400);
-    //     }
-    // }
-
-    // public function withdraw(Request $request)
-    // {
-    //     // $request->validate([
-    //     //     'bank_name' => 'required|string|max:100',
-    //     //     'account_number' => 'required|string|max:50',
-    //     //     'account_name' => 'required|string|max:100',
-    //     //     'amount' => 'required|numeric|min:10000',
-    //     // ]);
-
-    //     // 👇 [PERBAIKAN] Ubah aturan 'min' menjadi 50000 dan tambahkan 'max' 1000000 👇
-    //     $request->validate([
-    //         'bank_name' => 'required|string|max:100',
-    //         'account_number' => 'required|string|max:50',
-    //         'account_name' => 'required|string|max:100',
-    //         'amount' => 'required|numeric|min:50000|max:1000000',
-    //     ], [
-    //         'amount.min' => 'Minimal penarikan adalah Rp 50.000',
-    //         'amount.max' => 'Maksimal penarikan adalah Rp 1.000.000 per transaksi',
-    //     ]);
-
-    //     $userId = $request->user()->id;
-    //     $amountToWithdraw = $request->amount;
-    //     $bankName = strtolower(trim($request->bank_name));
-
-    //     // // 1. Logika Deteksi Potongan Bank
-    //     // $adminFee = 0;
-    //     // // Jika teks bank_name TIDAK mengandung kata "mandiri", kenakan potongan
-    //     // if (!str_contains($bankName, 'mandiri')) {
-    //     //     $adminFee = 6500; // Asumsi biaya transfer antarbank standar
-    //     // }
-
-    //     // 1. Logika Deteksi Potongan Bank (BI-FAST)
-    //     $adminFee = 0;
-    //     // Jika teks bank_name TIDAK mengandung kata "mandiri", kenakan potongan BI-FAST
-    //     if (! str_contains($bankName, 'mandiri')) {
-    //         $adminFee = 2500;
-    //     }
-
-    //     $netReceived = $amountToWithdraw - $adminFee;
-
-    //     try {
-    //         return DB::transaction(function () use ($userId, $request, $amountToWithdraw, $adminFee, $netReceived) {
-
-    //             $user = User::where('id', $userId)->lockForUpdate()->first();
-
-    //             if ($user->commission_balance < $amountToWithdraw) {
-    //                 throw new \Exception('Saldo aktif Anda tidak mencukupi.');
-    //             }
-
-    //             if ($netReceived <= 0) {
-    //                 throw new \Exception('Nominal penarikan terlalu kecil untuk menutupi biaya admin bank lintas bank.');
-    //             }
-
-    //             // 2. Simpan instruksi transfer bersih untuk Admin di kolom admin_notes
-    //             $transferInstruction = 'Biaya Admin: Rp'.number_format($adminFee, 0, ',', '.').
-    //                                    ' | TRANSFER BERSIH KE AFILIATOR: Rp'.number_format($netReceived, 0, ',', '.');
-
-    //             $withdrawal = Withdrawal::create([
-    //                 'affiliate_id' => $user->id,
-    //                 'amount' => $amountToWithdraw, // Saldo utuh yang dipotong dari dompet
-    //                 'bank_name' => $request->bank_name,
-    //                 'account_number' => $request->account_number,
-    //                 'account_name' => $request->account_name,
-    //                 'status' => 'pending',
-    //                 'admin_notes' => $transferInstruction, // 👈 Ibu Melisa tinggal membaca ini nanti
-    //             ]);
-
-    //             $user->decrement('commission_balance', $amountToWithdraw);
-
-    //             return response()->json([
-    //                 'status' => 'success',
-    //                 'message' => 'Penarikan diajukan. Biaya admin Rp '.number_format($adminFee, 0, ',', '.').' telah disesuaikan.',
-    //                 'data' => [
-    //                     'withdrawal_id' => $withdrawal->id,
-    //                     'amount_deducted' => $amountToWithdraw,
-    //                     'net_received' => $netReceived,
-    //                 ],
-    //             ]);
-    //         });
-
-    //     } catch (\Exception $e) {
-    //         report($e);
-    //         return response()->json([
-    //             'status' => 'error',
-    //             'message' => $e->getMessage(),
-    //         ], 400);
-    //     }
-    // }
 
     public function withdraw(Request $request)
     {
@@ -412,43 +267,6 @@ class AffiliateController extends Controller
             'message' => 'Pencairan dana berhasil ditandai selesai.',
         ]);
     }
-
-    // public function approveApplication($id)
-    // {
-    //     $application = AffiliateApplication::findOrFail($id);
-
-    //     if ($application->status !== 'pending') {
-    //         return response()->json(['message' => 'Pendaftaran ini sudah diproses.'], 400);
-    //     }
-
-    //     try {
-    //         DB::transaction(function () use ($application) {
-    //             // 1. Ubah status aplikasi menjadi disetujui
-    //             $application->update(['status' => 'approved']);
-
-    //             $user = $application->user;
-
-    //             // 2. Buat Kode Referal Otomatis (Contoh: Budi -> BUDI-8A2F)
-    //             $prefix = strtoupper(substr($user->first_name, 0, 4));
-    //             $randomString = strtoupper(Str::random(4));
-    //             $referralCode = $prefix.'-'.$randomString;
-
-    //             // 3. Sulap user biasa menjadi afiliator tanpa query manual!
-    //             $user->update([
-    //                 'is_affiliate' => true,
-    //                 'referral_code' => $referralCode,
-    //             ]);
-    //         });
-
-    //         return response()->json([
-    //             'status' => 'success',
-    //             'message' => 'Pendaftaran disetujui! Akun pengguna kini menjadi afiliator aktif.',
-    //         ]);
-
-    //     } catch (\Exception $e) {
-    //         return response()->json(['message' => 'Gagal memproses persetujuan.'], 500);
-    //     }
-    // }
 
     public function approveApplication($id)
     {
