@@ -275,64 +275,86 @@ class AuthController extends Controller
         return response()->json(['message' => 'Info profil diperbarui', 'user' => $user]);
     }
 
-    public function updateImage(Request $request)
+    // public function updateImage(Request $request)
+    // {
+    //     Log::info('Update profile image started', [
+    //         'user_id' => $request->user()->id,
+    //     ]);
+
+    //     $request->validate([
+    //         // 'image' => 'required|image|mimes:jpeg,png,jpg|max:2048',
+    //         'image' => 'required|image|mimes:jpeg,png,jpg',
+    //     ]);
+
+    //     $user = $request->user();
+
+    //     try {
+    //         if ($user->profile_image) {
+    //             $oldPath = str_replace(url(Storage::url('')), '', $user->profile_image);
+    //             $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
+
+    //             Log::info('Deleting old profile image', [
+    //                 'user_id' => $user->id,
+    //                 'old_path' => $oldPath,
+    //             ]);
+
+    //             Storage::disk('public')->delete($oldPath);
+    //         }
+
+    //         $path = $request->file('image')->store('profiles', 'public');
+
+    //         Log::info('New profile image uploaded', [
+    //             'user_id' => $user->id,
+    //             'new_path' => $path,
+    //         ]);
+
+    //         $user->profile_image = url(Storage::url($path));
+    //         $user->save();
+
+    //         $user = $user->fresh();
+
+    //         Log::info('Profile image updated successfully', [
+    //             'user_id' => $user->id,
+    //             'profile_image_url' => $user->profile_image,
+    //         ]);
+
+    //         return response()->json([
+    //             'message' => 'Foto profil diperbarui',
+    //             'user' => $user,
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         Log::error('Failed to update profile image', [
+    //             'user_id' => $user->id ?? null,
+    //             'error_message' => $e->getMessage(),
+    //             'trace' => $e->getTraceAsString(),
+    //         ]);
+
+    //         return response()->json([
+    //             'message' => 'Gagal memperbarui foto profil',
+    //         ], 500);
+    //     }
+    // }
+
+    public function updateImage(Request $request, \App\Services\FileUploadService $fileUpload)
     {
-        Log::info('Update profile image started', [
-            'user_id' => $request->user()->id,
-        ]);
-
-        $request->validate([
-            // 'image' => 'required|image|mimes:jpeg,png,jpg|max:2048',
-            'image' => 'required|image|mimes:jpeg,png,jpg',
-        ]);
-
+        $request->validate(['image' => 'required|image|mimes:jpeg,png,jpg']);
         $user = $request->user();
 
         try {
-            if ($user->profile_image) {
-                $oldPath = str_replace(url(Storage::url('')), '', $user->profile_image);
-                $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
+            // 👇 PERBAIKAN: Gunakan FileUploadService (S3) seperti di Chat/Refund
+            $path = $fileUpload->uploadToS3($request->file('image'), 'profiles');
 
-                Log::info('Deleting old profile image', [
-                    'user_id' => $user->id,
-                    'old_path' => $oldPath,
-                ]);
-
-                Storage::disk('public')->delete($oldPath);
-            }
-
-            $path = $request->file('image')->store('profiles', 'public');
-
-            Log::info('New profile image uploaded', [
-                'user_id' => $user->id,
-                'new_path' => $path,
-            ]);
-
-            $user->profile_image = url(Storage::url($path));
+            $user->profile_image = $path; // URL langsung dari S3
             $user->save();
-
-            $user = $user->fresh();
-
-            Log::info('Profile image updated successfully', [
-                'user_id' => $user->id,
-                'profile_image_url' => $user->profile_image,
-            ]);
 
             return response()->json([
                 'message' => 'Foto profil diperbarui',
-                'user' => $user,
+                'user' => $user->fresh(),
             ]);
         } catch (\Exception $e) {
             report($e);
-            Log::error('Failed to update profile image', [
-                'user_id' => $user->id ?? null,
-                'error_message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'message' => 'Gagal memperbarui foto profil',
-            ], 500);
+            return response()->json(['message' => 'Gagal memperbarui foto profil'], 500);
         }
     }
 
@@ -404,25 +426,48 @@ class AuthController extends Controller
         ]);
     }
 
-    public function updateAdminImage(Request $request)
-    {
-        $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpg',
-        ]);
+    // public function updateAdminImage(Request $request)
+    // {
+    //     $request->validate([
+    //         'image' => 'required|image|mimes:jpeg,png,jpg',
+    //     ]);
 
+    //     $admin = $request->user();
+
+    //     try {
+    //         if ($admin->profile_image) {
+    //             $oldPath = str_replace(url(Storage::url('')), '', $admin->profile_image);
+    //             $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
+
+    //             Storage::disk('public')->delete($oldPath);
+    //         }
+
+    //         $path = $request->file('image')->store('profiles', 'public');
+
+    //         $admin->profile_image = url(Storage::url($path));
+    //         $admin->save();
+
+    //         return response()->json([
+    //             'message' => 'Admin photo updated',
+    //             'admin' => $admin->fresh(),
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         return response()->json([
+    //             'message' => 'Failed to update admin photo',
+    //         ], 500);
+    //     }
+    // }
+
+    public function updateAdminImage(Request $request, \App\Services\FileUploadService $fileUpload)
+    {
+        $request->validate(['image' => 'required|image|mimes:jpeg,png,jpg']);
         $admin = $request->user();
 
         try {
-            if ($admin->profile_image) {
-                $oldPath = str_replace(url(Storage::url('')), '', $admin->profile_image);
-                $oldPath = ltrim(str_replace('/storage/', '', $oldPath), '/');
+            $path = $fileUpload->uploadToS3($request->file('image'), 'admin_profiles');
 
-                Storage::disk('public')->delete($oldPath);
-            }
-
-            $path = $request->file('image')->store('profiles', 'public');
-
-            $admin->profile_image = url(Storage::url($path));
+            $admin->profile_image = $path;
             $admin->save();
 
             return response()->json([
@@ -431,9 +476,7 @@ class AuthController extends Controller
             ]);
         } catch (\Exception $e) {
             report($e);
-            return response()->json([
-                'message' => 'Failed to update admin photo',
-            ], 500);
+            return response()->json(['message' => 'Failed to update admin photo'], 500);
         }
     }
 
@@ -474,38 +517,70 @@ class AuthController extends Controller
         return response()->json(['user' => $user, 'message' => 'Membership status updated!']);
     }
 
+    // public function sendResetCode(Request $request)
+    // {
+    //     $request->validate(['email' => 'required|email']);
+
+    //     $user = User::where('email', $request->email)->first();
+
+    //     if (! $user) {
+    //         return response()->json(['message' => 'Email address not found in our system.'], 404);
+    //     }
+
+    //     DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+    //     $code = sprintf('%06d', mt_rand(1, 999999));
+
+    //     DB::table('password_reset_codes')->insert([
+    //         'email' => $request->email,
+    //         'code' => Hash::make($code),
+    //         'expires_at' => Carbon::now()->addMinutes(15),
+    //         'created_at' => Carbon::now(),
+    //     ]);
+
+    //     try {
+    //         Mail::to($request->email)->send(new ResetPasswordCodeMail($code));
+
+    //         return response()->json(['message' => 'Verification code sent to your email.']);
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         Log::error('Failed to send reset code: '.$e->getMessage());
+
+    //         return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
+    //     }
+    // }
+
     public function sendResetCode(Request $request)
     {
         $request->validate(['email' => 'required|email']);
-
         $user = User::where('email', $request->email)->first();
 
         if (! $user) {
             return response()->json(['message' => 'Email address not found in our system.'], 404);
         }
 
-        DB::table('password_reset_codes')->where('email', $request->email)->delete();
-
         $code = sprintf('%06d', mt_rand(1, 999999));
 
-        DB::table('password_reset_codes')->insert([
-            'email' => $request->email,
-            'code' => Hash::make($code),
-            'expires_at' => Carbon::now()->addMinutes(15),
-            'created_at' => Carbon::now(),
-        ]);
+        // 👇 PERBAIKAN: Gunakan updateOrInsert agar Atomic (Mencegah Race Condition ganda) 👇
+        DB::table('password_reset_codes')->updateOrInsert(
+            ['email' => $request->email],
+            [
+                'code' => Hash::make($code),
+                'expires_at' => Carbon::now()->addMinutes(15),
+                'created_at' => Carbon::now(),
+            ]
+        );
 
         try {
             Mail::to($request->email)->send(new ResetPasswordCodeMail($code));
-
             return response()->json(['message' => 'Verification code sent to your email.']);
         } catch (\Exception $e) {
             report($e);
-            Log::error('Failed to send reset code: '.$e->getMessage());
-
             return response()->json(['message' => 'Failed to send email. Please try again later.'], 500);
         }
     }
+
+    // NOTE: Lakukan hal yang persis sama pada `adminSendResetCode`
 
     public function verifyResetCode(Request $request)
     {
@@ -560,6 +635,41 @@ class AuthController extends Controller
         return response()->json(['message' => 'Password has been successfully reset.']);
     }
 
+    // public function adminSendResetCode(Request $request)
+    // {
+    //     $request->validate(['email' => 'required|email']);
+
+    //     $admin = User::where('email', $request->email)
+    //         ->whereIn('usertype', ['admin', 'superadmin', 'gudang', 'accounting', 'cs'])
+    //         ->first();
+
+    //     if (! $admin) {
+    //         return response()->json(['message' => 'Alamat email tidak ditemukan atau tidak memiliki izin akses.'], 404);
+    //     }
+
+    //     DB::table('password_reset_codes')->where('email', $request->email)->delete();
+
+    //     $code = sprintf('%06d', mt_rand(1, 999999));
+
+    //     DB::table('password_reset_codes')->insert([
+    //         'email' => $request->email,
+    //         'code' => Hash::make($code),
+    //         'expires_at' => Carbon::now()->addMinutes(15),
+    //         'created_at' => Carbon::now(),
+    //     ]);
+
+    //     try {
+    //         Mail::to($request->email)->send(new ResetPasswordCodeMail($code));
+
+    //         return response()->json(['message' => 'Kode verifikasi telah dikirim ke email Anda.']);
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         Log::error('Failed to send admin reset code: '.$e->getMessage());
+
+    //         return response()->json(['message' => 'Gagal mengirim email. Silakan coba lagi nanti.'], 500);
+    //     }
+    // }
+
     public function adminSendResetCode(Request $request)
     {
         $request->validate(['email' => 'required|email']);
@@ -572,16 +682,17 @@ class AuthController extends Controller
             return response()->json(['message' => 'Alamat email tidak ditemukan atau tidak memiliki izin akses.'], 404);
         }
 
-        DB::table('password_reset_codes')->where('email', $request->email)->delete();
-
         $code = sprintf('%06d', mt_rand(1, 999999));
 
-        DB::table('password_reset_codes')->insert([
-            'email' => $request->email,
-            'code' => Hash::make($code),
-            'expires_at' => Carbon::now()->addMinutes(15),
-            'created_at' => Carbon::now(),
-        ]);
+        // 👇 PERBAIKAN: Gunakan updateOrInsert agar Atomic (Mencegah Race Condition ganda) 👇
+        DB::table('password_reset_codes')->updateOrInsert(
+            ['email' => $request->email],
+            [
+                'code' => Hash::make($code),
+                'expires_at' => Carbon::now()->addMinutes(15),
+                'created_at' => Carbon::now(),
+            ]
+        );
 
         try {
             Mail::to($request->email)->send(new ResetPasswordCodeMail($code));
@@ -662,23 +773,65 @@ class AuthController extends Controller
         return Socialite::driver('google')->stateless()->redirect();
     }
 
+    // public function handleGoogleCallback()
+    // {
+    //     try {
+    //         $googleUser = Socialite::driver('google')->stateless()->user();
+
+    //         $user = User::where('email', $googleUser->getEmail())->first();
+
+    //         if (!$user) {
+    //             $subscriber = Subscriber::where('email', $googleUser->getEmail())->first();
+    //             $isSubscribed = $subscriber ? true : false;
+
+    //             $user = User::create([
+    //                 'first_name' => $googleUser->user['given_name'] ?? $googleUser->getName(),
+    //                 'last_name' => $googleUser->user['family_name'] ?? ' ',
+    //                 'email' => $googleUser->getEmail(),
+    //                 'password' => Hash::make(\Illuminate\Support\Str::random(24)),
+    //                 'is_subscribed' => $isSubscribed,
+    //             ]);
+
+    //             if ($subscriber) {
+    //                 $subscriber->update(['is_registered' => true]);
+    //             }
+    //         }
+
+    //         $token = $user->createToken('auth_token')->plainTextToken;
+    //         $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+
+    //         return redirect()->away($frontendUrl . '/auth/callback?token=' . $token . '&user=' . urlencode(json_encode($user)));
+
+    //     } catch (\Exception $e) {
+    //         Log::error('Google Auth Error: ' . $e->getMessage());
+    //         $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
+    //         return redirect()->away($frontendUrl . '/login?error=GoogleAuthFailed');
+    //     }
+    // }
+
     public function handleGoogleCallback()
     {
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
+            $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
 
             $user = User::where('email', $googleUser->getEmail())->first();
 
+            // 👇 PERBAIKAN: Blokir Keras Jika Email Terdaftar Sebagai Admin 👇
+            if ($user && in_array($user->usertype, ['admin', 'superadmin', 'cs', 'gudang', 'accounting'])) {
+                Log::alert("SECURITY ALERT: Admin mencoba masuk via Google SSO. IP Terblokir.");
+                return redirect()->away($frontendUrl . '/login?error=AdminSSODisabled');
+            }
+
             if (!$user) {
                 $subscriber = Subscriber::where('email', $googleUser->getEmail())->first();
-                $isSubscribed = $subscriber ? true : false;
 
                 $user = User::create([
                     'first_name' => $googleUser->user['given_name'] ?? $googleUser->getName(),
                     'last_name' => $googleUser->user['family_name'] ?? ' ',
                     'email' => $googleUser->getEmail(),
                     'password' => Hash::make(\Illuminate\Support\Str::random(24)),
-                    'is_subscribed' => $isSubscribed,
+                    'is_subscribed' => $subscriber ? true : false,
                 ]);
 
                 if ($subscriber) {
@@ -687,8 +840,6 @@ class AuthController extends Controller
             }
 
             $token = $user->createToken('auth_token')->plainTextToken;
-            $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
-
             return redirect()->away($frontendUrl . '/auth/callback?token=' . $token . '&user=' . urlencode(json_encode($user)));
 
         } catch (\Exception $e) {
