@@ -862,16 +862,16 @@ namespace App\Http\Controllers;
 use Carbon\Carbon;
 use App\Models\Product;
 use App\Models\PromoClaim;
-use App\Models\Transaction;
 use App\Mail\PromoCodeMail;
+use App\Models\Transaction;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use App\Jobs\SendPromoReminderJob;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Cache;
 use App\Services\PromoMerdekaService;
+use Illuminate\Support\Facades\Cache;
 
 class PromoController extends Controller
 {
@@ -906,7 +906,8 @@ class PromoController extends Controller
     {
         // 1. Ambil alamat yang akan digunakan untuk checkout
         $requestedAddress = \App\Models\Address::find($requestedAddressId);
-        if (!$requestedAddress) return true; // Lolos jika aneh
+        if (!$requestedAddress)
+            return true;  // Lolos jika aneh
 
         $targetAddressStr = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $requestedAddress->address_location));
 
@@ -915,10 +916,14 @@ class PromoController extends Controller
             ->where('promo_code', $promoCode)
             ->where('user_id', '!=', $userId)
             ->whereIn('status', ['completed', 'processing', 'pending'])
+            // ->get();
+            ->where('created_at', '>=', now()->subDays(7))  // 👈 Tambahkan limitasi waktu
+            ->limit(200)  // 👈 Batasi loop maksimal 200 data
             ->get();
 
         foreach ($suspiciousTransactions as $trx) {
-            if (!$trx->address) continue;
+            if (!$trx->address)
+                continue;
 
             $usedAddressStr = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $trx->address->address_location));
 
@@ -953,7 +958,7 @@ class PromoController extends Controller
         ]);
 
         $campaign = $request->campaign;
-        $clientIp = $request->ip(); // Tangkap IP pengguna
+        $clientIp = $request->ip();  // Tangkap IP pengguna
 
         // =======================================================
         // LOGIKA POPUP 17 AGUSTUS
@@ -987,7 +992,7 @@ class PromoController extends Controller
                 return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
             }
 
-            $code = 'SOLHER-'.strtoupper(Str::random(6));
+            $code = 'SOLHER-' . strtoupper(Str::random(6));
             $discountValue = 250000;
             $expiresAt = now()->addHours(24);
         }
@@ -1004,7 +1009,6 @@ class PromoController extends Controller
             if ($campaign === 'SOLHER17') {
                 $this->recordIpVelocity($clientIp, 'SOLHER17');
             }
-
         } catch (\Illuminate\Database\QueryException $e) {
             if ($e->errorInfo[1] == 1062) {
                 return response()->json(['message' => 'Email ini sudah mengklaim promo tersebut.'], 400);
@@ -1016,7 +1020,7 @@ class PromoController extends Controller
             Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
         } catch (\Exception $e) {
             report($e);
-            Log::error('Failed to send promo email to '.$request->email.': '.$e->getMessage());
+            Log::error('Failed to send promo email to ' . $request->email . ': ' . $e->getMessage());
 
             PromoClaim::where('email', $request->email)->where('promo_code', $code)->delete();
             return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
@@ -1037,7 +1041,7 @@ class PromoController extends Controller
         $request->validate([
             'promo_code' => 'required|string',
             'cart_items' => 'required|array',
-            'address_id' => 'nullable|integer' // Ditambahkan untuk cek fraud alamat
+            'address_id' => 'nullable|integer'  // Ditambahkan untuk cek fraud alamat
         ]);
 
         $user = Auth::user();
@@ -1053,25 +1057,31 @@ class PromoController extends Controller
 
         foreach ($cartItems as $item) {
             $product = $productsInCart->get($item['product_id']);
-            if (!$product) continue;
+            if (!$product)
+                continue;
 
-            $qty = isset($item['quantity']) ? (int)$item['quantity'] : 1;
+            $qty = isset($item['quantity']) ? (int) $item['quantity'] : 1;
             $totalQuantityInCart += $qty;
 
             if ($product->discount_price) {
-                 $now = now();
-                 $start = $product->discount_start_date;
-                 $end = $product->discount_end_date;
+                $now = now();
+                $start = $product->discount_start_date;
+                $end = $product->discount_end_date;
 
-                 $isActive = false;
-                 if ($start && $end) { $isActive = $now->between($start, $end); }
-                 elseif ($start) { $isActive = $now->greaterThanOrEqualTo($start); }
-                 elseif ($end) { $isActive = $now->lessThanOrEqualTo($end); }
-                 else { $isActive = true; }
+                $isActive = false;
+                if ($start && $end) {
+                    $isActive = $now->between($start, $end);
+                } elseif ($start) {
+                    $isActive = $now->greaterThanOrEqualTo($start);
+                } elseif ($end) {
+                    $isActive = $now->lessThanOrEqualTo($end);
+                } else {
+                    $isActive = true;
+                }
 
-                 if ($isActive) {
-                     return response()->json(['message' => 'Voucher tidak dapat digunakan untuk produk yang sedang diskon.'], 400);
-                 }
+                if ($isActive) {
+                    return response()->json(['message' => 'Voucher tidak dapat digunakan untuk produk yang sedang diskon.'], 400);
+                }
             }
 
             if ($product->category) {
@@ -1086,7 +1096,6 @@ class PromoController extends Controller
         // [SECURITY] EKSEKUSI FRAUD CHECKER UNTUK PROMO HIGH-RISK
         // ====================================================================
         if (in_array($code, ['SOLHOST34', 'SOLHER17', 'MERDEKA17'])) {
-
             // Cek IP Request saat checkout
             if (!$this->checkIpVelocity($request->ip(), $code)) {
                 return response()->json(['message' => 'Sistem mendeteksi aktivitas fraud dari jaringan Anda. Kode promo diblokir.'], 403);
@@ -1103,8 +1112,10 @@ class PromoController extends Controller
 
         if ($code === 'SOLHER17') {
             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHER17')->first();
-            if (!$claim) return response()->json(['message' => 'Anda belum mengklaim promo ini. Silakan klaim via pop-up terlebih dahulu.'], 400);
-            if ($claim->is_used) return response()->json(['message' => 'Voucher kemerdekaan Anda sudah pernah digunakan.'], 400);
+            if (!$claim)
+                return response()->json(['message' => 'Anda belum mengklaim promo ini. Silakan klaim via pop-up terlebih dahulu.'], 400);
+            if ($claim->is_used)
+                return response()->json(['message' => 'Voucher kemerdekaan Anda sudah pernah digunakan.'], 400);
 
             $dbCartItems = \App\Models\Cart::with('product.category')->where('user_id', $user->id)->get();
             $promoResult = $promoService->calculatePromo($dbCartItems, []);
@@ -1121,11 +1132,14 @@ class PromoController extends Controller
         }
 
         if ($code === 'SOLHOST34') {
-            if ($totalQuantityInCart > 1) return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
-            if (!$bagProductFound) return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas.'], 400);
+            if ($totalQuantityInCart > 1)
+                return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
+            if (!$bagProductFound)
+                return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas.'], 400);
 
             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
-            if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
+            if ($claim)
+                return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
 
             return response()->json([
                 'message' => 'Subsidi Spesial Rp 3.400.000 Berhasil Diterapkan!',
@@ -1135,22 +1149,26 @@ class PromoController extends Controller
         }
 
         if ($code === 'SOLHERMEMBER') {
-            if (!$user->is_membership) return response()->json(['message' => 'Hanya untuk VIP Member.'], 400);
-            if ($user->has_used_member_voucher) return response()->json(['message' => 'Voucher ini sudah pernah digunakan.'], 400);
+            if (!$user->is_membership)
+                return response()->json(['message' => 'Hanya untuk VIP Member.'], 400);
+            if ($user->has_used_member_voucher)
+                return response()->json(['message' => 'Voucher ini sudah pernah digunakan.'], 400);
             return response()->json(['message' => 'VIP Voucher applied!', 'discount_value' => 500000], 200);
         }
 
         if ($code === 'FIRSTORDER') {
             $hasOrdered = \App\Models\Transaction::where('user_id', $user->id)->where('status', 'completed')->exists();
-            if ($hasOrdered) return response()->json(['message' => 'Voucher ini hanya untuk pembeli pertama.'], 400);
+            if ($hasOrdered)
+                return response()->json(['message' => 'Voucher ini hanya untuk pembeli pertama.'], 400);
             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'FIRSTORDER')->where('is_used', true)->first();
-            if ($claim) return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini.'], 400);
+            if ($claim)
+                return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini.'], 400);
             return response()->json(['message' => 'First Order Voucher applied!', 'discount_value' => 250000], 200);
         }
 
         $claim = PromoClaim::where('email', $user->email)->where('promo_code', $code)->first();
 
-        if (! $claim) {
+        if (!$claim) {
             return response()->json(['message' => 'Invalid promo code for this email address.'], 404);
         }
 

@@ -21,16 +21,15 @@ class DashboardController extends Controller
     public function getDashboardMasterData()
     {
         return response()->json([
-            'stats'           => $this->fetchStatsData(),
-            'revenue'         => $this->fetchRevenueChartData(),
-            'popular'         => $this->fetchPopularProductsData(),
-            'predicted'       => $this->fetchPredictedBestsellersData(),
-            'activities'      => $this->fetchRecentActivitiesData(),
-            'daily'           => $this->fetchAverageDailyRevenueData(),
-
+            'stats' => $this->fetchStatsData(),
+            'revenue' => $this->fetchRevenueChartData(),
+            'popular' => $this->fetchPopularProductsData(),
+            'predicted' => $this->fetchPredictedBestsellersData(),
+            'activities' => $this->fetchRecentActivitiesData(),
+            'daily' => $this->fetchAverageDailyRevenueData(),
             // [BARU] 3 Data Analitik Tambahan
-            'returned'        => $this->fetchMostReturnedProducts(),
-            'peak_hours'      => $this->fetchPeakOrderHours(),
+            'returned' => $this->fetchMostReturnedProducts(),
+            'peak_hours' => $this->fetchPeakOrderHours(),
             'top_affiliators' => $this->fetchTopAffiliators(),
         ]);
     }
@@ -52,7 +51,11 @@ class DashboardController extends Controller
             ->sum('total_amount');
 
         $salesGrowth = $lastMonthSales > 0 ? (($currentMonthSales - $lastMonthSales) / $lastMonthSales) * 100 : 0;
-        $totalSalesAllTime = Transaction::where('status', 'completed')->sum('total_amount');
+        // $totalSalesAllTime = Transaction::where('status', 'completed')->sum('total_amount');
+
+        $totalSalesAllTime = \Illuminate\Support\Facades\Cache::remember('total_sales_all_time', 3600, function () {
+            return Transaction::where('status', 'completed')->sum('total_amount');
+        });
 
         $totalProducts = Product::where('status', 'active')->count();
         $newProductsThisMonth = Product::where('status', 'active')
@@ -141,7 +144,8 @@ class DashboardController extends Controller
                     'status' => $transaction->status,
                     'time_ago' => $transaction->created_at->diffForHumans()
                 ];
-            })->toArray();
+            })
+            ->toArray();
     }
 
     private function fetchAverageDailyRevenueData()
@@ -206,9 +210,9 @@ class DashboardController extends Controller
     private function fetchPeakOrderHours()
     {
         $hourlyData = Transaction::select(
-                DB::raw('HOUR(created_at) as hour'),
-                DB::raw('COUNT(id) as total_orders')
-            )
+            DB::raw('HOUR(created_at) as hour'),
+            DB::raw('COUNT(id) as total_orders')
+        )
             ->groupBy('hour')
             ->orderBy('hour', 'ASC')
             ->get()
@@ -233,7 +237,7 @@ class DashboardController extends Controller
         return Transaction::select('users.first_name', 'users.last_name', 'users.email', 'users.profile_image', 'users.usertype', DB::raw('SUM(transactions.total_amount) as total_generated'), DB::raw('COUNT(transactions.id) as total_orders'))
             ->join('users', 'users.id', '=', 'transactions.user_id')
             ->where('transactions.status', 'completed')
-            ->whereIn('users.usertype', ['user', 'reseller']) // Ambil user dan reseller
+            ->whereIn('users.usertype', ['user', 'reseller'])  // Ambil user dan reseller
             ->groupBy('users.id', 'users.first_name', 'users.last_name', 'users.email', 'users.profile_image', 'users.usertype')
             ->orderBy('total_generated', 'DESC')
             ->limit(5)
@@ -291,15 +295,12 @@ class DashboardController extends Controller
         return response()->json([
             'total_sales' => (float) $totalSalesAllTime,
             'sales_growth' => round($salesGrowth, 1),
-
             'total_products' => $totalProducts,
-            'new_products_growth' => $newProductsThisMonth, // Angka mutlak bulan ini
-
+            'new_products_growth' => $newProductsThisMonth,  // Angka mutlak bulan ini
             'total_transactions' => $totalTransactionsAllTime,
             'transaction_growth' => round($transactionGrowth, 1),
-
             'total_users' => $totalUsers,
-            'new_users_growth' => $newUsersThisMonth, // Angka mutlak bulan ini
+            'new_users_growth' => $newUsersThisMonth,  // Angka mutlak bulan ini
         ]);
     }
 
@@ -341,11 +342,12 @@ class DashboardController extends Controller
             ->select('products.*', DB::raw('COALESCE(SUM(transaction_details.quantity), 0) as total_sold'))
             ->leftJoin('transaction_details', 'products.id', '=', 'transaction_details.product_id')
             ->leftJoin('transactions', function ($join) {
-                $join->on('transaction_details.transaction_id', '=', 'transactions.id')
+                $join
+                    ->on('transaction_details.transaction_id', '=', 'transactions.id')
                     ->where('transactions.status', '=', 'completed');
             })
             ->where('products.status', 'active')
-            ->groupBy('products.id') // Wajib di-group berdasarkan ID produk
+            ->groupBy('products.id')  // Wajib di-group berdasarkan ID produk
             ->get();
 
         if ($products->isEmpty()) {
@@ -412,7 +414,7 @@ class DashboardController extends Controller
                     'id' => $product->id,
                     'name' => $product->name,
                     'image' => $product->image,
-                    'reasons' => "Rule Path: " . implode(" ➔ ", $rulePath),
+                    'reasons' => 'Rule Path: ' . implode(' ➔ ', $rulePath),
                     'label' => 'High Potential (C4.5)',
                     'color' => 'text-green-600',
                     'score' => random_int(75, 100)
@@ -490,9 +492,9 @@ class DashboardController extends Controller
             $dbDay = $data->day_of_week;
 
             if ($dbDay == 1) {
-                $mappedDay = 7; // Minggu
+                $mappedDay = 7;  // Minggu
             } else {
-                $mappedDay = $dbDay - 1; // Senin - Sabtu (2-1=1, 7-1=6)
+                $mappedDay = $dbDay - 1;  // Senin - Sabtu (2-1=1, 7-1=6)
             }
 
             $chartData[$mappedDay]['average'] = (float) $data->average_revenue;
@@ -520,19 +522,20 @@ class DashboardController extends Controller
         $transactions = Transaction::with(['user', 'details.product'])
             ->where('status', 'completed')
             ->orderBy('created_at', 'desc')
-            ->get();
+            // ->get();
+            ->cursor();  // 👈 Ubah dari get() menjadi cursor()
 
-        $filename = "Solher_Sales_Report_" . Carbon::now()->format('Ymd_His') . ".csv";
+        $filename = 'Solher_Sales_Report_' . Carbon::now()->format('Ymd_His') . '.csv';
 
         $headers = [
-            "Content-type"        => "text/csv",
-            "Content-Disposition" => "attachment; filename=$filename",
-            "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
-            "Expires"             => "0"
+            'Content-type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=$filename",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0'
         ];
 
-        $callback = function() use($transactions) {
+        $callback = function () use ($transactions) {
             $file = fopen('php://output', 'w');
 
             // Header Baris CSV
@@ -544,7 +547,7 @@ class DashboardController extends Controller
 
             // Looping Isi Data
             foreach ($transactions as $row) {
-                $itemNames = $row->details->map(function($d) {
+                $itemNames = $row->details->map(function ($d) {
                     return $d->product ? $d->product->name . ' (Qty: ' . $d->quantity . ')' : 'Deleted Product';
                 })->implode(' | ');
 
@@ -593,7 +596,7 @@ class DashboardController extends Controller
     public function getRfmSegments(\App\Services\RfmService $rfmService)
     {
         // Cache hasil selama 12 jam agar DB tidak kelebihan beban saat dasbor di-refresh
-        $segments = \Illuminate\Support\Facades\Cache::remember('rfm_dashboard_data', 43200, function() use ($rfmService) {
+        $segments = \Illuminate\Support\Facades\Cache::remember('rfm_dashboard_data', 43200, function () use ($rfmService) {
             $rawSegments = $rfmService->getCustomerSegments();
             $formatted = [];
             foreach ($rawSegments as $name => $data) {
