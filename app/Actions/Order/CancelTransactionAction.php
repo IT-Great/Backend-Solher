@@ -67,6 +67,40 @@ class CancelTransactionAction
         }
 
         // 3. Batalkan Transaksi Database Utama
+        // DB::transaction(function () use ($transaction) {
+        //     $lockedTransaction = Transaction::lockForUpdate()->find($transaction->id);
+
+        //     if ($lockedTransaction->status !== 'refund_manual_required' && $lockedTransaction->status !== 'cancelled') {
+        //         $lockedTransaction->update([
+        //             'status' => 'cancelled',
+        //             'shipping_status' => 'cancelled',
+        //         ]);
+
+        //         if ($lockedTransaction->points_used > 0) {
+        //             $lockedTransaction->user->increment('point', $lockedTransaction->points_used);
+        //         }
+
+        //         if ($lockedTransaction->promo_code) {
+        //             if ($lockedTransaction->promo_code === 'SOLHERMEMBER') {
+        //                 $lockedTransaction->user->update(['has_used_member_voucher' => false]);
+        //             } else {
+        //                 PromoClaim::where('email', $lockedTransaction->user->email)
+        //                     ->where('promo_code', $lockedTransaction->promo_code)
+        //                     ->update(['is_used' => false, 'used_at' => null]);
+        //             }
+        //         }
+
+        //         if ($lockedTransaction->payment) {
+        //             $lockedTransaction->payment->update(['status' => 'EXPIRED']);
+        //         }
+
+        //         foreach ($lockedTransaction->details as $detail) {
+        //             $this->restoreInventory->execute($detail->product_id, $detail->quantity);
+        //         }
+        //     }
+        // });
+
+        // 3. Batalkan Transaksi Database Utama
         DB::transaction(function () use ($transaction) {
             $lockedTransaction = Transaction::lockForUpdate()->find($transaction->id);
 
@@ -94,7 +128,9 @@ class CancelTransactionAction
                     $lockedTransaction->payment->update(['status' => 'EXPIRED']);
                 }
 
-                foreach ($lockedTransaction->details as $detail) {
+                // 👇 PERBAIKAN: Sortir ID Produk sebelum di Restore 👇
+                $sortedDetails = $lockedTransaction->details->sortBy('product_id');
+                foreach ($sortedDetails as $detail) {
                     $this->restoreInventory->execute($detail->product_id, $detail->quantity);
                 }
             }

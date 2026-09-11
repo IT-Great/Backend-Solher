@@ -1727,6 +1727,50 @@ class TransactionController extends Controller
         return response()->json(['message' => 'Webhook received and queued'], 200);
     }
 
+    // public function forceDeleteTransaction(Request $request, $id, BiteshipService $biteship, RestoreInventoryAction $restoreInventory)
+    // {
+    //     $transaction = Transaction::with(['details', 'payment', 'user'])->find($id);
+
+    //     if (!$transaction) {
+    //         return response()->json(['message' => 'Transaksi tidak ditemukan.'], 404);
+    //     }
+
+    //     if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+    //         try { $biteship->cancelOrder($transaction->biteship_order_id); } catch (\Exception $e) {}
+    //     }
+
+    //     DB::transaction(function () use ($transaction, $restoreInventory) {
+    //         $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
+
+    //         if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+    //             foreach ($transaction->details as $detail) {
+    //                 $restoreInventory->execute($detail->product_id, $detail->quantity);
+    //             }
+    //         }
+
+    //         if ($transaction->points_used > 0 && !in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+    //             $transaction->user->increment('point', $transaction->points_used);
+    //         }
+
+    //         if ($transaction->payment) {
+    //             $transaction->payment->delete();
+    //         }
+
+    //         $this->clearTransactionProductCache($transaction);
+
+    //         foreach ($transaction->details as $detail) {
+    //             $detail->delete();
+    //         }
+
+    //         $transaction->delete();
+    //     });
+
+    //     $this->revokeMembershipIfBelowThreshold($transaction->user);
+
+    //     event(new \App\Events\DashboardUpdated());
+    //     return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
+    // }
+
     public function forceDeleteTransaction(Request $request, $id, BiteshipService $biteship, RestoreInventoryAction $restoreInventory)
     {
         $transaction = Transaction::with(['details', 'payment', 'user'])->find($id);
@@ -1742,8 +1786,11 @@ class TransactionController extends Controller
         DB::transaction(function () use ($transaction, $restoreInventory) {
             $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
 
+            // 👇 PERBAIKAN: Sortir ID Produk sebelum di Restore 👇
+            $sortedDetails = $transaction->details->sortBy('product_id');
+
             if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
-                foreach ($transaction->details as $detail) {
+                foreach ($sortedDetails as $detail) {
                     $restoreInventory->execute($detail->product_id, $detail->quantity);
                 }
             }
@@ -1758,6 +1805,7 @@ class TransactionController extends Controller
 
             $this->clearTransactionProductCache($transaction);
 
+            // Karena data mau dihapus permanen, urutan delete child record tidak memicu deadlock stok
             foreach ($transaction->details as $detail) {
                 $detail->delete();
             }
