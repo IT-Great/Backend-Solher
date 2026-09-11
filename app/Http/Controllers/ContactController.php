@@ -177,13 +177,21 @@ class ContactController extends Controller
     }
 
     // Fungsi Admin mengambil semua pesan
+    // public function getInboundMessages()
+    // {
+    //     // 👇 PERBAIKAN: Gunakan paginate agar RAM server aman dari Memory Leak
+    //     $messages = Contact::with('user')->latest()->paginate(50);
+    //     return response()->json($messages);
+    // }
+
+    // Fungsi Admin mengambil semua pesan
     public function getInboundMessages()
     {
-        // 👇 PERBAIKAN: Gunakan paginate agar RAM server aman dari Memory Leak
-        $messages = Contact::with('user')->latest()->paginate(50);
+        // 👇 PERBAIKAN: Dikembalikan ke get() agar Front-End dapat menghitung
+        // Total Messages, Unread, dan melakukan Search secara menyeluruh (Global).
+        $messages = Contact::with('user')->latest()->get();
         return response()->json($messages);
     }
-
     // Fungsi Admin melihat detail (Sekaligus mark as read)
     public function showAdminMessage($id)
     {
@@ -289,5 +297,7 @@ class ContactController extends Controller
         return response()->json([
             'unread_count' => $count
         ]);
+    }
+}
     }
 }
