@@ -1337,16 +1337,25 @@ class TransactionController extends Controller
         $transactions = Transaction::with(['details.product', 'payment', 'address'])
             ->where('user_id', $request->user()->id)
             ->latest()
-            ->get();
+            ->paginate(20);
 
         return response()->json($transactions);
     }
+
+    // public function allTransactions()
+    // {
+    //     $transactions = Transaction::with(['user', 'details.product', 'address'])
+    //         ->latest()
+    //         ->get();
+
+    //     return response()->json($transactions);
+    // }
 
     public function allTransactions()
     {
         $transactions = Transaction::with(['user', 'details.product', 'address'])
             ->latest()
-            ->get();
+            ->paginate(20);
 
         return response()->json($transactions);
     }
