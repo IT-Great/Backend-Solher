@@ -1320,12 +1320,62 @@ class TransactionController extends Controller
         }
     }
 
+    // public function index(Request $request)
+    // {
+    //     $transactions = Transaction::with(['details.product', 'payment', 'address'])
+    //         ->where('user_id', $request->user()->id)
+    //         ->latest()
+    //         ->paginate(20);
+
+    //     return response()->json($transactions);
+    // }
+
     public function index(Request $request)
     {
-        $transactions = Transaction::with(['details.product', 'payment', 'address'])
-            ->where('user_id', $request->user()->id)
-            ->latest()
-            ->paginate(20);
+        $query = Transaction::with(['details.product', 'payment', 'address'])
+            ->where('user_id', $request->user()->id);
+
+        // 1. Abaikan Ghost Order
+        $query->where('status', '!=', 'awaiting_payment');
+
+        // 2. Filter Pencarian (Search)
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('order_id', 'like', "%{$search}%")
+                  ->orWhere('payment_method', 'like', "%{$search}%")
+                  ->orWhere('courier_company', 'like', "%{$search}%")
+                  ->orWhere('tracking_number', 'like', "%{$search}%");
+            });
+        }
+
+        // 3. Filter Kategori Tab
+        if ($request->has('tab') && $request->tab != 'all') {
+            $tab = $request->tab;
+            if ($tab === 'unpaid') {
+                $query->where('status', 'pending');
+            } elseif ($tab === 'to_ship') {
+                $query->where('status', 'processing')
+                      ->whereIn('shipping_status', ['pending', 'placed', 'confirmed', 'allocated', 'picking_up', 'picked']);
+            } elseif ($tab === 'shipping') {
+                $query->where('shipping_status', 'dropping_off');
+            } elseif ($tab === 'completed') {
+                $query->where(function($q) {
+                    $q->where('status', 'completed')
+                      ->orWhere('shipping_status', 'delivered');
+                });
+            } elseif ($tab === 'cancelled') {
+                $query->where('status', 'cancelled');
+            } elseif ($tab === 'issues') {
+                $query->where(function($q) {
+                    $q->whereIn('status', ['refund_requested', 'refund_approved', 'refund_rejected', 'refund_manual_required', 'refunded', 'returned', 'shipping_failed'])
+                      ->orWhereIn('shipping_status', ['on_hold', 'return_in_transit', 'rejected', 'disposed', 'courier_not_found']);
+                });
+            }
+        }
+
+        // 4. Paginasi Otomatis
+        $transactions = $query->latest()->paginate(20);
 
         return response()->json($transactions);
     }

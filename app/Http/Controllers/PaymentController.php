@@ -182,7 +182,8 @@ class PaymentController extends Controller
         );
 
         // Job pembatalan (TTL 15 Menit). Aman dari duplicate karena di awal method sudah dicek eksistensi status pending.
-        \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addMinutes(15));
+        // \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addMinutes(15));
+        \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addHours(24));
 
         return response()->json([
             'checkout_url' => $checkoutUrl,
