@@ -924,4 +924,36 @@ class AuthController extends Controller
 
         return response()->json(['message' => 'FCM Token removed.']);
     }
+
+    public function claimGuestAccount(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+            'password' => 'required|min:8|confirmed',
+        ]);
+
+        $user = \App\Models\User::where('email', $request->email)->first();
+
+        // Cek apakah akun ini benar-benar akun 'guest'
+        if ($user->usertype !== 'guest') {
+            return response()->json([
+                'message' => 'Email ini sudah terdaftar sebagai akun resmi. Silakan login di halaman depan.'
+            ], 400);
+        }
+
+        // Ubah dari guest menjadi user resmi dan simpan password baru
+        $user->update([
+            'usertype' => 'user',
+            'password' => bcrypt($request->password),
+        ]);
+
+        // Buatkan Token Login agar bisa langsung otomatis masuk di Front-End
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Akun berhasil diaktifkan!',
+            'token' => $token,
+            'user' => $user
+        ]);
+    }
 }

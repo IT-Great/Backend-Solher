@@ -1064,6 +1064,8 @@ Route::middleware('throttle:5,1')->group(function () {
         ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
 });
 
+Route::post('/claim-account', [AuthController::class, 'claimGuestAccount']);
+
 Route::middleware('throttle:auth-limiter')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
