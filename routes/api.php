@@ -1052,6 +1052,18 @@ Route::get('/products/{id}', [ProductController::class, 'show']);
 Route::get('/guest/categories', [CategoryController::class, 'index']);
 Route::get('/events', [EventController::class, 'indexPublic']);
 
+// 👇 IMPLEMENTASI RATE LIMITING CEK ONGKOS KIRIM 👇
+// Batasi 10 request per 1 menit (Mencegah bot scraping daftar ongkir)
+Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates'])->middleware('throttle:10,1');
+
+// 👇 IMPLEMENTASI RATE LIMITING CHECKOUT & PEMBAYARAN 👇
+// Batasi 5 request per 1 menit per User ID.
+Route::middleware('throttle:5,1')->group(function () {
+    // --- KLASTER CHECKOUT ---
+    Route::post('/checkout', [TransactionController::class, 'checkout'])
+        ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
+});
+
 Route::middleware('throttle:auth-limiter')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
@@ -1124,15 +1136,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // Batasi 5 request per 1 menit per User ID.
     Route::middleware('throttle:5,1')->group(function () {
         // --- KLASTER CHECKOUT ---
-        Route::post('/checkout', [TransactionController::class, 'checkout'])
-            ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
+        // Route::post('/checkout', [TransactionController::class, 'checkout'])
+        //     ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
 
         Route::post('/payments/invoice', [PaymentController::class, 'createInvoice']);
     });
 
-    // 👇 IMPLEMENTASI RATE LIMITING CEK ONGKOS KIRIM 👇
-    // Batasi 10 request per 1 menit (Mencegah bot scraping daftar ongkir)
-    Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates'])->middleware('throttle:10,1');
+    // // 👇 IMPLEMENTASI RATE LIMITING CEK ONGKOS KIRIM 👇
+    // // Batasi 10 request per 1 menit (Mencegah bot scraping daftar ongkir)
+    // Route::post('/shipping/rates', [PaymentController::class, 'getShippingRates'])->middleware('throttle:10,1');
 
     Route::post('/promo/verify', [PromoController::class, 'verify']);
 
@@ -1371,20 +1383,19 @@ Route::get('/newsletters/click/{log_id}', [NewsletterController::class, 'trackCl
 Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 Route::get('/health', [\App\Http\Controllers\HealthController::class, 'check']);
 
-
 Route::get('/test-fcm/{userId}', function ($userId) {
     $user = \App\Models\User::find($userId);
 
     if (!$user || !$user->fcm_token) {
-        return "User tidak ditemukan atau fcm_token kosong!";
+        return 'User tidak ditemukan atau fcm_token kosong!';
     }
 
     $fcmService = app(\App\Services\FcmService::class);
     $success = $fcmService->sendPushNotification(
         $user->fcm_token,
-        "Testing dari Laravel 🚀",
-        "Jika Anda membaca ini, koneksi FCM HTTP v1 berhasil 100%!"
+        'Testing dari Laravel 🚀',
+        'Jika Anda membaca ini, koneksi FCM HTTP v1 berhasil 100%!'
     );
 
-    return $success ? "Berhasil terkirim!" : "Gagal. Silakan cek storage/logs/laravel.log";
+    return $success ? 'Berhasil terkirim!' : 'Gagal. Silakan cek storage/logs/laravel.log';
 });
