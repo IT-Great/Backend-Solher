@@ -474,7 +474,8 @@ class PaymentController extends Controller
                 }
             } else {
                 // 👇 [MEMBER CHECKOUT SEPERTI BIASA] 👇
-                $user = $request->user();
+                // $user = $request->user();
+                $user = $request->user('sanctum');
                 if (!$user) {
                     return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
                 }

@@ -1413,7 +1413,8 @@ class TransactionController extends Controller
                     return $user; // Mulai dari baris ini, Laravel mengira pengguna sudah login!
                 });
             } else {
-                $user = $request->user();
+                // $user = $request->user();
+                $user = $request->user('sanctum');
             }
             // 👆 ========================================= 👆
 
