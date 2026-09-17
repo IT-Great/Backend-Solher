@@ -1220,6 +1220,107 @@ class TransactionController extends Controller
     // }
 
     // --- USER ACTIONS ---
+    // public function checkout(
+    //     Request $request,
+    //     PromoMerdekaService $promoService,
+    //     CalculateCartTotalsAction $calculateTotals,
+    //     CreateTransactionAction $createTransaction,
+    //     DeductInventoryAction $deductInventory
+    // ) {
+    //     try {
+    //         $request->validate([
+    //             'address_id' => 'required',
+    //             'shipping_method' => 'required|in:free,biteship',
+    //             'use_points' => 'nullable|integer|min:0',
+    //             'cart_ids' => 'required|array',
+    //             'cart_ids.*' => 'exists:carts,id',
+    //             'shipping_cost' => 'nullable|numeric',
+    //             'courier_company' => 'nullable|string',
+    //             'courier_type' => 'nullable|string',
+    //             'delivery_type' => 'nullable|string',
+    //             'currency' => 'required|string',
+    //             'referral_code' => 'nullable|string',
+    //         ]);
+
+    //         $user = $request->user();
+
+    //         $cartItems = Cart::with('product.category')
+    //             ->where('user_id', $user->id)
+    //             ->whereIn('id', $request->cart_ids)
+    //             ->get();
+
+    //         if ($cartItems->isEmpty()) {
+    //             return response()->json(['message' => 'No items selected for checkout'], 400);
+    //         }
+
+    //         // =========================================================================
+    //         // [FITUR SENIOR] REDIS REDLOCK (ATOMIC LOCK) - PENCEGAH OVERSELLING
+    //         // =========================================================================
+    //         $locks = [];
+
+    //         // Urutkan ID produk untuk mencegah Deadlock pada sistem Redis
+    //         $productIds = $cartItems->pluck('product_id')->sort()->unique();
+
+    //         foreach ($productIds as $pId) {
+    //             // Kunci produk di RAM (Redis) selama 15 detik khusus untuk transaksi ini.
+    //             // Parameter block(5) berarti jika ada pengguna lain yang checkout barang yang sama di detik yang sama,
+    //             // sistem akan menyuruh mereka "mengantre" maksimal 5 detik.
+    //             $lock = Cache::lock('checkout_product_' . $pId, 15);
+
+    //             if (!$lock->block(5)) {
+    //                 // Jika antrean > 5 detik (trafik flash sale meledak), gagalkan dengan kode 429
+    //                 foreach ($locks as $acquiredLock) {
+    //                     $acquiredLock->release();
+    //                 }
+    //                 return response()->json([
+    //                     'message' => 'Lalu lintas antrean sangat padat untuk barang ini. Sistem sedang mengamankan stok Anda, silakan klik tombol Pay Now sekali lagi dalam beberapa detik.'
+    //                 ], 429);
+    //             }
+    //             $locks[] = $lock;
+    //         }
+
+    //         // Jika semua kunci produk di keranjang berhasil didapat, eksekusi pemotongan stok DB!
+    //         try {
+    //             $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
+    //                 $lockedUser = User::lockForUpdate()->find($user->id);
+
+    //                 $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
+    //                 $transaction = $createTransaction->execute($lockedUser, $request, $totals);
+
+    //                 // Disini MySQL mengeksekusi pemotongan stok dengan rasa aman 100% tanpa Race Condition
+    //                 $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
+
+    //                 return [
+    //                     'transaction' => $transaction,
+    //                     'currency' => $request->currency,
+    //                 ];
+    //             });
+
+    //             event(new \App\Events\DashboardUpdated());
+
+    //             $paymentController = app(PaymentController::class);
+    //             $request->merge([
+    //                 'transaction_id' => $transactionData['transaction']->id,
+    //                 'currency' => $transactionData['currency']
+    //             ]);
+
+    //             return $paymentController->createInvoice($request);
+
+    //         } finally {
+    //             // WAJIB: Lepaskan kunci Redis segera setelah transaksi sukses/gagal
+    //             // agar pengunjung dalam antrean berikutnya bisa masuk
+    //             foreach ($locks as $lock) {
+    //                 $lock->release();
+    //             }
+    //         }
+    //     } catch (\Throwable $e) {
+    //         report($e);
+    //         Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+    //         return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
+    //     }
+    // }
+
+    // --- USER ACTIONS ---
     public function checkout(
         Request $request,
         PromoMerdekaService $promoService,
@@ -1228,21 +1329,87 @@ class TransactionController extends Controller
         DeductInventoryAction $deductInventory
     ) {
         try {
-            $request->validate([
-                'address_id' => 'required',
+            // 👇 [GUEST CHECKOUT 1] Validasi Fleksibel 👇
+            $rules = [
                 'shipping_method' => 'required|in:free,biteship',
                 'use_points' => 'nullable|integer|min:0',
-                'cart_ids' => 'required|array',
-                'cart_ids.*' => 'exists:carts,id',
                 'shipping_cost' => 'nullable|numeric',
                 'courier_company' => 'nullable|string',
                 'courier_type' => 'nullable|string',
                 'delivery_type' => 'nullable|string',
                 'currency' => 'required|string',
                 'referral_code' => 'nullable|string',
-            ]);
+                'is_guest' => 'nullable|boolean',
+            ];
 
-            $user = $request->user();
+            if ($request->is_guest) {
+                $rules['guest_data'] = 'required|array';
+                $rules['cart_items'] = 'required|array';
+            } else {
+                $rules['address_id'] = 'required';
+                $rules['cart_ids'] = 'required|array';
+                $rules['cart_ids.*'] = 'exists:carts,id';
+            }
+
+            $request->validate($rules);
+
+            // 👇 [GUEST CHECKOUT 2] Pembuatan Shadow User 👇
+            if ($request->is_guest) {
+                $guest = $request->guest_data;
+
+                // 1. Cari user berdasarkan email, jika tidak ada, buat Shadow User
+                $user = User::firstOrCreate(
+                    ['email' => $guest['email']],
+                    [
+                        'name' => trim($guest['first_name'] . ' ' . ($guest['last_name'] ?? '')),
+                        'phone' => $guest['phone'],
+                        'password' => bcrypt(Str::random(16)), // Password acak agar aman
+                        'usertype' => 'guest', // Menandai ini bukan akun resmi
+                    ]
+                );
+
+                // 2. Simpan Alamat Pengiriman ke Database
+                $address = \App\Models\Address::create([
+                    'user_id' => $user->id,
+                    'first_name_address' => $guest['first_name'],
+                    'last_name_address' => $guest['last_name'] ?? '',
+                    'phone' => $guest['phone'],
+                    'address_location' => $guest['address_location'],
+                    'city' => $guest['city'],
+                    'province' => $guest['province'],
+                    'postal_code' => $guest['postal_code'],
+                    'region' => $guest['region'] ?? 'Indonesia',
+                    'is_default' => true,
+                ]);
+
+                // 3. Masukkan item dari LocalStorage ke tabel Carts
+                $cartIds = [];
+                foreach ($request->cart_items as $cItem) {
+                    $product = Product::find($cItem['product_id']);
+                    if ($product) {
+                        $cart = Cart::create([
+                            'user_id' => $user->id,
+                            'product_id' => $product->id,
+                            'quantity' => $cItem['quantity'],
+                            'color' => $cItem['color'] ?? null,
+                            'gross_amount' => $product->price * $cItem['quantity'],
+                        ]);
+                        $cartIds[] = $cart->id;
+                    }
+                }
+
+                // 4. Inject Data Shadow ke dalam Request (Trik Tingkat Lanjut)
+                $request->merge([
+                    'address_id' => $address->id,
+                    'cart_ids' => $cartIds
+                ]);
+                $request->setUserResolver(function () use ($user) {
+                    return $user; // Mulai dari baris ini, Laravel mengira pengguna sudah login!
+                });
+            } else {
+                $user = $request->user();
+            }
+            // 👆 ========================================= 👆
 
             $cartItems = Cart::with('product.category')
                 ->where('user_id', $user->id)
@@ -1263,12 +1430,9 @@ class TransactionController extends Controller
 
             foreach ($productIds as $pId) {
                 // Kunci produk di RAM (Redis) selama 15 detik khusus untuk transaksi ini.
-                // Parameter block(5) berarti jika ada pengguna lain yang checkout barang yang sama di detik yang sama,
-                // sistem akan menyuruh mereka "mengantre" maksimal 5 detik.
                 $lock = Cache::lock('checkout_product_' . $pId, 15);
 
                 if (!$lock->block(5)) {
-                    // Jika antrean > 5 detik (trafik flash sale meledak), gagalkan dengan kode 429
                     foreach ($locks as $acquiredLock) {
                         $acquiredLock->release();
                     }
@@ -1307,8 +1471,6 @@ class TransactionController extends Controller
                 return $paymentController->createInvoice($request);
 
             } finally {
-                // WAJIB: Lepaskan kunci Redis segera setelah transaksi sukses/gagal
-                // agar pengunjung dalam antrean berikutnya bisa masuk
                 foreach ($locks as $lock) {
                     $lock->release();
                 }

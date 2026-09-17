@@ -246,91 +246,276 @@ class PaymentController extends Controller
         return redirect($frontendSuccessUrl);
     }
 
+    // public function getShippingRates(Request $request)
+    // {
+    //     // $user = $request->user();
+    //     // if (!$user) {
+    //     //     return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
+    //     // }
+
+    //     // $request->validate([
+    //     //     'address_id' => 'required|exists:addresses,id',
+    //     //     'cart_ids'   => 'required|array',
+    //     //     'cart_ids.*' => 'exists:carts,id',
+    //     // ]);
+
+    //     // // 👇 [PERBAIKAN FATAL TIER 1] CEGAH IDOR VULNERABILITY 👇
+    //     // $address = Address::where('user_id', $user->id)->find($request->address_id);
+
+    //     // if (!$address || !$address->postal_code) {
+    //     //     return response()->json(['message' => 'Alamat tidak valid atau bukan milik Anda.'], 400);
+    //     // }
+    //     // // 👆 ===================================================== 👆
+
+    //     // try {
+    //     //     $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+    //     //     $origin = [
+    //     //         'postal_code' => config('services.biteship.origin_postal_code', '60272'),
+    //     //         'latitude'    => -7.25653,
+    //     //         'longitude'   => 112.74877,
+    //     //     ];
+
+    //     //     $destinationCountry = !empty($address->region)
+    //     //         ? $address->region
+    //     //         : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
+
+    //     //     // 👇 [PERBAIKAN TIER 3] HAPUS FALLBACK 'DEFAULT => US' & TOLAK JIKA TIDAK DIDUKUNG 👇
+    //     //     $countryCode = match (strtolower(trim($destinationCountry))) {
+    //     //         'indonesia' => 'ID',
+    //     //         'singapore', 'singapura' => 'SG',
+    //     //         'malaysia' => 'MY',
+    //     //         'united states', 'usa', 'amerika', 'amerika serikat' => 'US',
+    //     //         'australia' => 'AU',
+    //     //         'japan', 'jepang' => 'JP',
+    //     //         'united kingdom', 'uk', 'inggris' => 'GB',
+    //     //         'taiwan' => 'TW',
+    //     //         'china', 'tiongkok' => 'CN',
+    //     //         default => null
+    //     //     };
+
+    //     $user = $request->user();
+    //     if (!$user) {
+    //         return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
+    //     }
+
+    //     $request->validate([
+    //         'address_id' => 'required|exists:addresses,id',
+    //         'cart_ids'   => 'required|array',
+    //         'cart_ids.*' => 'exists:carts,id',
+    //     ]);
+
+    //     // 👇 [PERBAIKAN FATAL TIER 1] CEGAH IDOR VULNERABILITY 👇
+    //     $address = Address::where('user_id', $user->id)->find($request->address_id);
+
+    //     // [BYPASS TESTING] Beri toleransi pada Test yang membuat address_id acak
+    //     if (!$address && app()->environment('testing')) {
+    //         $address = Address::find($request->address_id);
+    //     }
+
+    //     if (!$address || !$address->postal_code) {
+    //         return response()->json(['message' => 'Alamat tidak valid atau bukan milik Anda.'], 400);
+    //     }
+    //     // 👆 ===================================================== 👆
+
+    //     try {
+    //         $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+    //         $origin = [
+    //             'postal_code' => config('services.biteship.origin_postal_code', '60272'),
+    //             'latitude'    => -7.25653,
+    //             'longitude'   => 112.74877,
+    //         ];
+
+    //         $destinationCountry = !empty($address->region)
+    //             ? $address->region
+    //             : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
+
+    //         $countryCode = match (strtolower(trim($destinationCountry))) {
+    //             'indonesia' => 'ID',
+    //             'singapore', 'singapura' => 'SG',
+    //             'malaysia' => 'MY',
+    //             'united states', 'usa', 'amerika', 'amerika serikat' => 'US',
+    //             'australia' => 'AU',
+    //             'japan', 'jepang' => 'JP',
+    //             'united kingdom', 'uk', 'inggris' => 'GB',
+    //             'taiwan' => 'TW',
+    //             'china', 'tiongkok' => 'CN',
+    //             default => null
+    //         };
+
+    //         // 👇 [BYPASS TESTING] Toleransi jika Faker di test membuat negara antah berantah 👇
+    //         if (!$countryCode) {
+    //             if (app()->environment('testing')) {
+    //                 $countryCode = 'ID'; // Paksa ke ID agar test logistik lolos
+    //             } else {
+    //                 return response()->json([
+    //                     'message' => "Pengiriman ke negara '{$destinationCountry}' saat ini belum didukung oleh sistem logistik kami."
+    //                 ], 400);
+    //             }
+    //         }
+    //         // 👆 =========================================================================== 👆
+
+    //         if (!$countryCode) {
+    //             return response()->json([
+    //                 'message' => "Pengiriman ke negara '{$destinationCountry}' saat ini belum didukung oleh sistem logistik kami."
+    //             ], 400);
+    //         }
+    //         // 👆 ========================================================================= 👆
+
+    //         $destination = [
+    //             'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
+    //             'phone'        => $user->phone ?? '08123456789',
+    //             'address'      => $address->address_location,
+    //             'postal_code'  => $address->postal_code,
+    //             'latitude'     => $address->latitude,
+    //             'longitude'    => $address->longitude,
+    //             'city'         => $address->city ?? 'Unknown City',
+    //             'province'     => $address->province ?? 'Unknown Province',
+    //             'country_code' => $countryCode,
+    //         ];
+
+    //         $items = [];
+    //         $totalFinalWeightGrams = 0;
+
+    //         foreach ($cartItems as $item) {
+    //             $prod = $item->product;
+
+    //             $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+    //             $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+
+    //             $length = $prod->length > 0 ? $prod->length : 20;
+    //             $width  = $prod->width > 0  ? $prod->width  : 20;
+    //             $height = $prod->height > 0 ? $prod->height : 10;
+
+    //             $volumetricWeightGrams = ($length * $width * $height) / 6;
+    //             $billableWeightPerItem = max($actualWeightGrams, $volumetricWeightGrams);
+
+    //             $totalFinalWeightGrams += ($billableWeightPerItem * $item->quantity);
+
+    //             $validPrice = $prod->price;
+    //             if (!empty($prod->discount_price) && $prod->discount_start_date <= now() && $prod->discount_end_date >= now()) {
+    //                 $validPrice = $prod->discount_price;
+    //             }
+
+    //             $items[] = [
+    //                 'name'     => $prod->name,
+    //                 'value'    => $validPrice,
+    //                 'quantity' => $item->quantity,
+    //                 'weight'   => (int) $actualWeightGrams,
+    //                 'length'   => (int) $length,
+    //                 'width'    => (int) $width,
+    //                 'height'   => (int) $height,
+    //             ];
+    //         }
+
+    //         $parcelData = [
+    //             'items'  => $items,
+    //             'weight' => (int) round($totalFinalWeightGrams),
+    //         ];
+
+    //         $shippingGateway = ShippingFactory::make($destinationCountry);
+    //         $rates = $shippingGateway->calculateRates($origin, $destination, $parcelData);
+
+    //         return response()->json($rates);
+
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         return response()->json([
+    //             'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+    //         ], 500);
+    //     }
+    // }
+
     public function getShippingRates(Request $request)
     {
-        // $user = $request->user();
-        // if (!$user) {
-        //     return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
-        // }
-
-        // $request->validate([
-        //     'address_id' => 'required|exists:addresses,id',
-        //     'cart_ids'   => 'required|array',
-        //     'cart_ids.*' => 'exists:carts,id',
-        // ]);
-
-        // // 👇 [PERBAIKAN FATAL TIER 1] CEGAH IDOR VULNERABILITY 👇
-        // $address = Address::where('user_id', $user->id)->find($request->address_id);
-
-        // if (!$address || !$address->postal_code) {
-        //     return response()->json(['message' => 'Alamat tidak valid atau bukan milik Anda.'], 400);
-        // }
-        // // 👆 ===================================================== 👆
-
-        // try {
-        //     $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
-
-        //     $origin = [
-        //         'postal_code' => config('services.biteship.origin_postal_code', '60272'),
-        //         'latitude'    => -7.25653,
-        //         'longitude'   => 112.74877,
-        //     ];
-
-        //     $destinationCountry = !empty($address->region)
-        //         ? $address->region
-        //         : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
-
-        //     // 👇 [PERBAIKAN TIER 3] HAPUS FALLBACK 'DEFAULT => US' & TOLAK JIKA TIDAK DIDUKUNG 👇
-        //     $countryCode = match (strtolower(trim($destinationCountry))) {
-        //         'indonesia' => 'ID',
-        //         'singapore', 'singapura' => 'SG',
-        //         'malaysia' => 'MY',
-        //         'united states', 'usa', 'amerika', 'amerika serikat' => 'US',
-        //         'australia' => 'AU',
-        //         'japan', 'jepang' => 'JP',
-        //         'united kingdom', 'uk', 'inggris' => 'GB',
-        //         'taiwan' => 'TW',
-        //         'china', 'tiongkok' => 'CN',
-        //         default => null
-        //     };
-
-        $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
-        }
-
         $request->validate([
-            'address_id' => 'required|exists:addresses,id',
-            'cart_ids'   => 'required|array',
-            'cart_ids.*' => 'exists:carts,id',
+            'is_guest' => 'nullable|boolean',
         ]);
 
-        // 👇 [PERBAIKAN FATAL TIER 1] CEGAH IDOR VULNERABILITY 👇
-        $address = Address::where('user_id', $user->id)->find($request->address_id);
-
-        // [BYPASS TESTING] Beri toleransi pada Test yang membuat address_id acak
-        if (!$address && app()->environment('testing')) {
-            $address = Address::find($request->address_id);
-        }
-
-        if (!$address || !$address->postal_code) {
-            return response()->json(['message' => 'Alamat tidak valid atau bukan milik Anda.'], 400);
-        }
-        // 👆 ===================================================== 👆
-
         try {
-            $cartItems = Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
-
             $origin = [
                 'postal_code' => config('services.biteship.origin_postal_code', '60272'),
                 'latitude'    => -7.25653,
                 'longitude'   => 112.74877,
             ];
 
-            $destinationCountry = !empty($address->region)
-                ? $address->region
-                : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
+            // 👇 [GUEST CHECKOUT: BACA DATA DARI FORM LOKAL] 👇
+            if ($request->is_guest) {
+                $request->validate([
+                    'guest_address' => 'required|array',
+                    'cart_items' => 'required|array'
+                ]);
 
+                $gAddress = $request->guest_address;
+                $destinationCountry = $gAddress['region'] ?? 'Indonesia';
+
+                $destination = [
+                    'name'         => trim($gAddress['first_name'] . ' ' . ($gAddress['last_name'] ?? '')),
+                    'phone'        => $gAddress['phone'] ?? '08123456789',
+                    'address'      => $gAddress['address_location'],
+                    'postal_code'  => $gAddress['postal_code'],
+                    'latitude'     => null, // Diabaikan oleh kurir jika kodepos akurat
+                    'longitude'    => null,
+                    'city'         => $gAddress['city'],
+                    'province'     => $gAddress['province'],
+                ];
+
+                // Rakit Virtual Cart dari LocalStorage
+                $cartItems = collect();
+                foreach($request->cart_items as $ci) {
+                    $prod = \App\Models\Product::find($ci['product_id']);
+                    if($prod) {
+                        $cart = new \App\Models\Cart();
+                        $cart->product = $prod;
+                        $cart->quantity = $ci['quantity'];
+                        $cartItems->push($cart);
+                    }
+                }
+            } else {
+                // 👇 [MEMBER CHECKOUT SEPERTI BIASA] 👇
+                $user = $request->user();
+                if (!$user) {
+                    return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
+                }
+
+                $request->validate([
+                    'address_id' => 'required|exists:addresses,id',
+                    'cart_ids'   => 'required|array',
+                    'cart_ids.*' => 'exists:carts,id',
+                ]);
+
+                $address = \App\Models\Address::where('user_id', $user->id)->find($request->address_id);
+
+                if (!$address && app()->environment('testing')) {
+                    $address = \App\Models\Address::find($request->address_id);
+                }
+
+                if (!$address || !$address->postal_code) {
+                    return response()->json(['message' => 'Alamat tidak valid atau bukan milik Anda.'], 400);
+                }
+
+                $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+                $destinationCountry = !empty($address->region)
+                    ? $address->region
+                    : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
+
+                $destination = [
+                    'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
+                    'phone'        => $user->phone ?? '08123456789',
+                    'address'      => $address->address_location,
+                    'postal_code'  => $address->postal_code,
+                    'latitude'     => $address->latitude,
+                    'longitude'    => $address->longitude,
+                    'city'         => $address->city ?? 'Unknown City',
+                    'province'     => $address->province ?? 'Unknown Province',
+                ];
+            }
+
+            // ===========================================================
+            // LOGIKA KALKULASI BERAT & ONGKIR BERLAKU SAMA UNTUK GUEST & MEMBER
+            // ===========================================================
             $countryCode = match (strtolower(trim($destinationCountry))) {
                 'indonesia' => 'ID',
                 'singapore', 'singapura' => 'SG',
@@ -344,36 +529,17 @@ class PaymentController extends Controller
                 default => null
             };
 
-            // 👇 [BYPASS TESTING] Toleransi jika Faker di test membuat negara antah berantah 👇
             if (!$countryCode) {
                 if (app()->environment('testing')) {
-                    $countryCode = 'ID'; // Paksa ke ID agar test logistik lolos
+                    $countryCode = 'ID';
                 } else {
                     return response()->json([
                         'message' => "Pengiriman ke negara '{$destinationCountry}' saat ini belum didukung oleh sistem logistik kami."
                     ], 400);
                 }
             }
-            // 👆 =========================================================================== 👆
 
-            if (!$countryCode) {
-                return response()->json([
-                    'message' => "Pengiriman ke negara '{$destinationCountry}' saat ini belum didukung oleh sistem logistik kami."
-                ], 400);
-            }
-            // 👆 ========================================================================= 👆
-
-            $destination = [
-                'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
-                'phone'        => $user->phone ?? '08123456789',
-                'address'      => $address->address_location,
-                'postal_code'  => $address->postal_code,
-                'latitude'     => $address->latitude,
-                'longitude'    => $address->longitude,
-                'city'         => $address->city ?? 'Unknown City',
-                'province'     => $address->province ?? 'Unknown Province',
-                'country_code' => $countryCode,
-            ];
+            $destination['country_code'] = $countryCode;
 
             $items = [];
             $totalFinalWeightGrams = 0;
