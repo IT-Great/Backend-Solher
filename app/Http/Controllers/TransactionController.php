@@ -1361,10 +1361,16 @@ class TransactionController extends Controller
                 $user = User::firstOrCreate(
                     ['email' => $guest['email']],
                     [
-                        'name' => trim($guest['first_name'] . ' ' . ($guest['last_name'] ?? '')),
-                        'phone' => $guest['phone'],
-                        'password' => bcrypt(Str::random(16)), // Password acak agar aman
-                        'usertype' => 'guest', // Menandai ini bukan akun resmi
+                        // 'name' => trim($guest['first_name'] . ' ' . ($guest['last_name'] ?? '')),
+                        // 'phone' => $guest['phone'],
+                        // 'password' => bcrypt(Str::random(16)), // Password acak agar aman
+                        // 'usertype' => 'guest', // Menandai ini bukan akun resmi
+                        // 👇 PERBAIKAN: Gunakan first_name dan last_name sesuai struktur DB 👇
+                        'first_name' => $guest['first_name'],
+                        'last_name'  => $guest['last_name'] ?? '',
+                        'phone'      => $guest['phone'],
+                        'password'   => bcrypt(Str::random(16)),
+                        'usertype'   => 'guest',
                     ]
                 );
 
