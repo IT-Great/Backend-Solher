@@ -1064,7 +1064,9 @@ Route::middleware('throttle:5,1')->group(function () {
         ->middleware(\App\Http\Middleware\IdempotencyCheckout::class);
 });
 
-Route::post('/claim-account', [AuthController::class, 'claimGuestAccount']);
+// Route::post('/claim-account', [AuthController::class, 'claimGuestAccount']);
+// Batasi maksimal 5 percobaan per menit per IP
+Route::post('/claim-account', [AuthController::class, 'claimGuestAccount'])->middleware('throttle:5,1');
 
 Route::middleware('throttle:auth-limiter')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -1342,10 +1344,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chat/typing', [ChatController::class, 'typing']);
 });
 
+// Route::get('/exchange-rates', function () {
+//     if (!Cache::has('exchange_rates')) {
+//         Artisan::call('currency:update-rates');
+//     }
+//     $rates = Cache::get('exchange_rates', ['IDR' => 1]);
+//     return response()->json([
+//         'status' => 'success',
+//         'base' => 'IDR',
+//         'data' => [
+//             'rates' => $rates,
+//             'last_updated' => now()->timezone('Asia/Jakarta')->toDateTimeString(),
+//         ],
+//     ], 200);
+// });
+
 Route::get('/exchange-rates', function () {
-    if (!Cache::has('exchange_rates')) {
-        Artisan::call('currency:update-rates');
-    }
+    // Hanya ambil dari cache. (Pastikan Anda sudah mengatur cron job untuk menjalankan artisan command setiap hari)
     $rates = Cache::get('exchange_rates', ['IDR' => 1]);
     return response()->json([
         'status' => 'success',
@@ -1360,32 +1375,72 @@ Route::get('/exchange-rates', function () {
 Route::middleware('auth:sanctum')->post('/reviews', [ReviewController::class, 'store']);
 Route::get('/home/reviews', [ReviewController::class, 'publicReviews']);
 
-Route::get('/admin/reviews', function () {
-    return response()->json(
-        \App\Models\Review::with(['user', 'product'])->latest()->get()
-    );
+// Route::get('/admin/reviews', function () {
+//     return response()->json(
+//         \App\Models\Review::with(['user', 'product'])->latest()->get()
+//     );
+// });
+
+// Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
+//     $review = \App\Models\Review::findOrFail($id);
+//     $review->update(['is_approved' => !$review->is_approved]);
+
+//     $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
+//     return response()->json(['message' => "Review berhasil $status."]);
+// });
+
+// 👇 PENGAMANAN RUTE REVIEW 👇
+Route::middleware(['auth:sanctum', 'role:reviews'])->group(function () {
+    Route::get('/admin/reviews', function () {
+        return response()->json(
+            \App\Models\Review::with(['user', 'product'])->latest()->get()
+        );
+    });
+    Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
+        $review = \App\Models\Review::findOrFail($id);
+        $review->update(['is_approved' => !$review->is_approved]);
+        $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
+        return response()->json(['message' => "Review berhasil $status."]);
+    });
 });
 
-Route::patch('/admin/reviews/{id}/toggle-visibility', function ($id) {
-    $review = \App\Models\Review::findOrFail($id);
-    $review->update(['is_approved' => !$review->is_approved]);
+// Route::post('/admin/newsletters/broadcast', [NewsletterController::class, 'broadcast']);
+// Route::post('/admin/newsletters/upload-image', [NewsletterController::class, 'uploadImage']);
+// Route::get('/admin/newsletters/history', [NewsletterController::class, 'getCampaignHistory']);
 
-    $status = $review->is_approved ? 'ditampilkan' : 'disembunyikan';
-    return response()->json(['message' => "Review berhasil $status."]);
+// 👇 PENGAMANAN RUTE NEWSLETTER 👇
+Route::middleware(['auth:sanctum', 'role:newsletters'])->prefix('admin/newsletters')->group(function () {
+    Route::post('/broadcast', [NewsletterController::class, 'broadcast']);
+    Route::post('/upload-image', [NewsletterController::class, 'uploadImage']);
+    Route::get('/history', [NewsletterController::class, 'getCampaignHistory']);
 });
-
-Route::post('/admin/newsletters/broadcast', [NewsletterController::class, 'broadcast']);
-Route::post('/admin/newsletters/upload-image', [NewsletterController::class, 'uploadImage']);
 
 Route::get('/newsletters/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe']);
 Route::get('/newsletters/track/{log_id}', [NewsletterController::class, 'trackOpen']);
-Route::get('/admin/newsletters/history', [NewsletterController::class, 'getCampaignHistory']);
 Route::get('/newsletters/click/{log_id}', [NewsletterController::class, 'trackClick']);
 
 Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 Route::get('/health', [\App\Http\Controllers\HealthController::class, 'check']);
 
-Route::get('/test-fcm/{userId}', function ($userId) {
+// Route::get('/test-fcm/{userId}', function ($userId) {
+//     $user = \App\Models\User::find($userId);
+
+//     if (!$user || !$user->fcm_token) {
+//         return 'User tidak ditemukan atau fcm_token kosong!';
+//     }
+
+//     $fcmService = app(\App\Services\FcmService::class);
+//     $success = $fcmService->sendPushNotification(
+//         $user->fcm_token,
+//         'Testing dari Laravel 🚀',
+//         'Jika Anda membaca ini, koneksi FCM HTTP v1 berhasil 100%!'
+//     );
+
+//     return $success ? 'Berhasil terkirim!' : 'Gagal. Silakan cek storage/logs/laravel.log';
+// });
+
+// 👇 PENGAMANAN RUTE FCM TEST (Hanya bisa diakses oleh Super Admin) 👇
+Route::middleware(['auth:sanctum', 'role:system_policy'])->get('/test-fcm/{userId}', function ($userId) {
     $user = \App\Models\User::find($userId);
 
     if (!$user || !$user->fcm_token) {
