@@ -1064,7 +1064,7 @@ use App\Actions\Order\CancelTransactionAction;
 use App\Actions\Checkout\DeductInventoryAction;
 use App\Actions\Checkout\CreateTransactionAction;
 use App\Actions\Checkout\CalculateCartTotalsAction;
-use App\Services\FileUploadService; // Pastikan Anda sudah membuat file ini di App\Services
+use App\Services\FileUploadService;  // Pastikan Anda sudah membuat file ini di App\Services
 
 class TransactionController extends Controller
 {
@@ -1367,10 +1367,10 @@ class TransactionController extends Controller
                         // 'usertype' => 'guest', // Menandai ini bukan akun resmi
                         // 👇 PERBAIKAN: Gunakan first_name dan last_name sesuai struktur DB 👇
                         'first_name' => $guest['first_name'],
-                        'last_name'  => $guest['last_name'] ?? '',
-                        'phone'      => $guest['phone'],
-                        'password'   => bcrypt(Str::random(16)),
-                        'usertype'   => 'guest',
+                        'last_name' => $guest['last_name'] ?? '',
+                        'phone' => $guest['phone'],
+                        'password' => bcrypt(Str::random(16)),
+                        'usertype' => 'guest',
                     ]
                 );
 
@@ -1410,11 +1410,17 @@ class TransactionController extends Controller
                     'cart_ids' => $cartIds
                 ]);
                 $request->setUserResolver(function () use ($user) {
-                    return $user; // Mulai dari baris ini, Laravel mengira pengguna sudah login!
+                    return $user;  // Mulai dari baris ini, Laravel mengira pengguna sudah login!
                 });
             } else {
                 // $user = $request->user();
                 $user = $request->user('sanctum');
+
+                // 👇 TAMBAHKAN KODE INI 👇
+                // Agar PaymentController yang menggunakan $request->user() tidak bernilai null
+                $request->setUserResolver(function () use ($user) {
+                    return $user;
+                });
             }
             // 👆 ========================================= 👆
 
@@ -1472,11 +1478,11 @@ class TransactionController extends Controller
                 $paymentController = app(PaymentController::class);
                 $request->merge([
                     'transaction_id' => $transactionData['transaction']->id,
-                    'currency' => $transactionData['currency']
+                    'currency' => $transactionData['currency'],
+                    'user_id' => $user->id
                 ]);
 
                 return $paymentController->createInvoice($request);
-
             } finally {
                 foreach ($locks as $lock) {
                     $lock->release();
@@ -1510,11 +1516,12 @@ class TransactionController extends Controller
         // 2. Filter Pencarian (Search)
         if ($request->has('search') && $request->search != '') {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('order_id', 'like', "%{$search}%")
-                  ->orWhere('payment_method', 'like', "%{$search}%")
-                  ->orWhere('courier_company', 'like', "%{$search}%")
-                  ->orWhere('tracking_number', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q
+                    ->where('order_id', 'like', "%{$search}%")
+                    ->orWhere('payment_method', 'like', "%{$search}%")
+                    ->orWhere('courier_company', 'like', "%{$search}%")
+                    ->orWhere('tracking_number', 'like', "%{$search}%");
             });
         }
 
@@ -1524,21 +1531,24 @@ class TransactionController extends Controller
             if ($tab === 'unpaid') {
                 $query->where('status', 'pending');
             } elseif ($tab === 'to_ship') {
-                $query->where('status', 'processing')
-                      ->whereIn('shipping_status', ['pending', 'placed', 'confirmed', 'allocated', 'picking_up', 'picked']);
+                $query
+                    ->where('status', 'processing')
+                    ->whereIn('shipping_status', ['pending', 'placed', 'confirmed', 'allocated', 'picking_up', 'picked']);
             } elseif ($tab === 'shipping') {
                 $query->where('shipping_status', 'dropping_off');
             } elseif ($tab === 'completed') {
-                $query->where(function($q) {
-                    $q->where('status', 'completed')
-                      ->orWhere('shipping_status', 'delivered');
+                $query->where(function ($q) {
+                    $q
+                        ->where('status', 'completed')
+                        ->orWhere('shipping_status', 'delivered');
                 });
             } elseif ($tab === 'cancelled') {
                 $query->where('status', 'cancelled');
             } elseif ($tab === 'issues') {
-                $query->where(function($q) {
-                    $q->whereIn('status', ['refund_requested', 'refund_approved', 'refund_rejected', 'refund_manual_required', 'refunded', 'returned', 'shipping_failed'])
-                      ->orWhereIn('shipping_status', ['on_hold', 'return_in_transit', 'rejected', 'disposed', 'courier_not_found']);
+                $query->where(function ($q) {
+                    $q
+                        ->whereIn('status', ['refund_requested', 'refund_approved', 'refund_rejected', 'refund_manual_required', 'refunded', 'returned', 'shipping_failed'])
+                        ->orWhereIn('shipping_status', ['on_hold', 'return_in_transit', 'rejected', 'disposed', 'courier_not_found']);
                 });
             }
         }
@@ -1693,7 +1703,6 @@ class TransactionController extends Controller
 
             event(new \App\Events\DashboardUpdated());
             return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
-
         } catch (\Exception $e) {
             Log::error('Upload refund proof gagal: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to process refund request. Please try again.'], 500);
@@ -1799,8 +1808,9 @@ class TransactionController extends Controller
 
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('product_name', 'like', "%{$search}%")
-                  ->orWhere('product_code', 'like', "%{$search}%");
+                $q
+                    ->where('product_name', 'like', "%{$search}%")
+                    ->orWhere('product_code', 'like', "%{$search}%");
             });
         }
 
@@ -1996,7 +2006,10 @@ class TransactionController extends Controller
         }
 
         if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
-            try { $biteship->cancelOrder($transaction->biteship_order_id); } catch (\Exception $e) {}
+            try {
+                $biteship->cancelOrder($transaction->biteship_order_id);
+            } catch (\Exception $e) {
+            }
         }
 
         DB::transaction(function () use ($transaction, $restoreInventory) {
