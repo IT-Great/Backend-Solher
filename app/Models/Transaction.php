@@ -43,6 +43,68 @@ class Transaction extends Model
 
     // 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE RAW SQL EXECUTION)
 
+    // public function markAsCompleted(array $additionalUpdates = [])
+    // {
+    //     if ($this->status === 'completed') return;
+
+    //     // 1. Simpan status (Bypass Fillable)
+    //     foreach ($additionalUpdates as $key => $value) {
+    //         $this->{$key} = $value;
+    //     }
+    //     $this->status = 'completed';
+    //     $this->save();
+
+    //     $user = User::find($this->user_id);
+    //     if ($user) {
+    //         $isMember = $user->is_membership == 1 || $user->is_membership == true;
+
+    //         // 2. Cek & Paksa Membership
+    //         if (!$isMember) {
+    //             $totalSpent = self::where('user_id', $user->id)->where('status', 'completed')->sum('total_amount');
+    //             if ($totalSpent >= 100000) {
+    //                 $user->is_membership = true;
+    //                 $user->save();
+    //                 $isMember = true;
+    //             }
+    //         }
+
+    //         // 3. Hitung & Simpan Poin
+    //         $earnedPoints = (int) $this->point;
+    //         if ($earnedPoints <= 0) {
+    //             $earnedPoints = (int) floor($this->total_amount / 100000);
+    //             $this->point = $earnedPoints;
+    //             $this->save();
+    //         }
+
+    //         // 4. Tambah Poin ke User (Anti-NULL Bug)
+    //         if ($earnedPoints > 0 && $isMember) {
+    //             $user->point = (int) $user->point + $earnedPoints;
+    //             $user->save();
+    //         }
+
+    //         if (!empty($user->fcm_token)) {
+    //             try {
+    //                 app(\App\Services\FcmService::class)->sendPushNotification(
+    //                     $user->fcm_token, "Pesanan Selesai 🎉", "Anda mendapat +{$earnedPoints} Poin!"
+    //                 );
+    //             } catch (\Exception $e) {}
+    //         }
+    //     }
+
+    //     // 5. Komisi Afiliasi
+    //     if ($this->affiliate_id && $this->commission_status === 'pending') {
+    //         $this->commission_status = 'settled';
+    //         $this->save();
+    //         $affiliate = User::find($this->affiliate_id);
+    //         if ($affiliate) {
+    //             $affiliate->commission_balance = (float) $affiliate->commission_balance + (float) $this->commission_earned;
+    //             $affiliate->save();
+    //         }
+    //     }
+    // }
+
+    // 👇 FUNGSI STATE TRANSITION EKSPLISIT (PURE RAW SQL EXECUTION)
+
     public function markAsCompleted(array $additionalUpdates = [])
     {
         if ($this->status === 'completed') return;
@@ -68,10 +130,25 @@ class Transaction extends Model
                 }
             }
 
-            // 3. Hitung & Simpan Poin
+            // 3. Hitung & Simpan Poin (Berbasis The Solhér Circle: Rp 1.000 = 1 Poin * Multiplier)
             $earnedPoints = (int) $this->point;
             if ($earnedPoints <= 0) {
-                $earnedPoints = (int) floor($this->total_amount / 100000);
+                // Tentukan Multiplier berdasarkan poin user SAAT INI (sebelum poin transaksi ini ditambahkan)
+                $currentPoints = (int) $user->point;
+                $multiplier = 1.0; // Muse
+
+                if ($currentPoints >= 10000) {
+                    $multiplier = 2.0; // Héritage
+                } elseif ($currentPoints >= 2500) {
+                    $multiplier = 1.5; // Élan
+                }
+
+                // Base Poin (Setiap Rp 1.000 dapat 1 Poin)
+                $basePoints = (int) floor($this->total_amount / 1000);
+
+                // Poin Akhir = Base Poin * Multiplier (Pembulatan ke bawah)
+                $earnedPoints = (int) floor($basePoints * $multiplier);
+
                 $this->point = $earnedPoints;
                 $this->save();
             }
