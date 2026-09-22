@@ -132,22 +132,32 @@ class Transaction extends Model
 
             // 3. Hitung & Simpan Poin (Berbasis The Solhér Circle: Rp 1.000 = 1 Poin * Multiplier)
             $earnedPoints = (int) $this->point;
+            // if ($earnedPoints <= 0) {
+            //     // Tentukan Multiplier berdasarkan poin user SAAT INI (sebelum poin transaksi ini ditambahkan)
+            //     $currentPoints = (int) $user->point;
+            //     $multiplier = 1.0; // Muse
+
+            //     if ($currentPoints >= 10000) {
+            //         $multiplier = 2.0; // Héritage
+            //     } elseif ($currentPoints >= 2500) {
+            //         $multiplier = 1.5; // Élan
+            //     }
+
+            //     // Base Poin (Setiap Rp 1.000 dapat 1 Poin)
+            //     $basePoints = (int) floor($this->total_amount / 1000);
+
+            //     // Poin Akhir = Base Poin * Multiplier (Pembulatan ke bawah)
+            //     $earnedPoints = (int) floor($basePoints * $multiplier);
+
+            //     $this->point = $earnedPoints;
+            //     $this->save();
+            // }
+
+            // 3. Hitung & Simpan Poin (Berbasis The Solhér Circle: Rp 1.000 = 1 Poin FLAT)
+            $earnedPoints = (int) $this->point;
             if ($earnedPoints <= 0) {
-                // Tentukan Multiplier berdasarkan poin user SAAT INI (sebelum poin transaksi ini ditambahkan)
-                $currentPoints = (int) $user->point;
-                $multiplier = 1.0; // Muse
-
-                if ($currentPoints >= 10000) {
-                    $multiplier = 2.0; // Héritage
-                } elseif ($currentPoints >= 2500) {
-                    $multiplier = 1.5; // Élan
-                }
-
-                // Base Poin (Setiap Rp 1.000 dapat 1 Poin)
-                $basePoints = (int) floor($this->total_amount / 1000);
-
-                // Poin Akhir = Base Poin * Multiplier (Pembulatan ke bawah)
-                $earnedPoints = (int) floor($basePoints * $multiplier);
+                // Semua tier, tanpa memandang poin sebelumnya, mendapatkan 1 poin per Rp 1.000
+                $earnedPoints = (int) floor($this->total_amount / 1000);
 
                 $this->point = $earnedPoints;
                 $this->save();
