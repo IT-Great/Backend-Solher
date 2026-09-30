@@ -230,8 +230,8 @@ it('rejects SOLHOST35 if used before October 1st', function () {
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
     $request = new Request(['currency' => 'IDR', 'promo_code' => 'SOLHOST35']);
 
-    // Set waktu fiktif menjadi "30 September Pukul 23:59:59"
-    \Carbon\Carbon::setTestNow('2026-09-30 23:59:59');
+    // 👇 [PERBAIKAN] Pastikan setTestNow menggunakan zona waktu Asia/Jakarta 👇
+    \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-09-30 23:59:59', 'Asia/Jakarta'));
 
     expect(fn() => $this->action->execute($this->user, $cartItems, $request, $this->promoService))
         ->toThrow(\Exception::class, 'Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!');
@@ -256,8 +256,8 @@ it('applies SOLHOST35 correctly if used within October 1st to 3rd', function () 
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
     $request = new Request(['currency' => 'IDR', 'promo_code' => 'SOLHOST35']);
 
-    // Set waktu fiktif menjadi "2 Oktober Pukul 12:00:00" (Di dalam rentang valid)
-    \Carbon\Carbon::setTestNow('2026-10-02 12:00:00');
+    // 👇 [PERBAIKAN] Pastikan setTestNow menggunakan zona waktu Asia/Jakarta 👇
+    \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-10-02 12:00:00', 'Asia/Jakarta'));
 
     $result = $this->action->execute($this->user, $cartItems, $request, $this->promoService);
 
@@ -284,8 +284,8 @@ it('rejects SOLHOST35 if used after October 3rd', function () {
     $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
     $request = new Request(['currency' => 'IDR', 'promo_code' => 'SOLHOST35']);
 
-    // Set waktu fiktif menjadi "4 Oktober Pukul 00:00:01"
-    \Carbon\Carbon::setTestNow('2026-10-04 00:00:01');
+    // 👇 [PERBAIKAN] Pastikan setTestNow menggunakan zona waktu Asia/Jakarta 👇
+    \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-10-04 00:00:01', 'Asia/Jakarta'));
 
     expect(fn() => $this->action->execute($this->user, $cartItems, $request, $this->promoService))
         ->toThrow(\Exception::class, 'Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.');
