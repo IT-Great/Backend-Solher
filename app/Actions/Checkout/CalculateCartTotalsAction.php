@@ -1151,6 +1151,46 @@ class CalculateCartTotalsAction
                     ['email' => $lockedUser->email, 'promo_code' => 'SOLHOST34'],
                     ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
                 );
+            } elseif ($promoCode === 'SOLHOST35') {
+                // 👇 [LOGIKA BARU] KODE PROMO SOLHOST35 👇
+
+                // Pengecekan Waktu (1 Okt 00:00 - 3 Okt 23:59)
+                $promoStart = \Carbon\Carbon::create(date('Y'), 10, 1, 0, 0, 0, 'Asia/Jakarta');
+                $promoEnd = \Carbon\Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
+
+                if (now()->lessThan($promoStart)) {
+                    throw new \Exception('Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!');
+                }
+                if (now()->greaterThan($promoEnd)) {
+                    throw new \Exception('Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.');
+                }
+
+                // Logika Pembatasan Sama Persis dengan SOLHOST34
+                $totalQuantityInCart = $cartItems->sum('quantity');
+                if ($totalQuantityInCart > 1) throw new \Exception('Voucher Subsidi Tas hanya berlaku untuk 1 barang.');
+                if ($request->use_points > 0) throw new \Exception('Voucher tidak dapat digabung dengan Poin.');
+
+                $item = $cartItems->first();
+                $catCode = strtoupper(trim($item->product->category->code ?? ''));
+                if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) throw new \Exception('Voucher ini khusus untuk produk Tas.');
+
+                $product = $item->product;
+                if (!empty($product->discount_price) && (!$product->discount_start_date || $now >= $product->discount_start_date) && (!$product->discount_end_date || $now <= $product->discount_end_date)) {
+                    throw new \Exception('Tidak berlaku pada barang yang sedang diskon.');
+                }
+
+                $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'SOLHOST35')->where('is_used', true)->first();
+                if ($claimCheck) throw new \Exception('Voucher sudah pernah digunakan.');
+
+                // Diskon Mutlak (Sama seperti SOLHOST34)
+                $promoDiscountAmount = 3400000;
+                $appliedPromoCode = 'SOLHOST35';
+
+                PromoClaim::updateOrCreate(
+                    ['email' => $lockedUser->email, 'promo_code' => 'SOLHOST35'],
+                    ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
+                );
+
             } elseif ($promoCode === 'SOLHERMEMBER') {
                 if (!$lockedUser->is_membership) throw new \Exception('Hanya untuk VIP Member.');
                 if ($lockedUser->has_used_member_voucher) throw new \Exception('Voucher sudah pernah digunakan.');

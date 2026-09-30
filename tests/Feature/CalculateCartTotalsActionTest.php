@@ -1,14 +1,14 @@
 <?php
 
-use App\Actions\Checkout\CalculateCartTotalsAction;
 use App\Models\User;
-use App\Models\Category;
-use App\Models\Product;
 use App\Models\Cart;
+use App\Models\Product;
+use App\Models\Category;
 use App\Models\PromoClaim;
-use App\Services\PromoMerdekaService;
 use Illuminate\Http\Request;
+use App\Services\PromoMerdekaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Actions\Checkout\CalculateCartTotalsAction;
 
 // Menggunakan RefreshDatabase agar database kembali bersih setiap kali test dijalankan
 uses(RefreshDatabase::class);
@@ -209,4 +209,84 @@ it('applies SOLHER17 correctly and marks the claim as used', function () {
     expect($result['promoDiscountAmount'])->toEqual(340000)
         ->and($result['appliedPromoCode'])->toBe('SOLHER17')
         ->and($claim->is_used)->toBeTruthy(); // Pastikan database ditandai terpakai
+});
+
+// 🧪 SKENARIO 6: Penolakan SOLHOST35 Jika Belum Waktunya (Sebelum 1 Oktober)
+it('rejects SOLHOST35 if used before October 1st', function () {
+    $product = Product::forceCreate([
+        'name' => 'Tas Uji Coba',
+        'code' => 'BAG-06',
+        'price' => 5000000,
+        'stock' => 10,
+        'category_id' => $this->bagCategory->id
+    ]);
+
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 1
+    ]);
+
+    $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
+    $request = new Request(['currency' => 'IDR', 'promo_code' => 'SOLHOST35']);
+
+    // Set waktu fiktif menjadi "30 September Pukul 23:59:59"
+    \Carbon\Carbon::setTestNow('2026-09-30 23:59:59');
+
+    expect(fn() => $this->action->execute($this->user, $cartItems, $request, $this->promoService))
+        ->toThrow(\Exception::class, 'Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!');
+});
+
+// 🧪 SKENARIO 7: Kesuksesan SOLHOST35 Jika Tepat Waktu
+it('applies SOLHOST35 correctly if used within October 1st to 3rd', function () {
+    $product = Product::forceCreate([
+        'name' => 'Tas Tepat Waktu',
+        'code' => 'BAG-07',
+        'price' => 5000000,
+        'stock' => 10,
+        'category_id' => $this->bagCategory->id
+    ]);
+
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 1
+    ]);
+
+    $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
+    $request = new Request(['currency' => 'IDR', 'promo_code' => 'SOLHOST35']);
+
+    // Set waktu fiktif menjadi "2 Oktober Pukul 12:00:00" (Di dalam rentang valid)
+    \Carbon\Carbon::setTestNow('2026-10-02 12:00:00');
+
+    $result = $this->action->execute($this->user, $cartItems, $request, $this->promoService);
+
+    expect($result['promoDiscountAmount'])->toEqual(3400000)
+        ->and($result['appliedPromoCode'])->toBe('SOLHOST35');
+});
+
+// 🧪 SKENARIO 8: Penolakan SOLHOST35 Jika Waktu Habis (Setelah 3 Oktober)
+it('rejects SOLHOST35 if used after October 3rd', function () {
+    $product = Product::forceCreate([
+        'name' => 'Tas Uji Coba Habis',
+        'code' => 'BAG-08',
+        'price' => 5000000,
+        'stock' => 10,
+        'category_id' => $this->bagCategory->id
+    ]);
+
+    Cart::forceCreate([
+        'user_id' => $this->user->id,
+        'product_id' => $product->id,
+        'quantity' => 1
+    ]);
+
+    $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
+    $request = new Request(['currency' => 'IDR', 'promo_code' => 'SOLHOST35']);
+
+    // Set waktu fiktif menjadi "4 Oktober Pukul 00:00:01"
+    \Carbon\Carbon::setTestNow('2026-10-04 00:00:01');
+
+    expect(fn() => $this->action->execute($this->user, $cartItems, $request, $this->promoService))
+        ->toThrow(\Exception::class, 'Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.');
 });

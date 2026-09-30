@@ -1095,7 +1095,7 @@ class PromoController extends Controller
         // ====================================================================
         // [SECURITY] EKSEKUSI FRAUD CHECKER UNTUK PROMO HIGH-RISK
         // ====================================================================
-        if (in_array($code, ['SOLHOST34', 'SOLHER17', 'MERDEKA17'])) {
+        if (in_array($code, ['SOLHOST34', 'SOLHOST35', 'SOLHER17', 'MERDEKA17'])) {
             // Cek IP Request saat checkout
             if (!$this->checkIpVelocity($request->ip(), $code)) {
                 return response()->json(['message' => 'Sistem mendeteksi aktivitas fraud dari jaringan Anda. Kode promo diblokir.'], 403);
@@ -1138,6 +1138,34 @@ class PromoController extends Controller
                 return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas.'], 400);
 
             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
+            if ($claim)
+                return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
+
+            return response()->json([
+                'message' => 'Subsidi Spesial Rp 3.400.000 Berhasil Diterapkan!',
+                'discount_value' => 3400000,
+                'promo_type' => 'claim'
+            ], 200);
+        }
+
+        // 👇 [TAMBAHKAN LOGIKA VERIFY SOLHOST35 DI SINI] 👇
+        if ($code === 'SOLHOST35') {
+            $promoStart = Carbon::create(date('Y'), 10, 1, 0, 0, 0, 'Asia/Jakarta');
+            $promoEnd = Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
+
+            if (now()->lessThan($promoStart)) {
+                return response()->json(['message' => 'Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!'], 400);
+            }
+            if (now()->greaterThan($promoEnd)) {
+                return response()->json(['message' => 'Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.'], 400);
+            }
+
+            if ($totalQuantityInCart > 1)
+                return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
+            if (!$bagProductFound)
+                return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas.'], 400);
+
+            $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST35')->where('is_used', true)->first();
             if ($claim)
                 return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
 
