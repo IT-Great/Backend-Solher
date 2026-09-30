@@ -1150,8 +1150,11 @@ class PromoController extends Controller
 
         // 👇 [TAMBAHKAN LOGIKA VERIFY SOLHOST35 DI SINI] 👇
         if ($code === 'SOLHOST35') {
-            $promoStart = Carbon::create(date('Y'), 10, 1, 0, 0, 0, 'Asia/Jakarta');
-            $promoEnd = Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
+            // $promoStart = Carbon::create(date('Y'), 10, 1, 0, 0, 0, 'Asia/Jakarta');
+            // $promoEnd = Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
+
+            $promoStart = Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
+            $promoEnd = Carbon::create(now()->year, 10, 3, 23, 59, 59, 'Asia/Jakarta');
 
             if (now()->lessThan($promoStart)) {
                 return response()->json(['message' => 'Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!'], 400);
