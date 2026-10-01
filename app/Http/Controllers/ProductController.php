@@ -48,28 +48,64 @@ class ProductController extends Controller
     //     return response()->json($products, 200);
     // }
 
+    // public function index(Request $request)
+    // {
+    //     // 1. Ambil semua data produk aktif dari cache (berupa Collection Eloquent)
+    //     $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
+    //         return Product::with(['category', 'bagCategory'])
+    //             ->withSum(['transactionDetails' => function ($query) {
+    //                 $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+    //                     ->whereIn('transactions.status', ['completed']);
+    //             }], 'quantity')
+    //             ->where('status', 'active')
+    //             ->latest()
+    //             ->get();
+    //     });
+
+    //     // 2. 👇 PERBAIKAN: Filter Collection di memori menggunakan method where() milik Collection 👇
+    //     if ($request->has('category_id') && $request->category_id != 0) {
+    //         $products = $products->where('category_id', $request->category_id)->values();
+    //         // Note: ->values() penting agar key array di-reset ke 0, 1, 2, dst.
+    //         // Jika tidak, JSON response di Flutter akan terbaca sebagai Map/Object, bukan List/Array.
+    //     }
+
+    //     // 3. Format/mapping data (Berlaku untuk semua list atau yang sudah difilter)
+    //     $products->map(function ($product) {
+    //         $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
+    //         unset($product->transaction_details_sum_quantity);
+
+    //         return $product;
+    //     });
+
+    //     return response()->json($products, 200);
+    // }
+
     public function index(Request $request)
     {
         // 1. Ambil semua data produk aktif dari cache (berupa Collection Eloquent)
-        $products = Cache::tags(['catalog'])->remember('products.active', 86400, function () {
+        // [TIPS]: Saya mengubah nama kunci cache menjadi 'products.active.sorted'
+        // agar data cache yang lama otomatis terbuang dan perubahan ini langsung terlihat.
+        $products = Cache::tags(['catalog'])->remember('products.active.sorted', 86400, function () {
             return Product::with(['category', 'bagCategory'])
                 ->withSum(['transactionDetails' => function ($query) {
                     $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
                         ->whereIn('transactions.status', ['completed']);
                 }], 'quantity')
                 ->where('status', 'active')
+                // 👇 [FITUR BARU] Out-of-Stock Sinking 👇
+                // Prioritas 1: Pisahkan yang stoknya > 0 (naik ke atas/1) dan stok habis (turun ke bawah/0)
+                ->orderByRaw('CASE WHEN stock > 0 THEN 1 ELSE 0 END DESC')
+                // Prioritas 2: Di dalam masing-masing kelompok, urutkan dari yang terbaru
                 ->latest()
                 ->get();
         });
 
-        // 2. 👇 PERBAIKAN: Filter Collection di memori menggunakan method where() milik Collection 👇
+        // 2. Filter Collection di memori menggunakan method where() milik Collection
         if ($request->has('category_id') && $request->category_id != 0) {
             $products = $products->where('category_id', $request->category_id)->values();
-            // Note: ->values() penting agar key array di-reset ke 0, 1, 2, dst.
-            // Jika tidak, JSON response di Flutter akan terbaca sebagai Map/Object, bukan List/Array.
         }
 
-        // 3. Format/mapping data (Berlaku untuk semua list atau yang sudah difilter)
+        // 3. Format/mapping data
         $products->map(function ($product) {
             $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
             unset($product->transaction_details_sum_quantity);
