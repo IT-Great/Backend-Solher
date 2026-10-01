@@ -40,6 +40,7 @@ class Product extends Model
         'design',
         'design_en',      // [BARU]
         'status',
+        'publish_at',
         'is_final_sale',
     ];
 
@@ -54,6 +55,7 @@ class Product extends Model
         'discount_start_date' => 'datetime', // <--- BARU
         'discount_end_date' => 'datetime',   // <--- BARU
         'is_final_sale' => 'boolean',
+        'publish_at' => 'datetime',
     ];
 
     public function category()

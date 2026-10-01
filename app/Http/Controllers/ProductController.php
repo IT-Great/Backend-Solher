@@ -80,27 +80,67 @@ class ProductController extends Controller
     //     return response()->json($products, 200);
     // }
 
+    // public function index(Request $request)
+    // {
+    //     // 1. Ambil semua data produk aktif dari cache (berupa Collection Eloquent)
+    //     // [TIPS]: Saya mengubah nama kunci cache menjadi 'products.active.sorted'
+    //     // agar data cache yang lama otomatis terbuang dan perubahan ini langsung terlihat.
+    //     $products = Cache::tags(['catalog'])->remember('products.active.sorted', 86400, function () {
+    //         return Product::with(['category', 'bagCategory'])
+    //             ->withSum(['transactionDetails' => function ($query) {
+    //                 $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
+    //                     ->whereIn('transactions.status', ['completed']);
+    //             }], 'quantity')
+    //             ->where('status', 'active')
+    //             // 👇 [FITUR BARU] Out-of-Stock Sinking 👇
+    //             // Prioritas 1: Pisahkan yang stoknya > 0 (naik ke atas/1) dan stok habis (turun ke bawah/0)
+    //             ->orderByRaw('CASE WHEN stock > 0 THEN 1 ELSE 0 END DESC')
+    //             // Prioritas 2: Di dalam masing-masing kelompok, urutkan dari yang terbaru
+    //             ->latest()
+    //             ->get();
+    //     });
+
+    //     // 2. Filter Collection di memori menggunakan method where() milik Collection
+    //     if ($request->has('category_id') && $request->category_id != 0) {
+    //         $products = $products->where('category_id', $request->category_id)->values();
+    //     }
+
+    //     // 3. Format/mapping data
+    //     $products->map(function ($product) {
+    //         $product->total_sold = (int) $product->transaction_details_sum_quantity ?? 0;
+    //         unset($product->transaction_details_sum_quantity);
+
+    //         return $product;
+    //     });
+
+    //     return response()->json($products, 200);
+    // }
+
     public function index(Request $request)
     {
-        // 1. Ambil semua data produk aktif dari cache (berupa Collection Eloquent)
-        // [TIPS]: Saya mengubah nama kunci cache menjadi 'products.active.sorted'
-        // agar data cache yang lama otomatis terbuang dan perubahan ini langsung terlihat.
-        $products = Cache::tags(['catalog'])->remember('products.active.sorted', 86400, function () {
+        // [TIPS] Nama cache diubah ke 'products.active.scheduled' agar cache lama otomatis terbuang
+        $products = Cache::tags(['catalog'])->remember('products.active.scheduled', 86400, function () {
             return Product::with(['category', 'bagCategory'])
                 ->withSum(['transactionDetails' => function ($query) {
                     $query->join('transactions', 'transactions.id', '=', 'transaction_details.transaction_id')
                         ->whereIn('transactions.status', ['completed']);
                 }], 'quantity')
                 ->where('status', 'active')
-                // 👇 [FITUR BARU] Out-of-Stock Sinking 👇
-                // Prioritas 1: Pisahkan yang stoknya > 0 (naik ke atas/1) dan stok habis (turun ke bawah/0)
+                // 👇 [FITUR BARU] Scheduled Activation (Flash Drop) 👇
+                // Menampilkan produk jika publish_at kosong (rilis langsung)
+                // ATAU waktu sekarang sudah melewati batas waktu publish_at
+                ->where(function ($query) {
+                    $query->whereNull('publish_at')
+                          ->orWhere('publish_at', '<=', now());
+                })
+                // Prioritas 1: Out-of-Stock Sinking
                 ->orderByRaw('CASE WHEN stock > 0 THEN 1 ELSE 0 END DESC')
-                // Prioritas 2: Di dalam masing-masing kelompok, urutkan dari yang terbaru
+                // Prioritas 2: Produk terbaru
                 ->latest()
                 ->get();
         });
 
-        // 2. Filter Collection di memori menggunakan method where() milik Collection
+        // 2. Filter Collection di memori
         if ($request->has('category_id') && $request->category_id != 0) {
             $products = $products->where('category_id', $request->category_id)->values();
         }
@@ -289,6 +329,7 @@ class ProductController extends Controller
             'discount_start_date' => 'nullable|date',
             'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
             'is_final_sale' => 'nullable|boolean', // <--- Tambahkan validasi ini
+            'publish_at' => 'nullable|date', // 👈 Tambahkan ini
         ]);
 
         if ($validator->fails()) {
@@ -304,7 +345,7 @@ class ProductController extends Controller
             $data['prices'] = $request->input('prices', null);
             $data['discount_prices'] = $request->input('discount_prices', null);
 
-            $nullableFields = ['discount_price', 'discount_start_date', 'discount_end_date', 'length', 'width', 'height', 'material', 'strap_length', 'description', 'design', 'description_en', 'design_en'];
+            $nullableFields = ['discount_price', 'discount_start_date', 'discount_end_date', 'length', 'width', 'height', 'material', 'strap_length', 'description', 'design', 'description_en', 'design_en', 'publish_at'];
             foreach ($nullableFields as $field) {
                 if (! isset($data[$field]) || $data[$field] === '' || $data[$field] === 'null') {
                     $data[$field] = null;
@@ -393,6 +434,7 @@ class ProductController extends Controller
             'discount_start_date' => 'nullable|date',
             'discount_end_date' => 'nullable|date|after_or_equal:discount_start_date',
             'is_final_sale' => 'nullable|boolean', // <--- Tambahkan validasi ini
+            'publish_at' => 'nullable|date', // 👈 Tambahkan ini
         ]);
 
         if ($validator->fails()) {
@@ -406,7 +448,7 @@ class ProductController extends Controller
         $data['prices'] = $request->input('prices', null);
         $data['discount_prices'] = $request->input('discount_prices', null);
 
-        $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length', 'description', 'design', 'description_en', 'design_en', 'discount_start_date', 'discount_end_date'];
+        $nullableFields = ['discount_price', 'length', 'width', 'height', 'material', 'strap_length', 'description', 'design', 'description_en', 'design_en', 'discount_start_date', 'discount_end_date', 'publish_at'];
 
         foreach ($nullableFields as $field) {
             if (! isset($data[$field]) || $data[$field] === '' || $data[$field] === 'null') {
