@@ -1154,7 +1154,7 @@ class PromoController extends Controller
             // $promoEnd = Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
 
             $promoStart = Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
-            $promoEnd = Carbon::create(now()->year, 10, 7, 23, 59, 59, 'Asia/Jakarta');
+            $promoEnd = Carbon::create(now()->year, 10, 8, 19, 00, 00, 'Asia/Jakarta');
 
             if (now()->lessThan($promoStart)) {
                 return response()->json(['message' => 'Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!'], 400);
