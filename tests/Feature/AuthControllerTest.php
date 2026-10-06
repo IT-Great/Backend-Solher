@@ -228,15 +228,15 @@
 
 namespace Tests\Feature;
 
-use App\Mail\ResetPasswordCodeMail;
-use App\Models\Subscriber;
+use Tests\TestCase;
 use App\Models\User;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use App\Models\Subscriber;
 use Illuminate\Http\UploadedFile;
+use App\Mail\ResetPasswordCodeMail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Tests\TestCase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 
 class AuthControllerTest extends TestCase
 {
@@ -264,6 +264,7 @@ class AuthControllerTest extends TestCase
             'usertype' => 'user',
             'is_membership' => false,
             'point' => 0,
+            'birthday_date' => '1990-05-15', // 👈 TAMBAHKAN INI
         ]);
 
         // 2. Buat Staf (Superadmin)
@@ -275,6 +276,7 @@ class AuthControllerTest extends TestCase
             'usertype' => 'superadmin',
             'is_membership' => false,
             'point' => 0,
+            'birthday_date' => '1995-10-10', // 👈 TAMBAHKAN INI
         ]);
     }
 
@@ -298,6 +300,7 @@ class AuthControllerTest extends TestCase
             'last_name' => 'User',
             'email' => $testEmail,
             'password' => 'secret1234',
+            'birthday_date' => '1998-12-25', // 👈 TAMBAHKAN INI AGAR LOLOS VALIDASI
         ]);
 
         $response->assertStatus(201)
