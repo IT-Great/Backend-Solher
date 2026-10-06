@@ -32,3 +32,8 @@ Schedule::command('system:prune --days=90')
 Schedule::job(new SyncMonthlySalesJob)->dailyAt('00:00');
 
 Schedule::command('ml:train-bestseller')->dailyAt('00:00');
+
+// 👇 Daftarkan Command Ulang Tahun Di Sini 👇
+Schedule::command('promo:send-birthday')
+        ->dailyAt('08:00') // Akan dijalankan setiap jam 8 pagi
+        ->timezone('Asia/Jakarta');
