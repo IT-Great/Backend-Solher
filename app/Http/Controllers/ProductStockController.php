@@ -231,9 +231,12 @@ class ProductStockController extends Controller
     /**
      * Menambah atau Mengurangi stok baru secara aman dengan Pessimistic Locking.
      */
+/**
+     * Menambah (In) atau Mengurangi (Out) stok baru secara aman dengan Pessimistic Locking.
+     */
     public function store(Request $request, $productId)
     {
-        // 👇 PERBAIKAN: Validasi diizinkan menerima angka negatif, kecuali angka 0
+        // 👇 PERBAIKAN 1: Izinkan angka negatif (Stok Keluar), tapi larang angka 0
         $request->validate([
             'quantity' => 'required|integer|not_in:0'
         ]);
@@ -244,39 +247,40 @@ class ProductStockController extends Controller
                 // 1. AMBIL & KUNCI BARIS (Pessimistic Locking) - AMAN DARI DEADLOCK
                 $product = Product::lockForUpdate()->findOrFail($productId);
 
-                // 2. [BARU] VALIDASI PENGURANGAN STOK
-                // Pastikan jika quantity negatif, stok saat ini cukup untuk dikurangi
+                // 👇 PERBAIKAN 2: Validasi Pengurangan Stok
+                // Jika admin ingin mengurangi stok (-), pastikan stok saat ini cukup
                 if ($request->quantity < 0 && $product->stock < abs($request->quantity)) {
-                    // Gunakan exception khusus untuk ditangkap nanti
-                    throw new \Exception('InsufficientStockError');
+                    throw new \Exception('INSUFFICIENT_STOCK');
                 }
 
-                // 3. Generate Kode Unik Batch (Beri tanda -OUT untuk pengeluaran)
+                // 2. Generate Kode Unik Batch (Beri tanda IN atau OUT)
                 $prefix = $request->quantity > 0 ? 'STK-IN-' : 'STK-OUT-';
                 $batchCode = $prefix . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
 
-                // 4. Catat Riwayat Perubahan Batch
+                // 3. Catat Riwayat Perubahan Batch
                 ProductStock::create([
                     'product_id' => $product->id,
                     'batch_code' => $batchCode,
                     'quantity' => $request->quantity,
-                    'initial_quantity' => abs($request->quantity) // Tetap simpan nilai absolut untuk referensi
+                    'initial_quantity' => abs($request->quantity) // Catat nilai mutlak untuk riwayat
                 ]);
 
-                // 5. Perbarui Total Stok Master
-                // increment() aman digunakan dengan nilai negatif (akan menjadi decrement)
+                // 4. Perbarui Total Stok Master
+                // increment() aman dengan nilai negatif (otomatis menjadi pengurangan)
                 $product->increment('stock', $request->quantity);
             });
 
-            // 6. Hapus cache spesifik produk agar tidak terjadi Cache Stampede
-            Cache::tags(['catalog'])->forget("products.detail.{$productId}");
+            // 👇 PERBAIKAN 3 (BUG FIX SOLD OUT): Hapus SELURUH cache katalog
+            // Ini memaksa halaman Collections untuk merender ulang status stok terbaru
+            Cache::tags(['catalog'])->flush();
 
-            $msg = $request->quantity > 0 ? 'New stock batch added successfully.' : 'Stock deducted successfully.';
+            $msg = $request->quantity > 0 ? 'Stock batch added successfully.' : 'Stock deducted successfully.';
             return response()->json(['message' => $msg]);
 
         } catch (\Exception $e) {
-            if ($e->getMessage() === 'InsufficientStockError') {
-                 return response()->json([
+            // Tangkap exception khusus jika stok tidak cukup
+            if ($e->getMessage() === 'INSUFFICIENT_STOCK') {
+                return response()->json([
                     'message' => 'Stok saat ini tidak mencukupi untuk dilakukan pengurangan.'
                 ], 422);
             }
@@ -288,7 +292,7 @@ class ProductStockController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Failed to process stock modification due to system error.'
+                'message' => 'Failed to modify stock due to system error.'
             ], 500);
         }
     }
