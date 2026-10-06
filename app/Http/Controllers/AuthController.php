@@ -27,6 +27,7 @@ class AuthController extends Controller
             'last_name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
+            'birthday_date' => 'required|date|before:today', // 👈 WAJIB DIISI SAAT DAFTAR
         ]);
 
         if ($validator->fails()) {
@@ -42,6 +43,7 @@ class AuthController extends Controller
             'last_name' => $request->last_name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'birthday_date' => $request->birthday_date, // 👈 SIMPAN DATA
             'is_subscribed' => $isSubscribed,
         ]);
 
@@ -264,13 +266,16 @@ class AuthController extends Controller
             'last_name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,'.$user->id,
             'phone' => 'nullable|string|max:20',
+            'birthday_date' => 'nullable|date|before:today', // 👈 TAMBAHKAN VALIDASI INI
         ]);
 
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        $user->update($request->only('first_name', 'last_name', 'email', 'phone'));
+        $user->update($request->only('first_name', 'last_name', 'email', 'phone', 'birthday_date'));
+
+        // $user->update($request->only('first_name', 'last_name', 'email', 'phone'));
 
         return response()->json(['message' => 'Info profil diperbarui', 'user' => $user]);
     }

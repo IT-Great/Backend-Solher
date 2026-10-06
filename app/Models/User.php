@@ -25,6 +25,7 @@ class User extends Authenticatable
         'profile_image',
         'email',
         'phone',
+        'birthday_date', // 👈 TAMBAHKAN INI
         'password',
         'is_affiliate',
         'commission_balance',
@@ -57,6 +58,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'birthday_date' => 'date', // 👈 TAMBAHKAN INI
             'password' => 'hashed',
         ];
     }
