@@ -1167,6 +1167,188 @@ class PromoController extends Controller
         ]);
     }
 
+    // public function verify(Request $request, PromoMerdekaService $promoService)
+    // {
+    //     $request->validate([
+    //         'promo_code' => 'required|string',
+    //         'cart_items' => 'required|array',
+    //         'address_id' => 'nullable|integer'  // Ditambahkan untuk cek fraud alamat
+    //     ]);
+
+    //     $user = Auth::user();
+    //     $code = strtoupper(trim($request->promo_code));
+    //     $cartItems = $request->cart_items;
+    //     $addressId = $request->address_id;
+
+    //     $productIds = collect($cartItems)->pluck('product_id')->unique()->toArray();
+    //     $productsInCart = Product::with('category')->whereIn('id', $productIds)->get()->keyBy('id');
+
+    //     $totalQuantityInCart = 0;
+    //     $bagProductFound = null;
+
+    //     foreach ($cartItems as $item) {
+    //         $product = $productsInCart->get($item['product_id']);
+    //         if (!$product)
+    //             continue;
+
+    //         $qty = isset($item['quantity']) ? (int) $item['quantity'] : 1;
+    //         $totalQuantityInCart += $qty;
+
+    //         if ($product->discount_price) {
+    //             $now = now();
+    //             $start = $product->discount_start_date;
+    //             $end = $product->discount_end_date;
+
+    //             $isActive = false;
+    //             if ($start && $end) {
+    //                 $isActive = $now->between($start, $end);
+    //             } elseif ($start) {
+    //                 $isActive = $now->greaterThanOrEqualTo($start);
+    //             } elseif ($end) {
+    //                 $isActive = $now->lessThanOrEqualTo($end);
+    //             } else {
+    //                 $isActive = true;
+    //             }
+
+    //             if ($isActive) {
+    //                 return response()->json(['message' => 'Voucher tidak dapat digunakan untuk produk yang sedang diskon.'], 400);
+    //             }
+    //         }
+
+    //         if ($product->category) {
+    //             $catCode = strtoupper(trim($product->category->code));
+    //             if (in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) {
+    //                 $bagProductFound = $product;
+    //             }
+    //         }
+    //     }
+
+    //     // ====================================================================
+    //     // [SECURITY] EKSEKUSI FRAUD CHECKER UNTUK PROMO HIGH-RISK
+    //     // ====================================================================
+    //     if (in_array($code, ['SOLHOST34', 'SOLHOST35', 'SOLHER17', 'MERDEKA17'])) {
+    //         // Cek IP Request saat checkout
+    //         if (!$this->checkIpVelocity($request->ip(), $code)) {
+    //             return response()->json(['message' => 'Sistem mendeteksi aktivitas fraud dari jaringan Anda. Kode promo diblokir.'], 403);
+    //         }
+
+    //         // Cek Kemiripan Alamat jika dikirimkan oleh Frontend
+    //         if ($addressId) {
+    //             if (!$this->checkAddressSimilarity($user->id, $addressId, $code)) {
+    //                 return response()->json(['message' => 'Alamat pengiriman ini sudah melewati batas maksimal klaim promo.'], 403);
+    //             }
+    //         }
+    //     }
+    //     // ====================================================================
+
+    //     if ($code === 'SOLHER17') {
+    //         $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHER17')->first();
+    //         if (!$claim)
+    //             return response()->json(['message' => 'Anda belum mengklaim promo ini. Silakan klaim via pop-up terlebih dahulu.'], 400);
+    //         if ($claim->is_used)
+    //             return response()->json(['message' => 'Voucher kemerdekaan Anda sudah pernah digunakan.'], 400);
+
+    //         $dbCartItems = \App\Models\Cart::with('product.category')->where('user_id', $user->id)->get();
+    //         $promoResult = $promoService->calculatePromo($dbCartItems, []);
+
+    //         if (!$promoResult['is_valid']) {
+    //             return response()->json(['message' => $promoResult['message']], 400);
+    //         }
+
+    //         return response()->json([
+    //             'message' => $promoResult['message'],
+    //             'discount_value' => $promoResult['discount_amount'],
+    //             'promo_type' => 'claim'
+    //         ], 200);
+    //     }
+
+    //     if ($code === 'SOLHOST34') {
+    //         if ($totalQuantityInCart > 1)
+    //             return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
+    //         if (!$bagProductFound)
+    //             return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas.'], 400);
+
+    //         $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
+    //         if ($claim)
+    //             return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
+
+    //         return response()->json([
+    //             'message' => 'Subsidi Spesial Rp 3.400.000 Berhasil Diterapkan!',
+    //             'discount_value' => 3400000,
+    //             'promo_type' => 'claim'
+    //         ], 200);
+    //     }
+
+    //     // 👇 [TAMBAHKAN LOGIKA VERIFY SOLHOST35 DI SINI] 👇
+    //     if ($code === 'SOLHOST35') {
+    //         // $promoStart = Carbon::create(date('Y'), 10, 1, 0, 0, 0, 'Asia/Jakarta');
+    //         // $promoEnd = Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
+
+    //         $promoStart = Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
+    //         $promoEnd = Carbon::create(now()->year, 10, 8, 19, 0, 0, 'Asia/Jakarta');
+
+    //         if (now()->lessThan($promoStart)) {
+    //             return response()->json(['message' => 'Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!'], 400);
+    //         }
+    //         if (now()->greaterThan($promoEnd)) {
+    //             return response()->json(['message' => 'Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.'], 400);
+    //         }
+
+    //         if ($totalQuantityInCart > 1)
+    //             return response()->json(['message' => 'Voucher Subsidi Tas hanya berlaku jika keranjang Anda berisi tepat 1 barang saja.'], 400);
+    //         if (!$bagProductFound)
+    //             return response()->json(['message' => 'Voucher ini khusus untuk pembelian kategori Tas.'], 400);
+
+    //         $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHOST35')->where('is_used', true)->first();
+    //         if ($claim)
+    //             return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini (Hanya berlaku 1x).'], 400);
+
+    //         return response()->json([
+    //             'message' => 'Subsidi Spesial Rp 3.400.000 Berhasil Diterapkan!',
+    //             'discount_value' => 3400000,
+    //             'promo_type' => 'claim'
+    //         ], 200);
+    //     }
+
+    //     if ($code === 'SOLHERMEMBER') {
+    //         if (!$user->is_membership)
+    //             return response()->json(['message' => 'Hanya untuk VIP Member.'], 400);
+    //         if ($user->has_used_member_voucher)
+    //             return response()->json(['message' => 'Voucher ini sudah pernah digunakan.'], 400);
+    //         return response()->json(['message' => 'VIP Voucher applied!', 'discount_value' => 500000], 200);
+    //     }
+
+    //     if ($code === 'FIRSTORDER') {
+    //         $hasOrdered = \App\Models\Transaction::where('user_id', $user->id)->where('status', 'completed')->exists();
+    //         if ($hasOrdered)
+    //             return response()->json(['message' => 'Voucher ini hanya untuk pembeli pertama.'], 400);
+    //         $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'FIRSTORDER')->where('is_used', true)->first();
+    //         if ($claim)
+    //             return response()->json(['message' => 'Anda sudah pernah menggunakan voucher ini.'], 400);
+    //         return response()->json(['message' => 'First Order Voucher applied!', 'discount_value' => 250000], 200);
+    //     }
+
+    //     $claim = PromoClaim::where('email', $user->email)->where('promo_code', $code)->first();
+
+    //     if (!$claim) {
+    //         return response()->json(['message' => 'Invalid promo code for this email address.'], 404);
+    //     }
+
+    //     if (now()->greaterThan($claim->expires_at)) {
+    //         return response()->json(['message' => 'This promo code has expired.'], 400);
+    //     }
+
+    //     if ($claim->is_used) {
+    //         return response()->json(['message' => 'This promo code has already been used.'], 400);
+    //     }
+
+    //     return response()->json([
+    //         'message' => 'Promo applied successfully!',
+    //         'discount_value' => $claim->discount_value,
+    //         'promo_type' => 'claim'
+    //     ], 200);
+    // }
+
     public function verify(Request $request, PromoMerdekaService $promoService)
     {
         $request->validate([
@@ -1186,6 +1368,7 @@ class PromoController extends Controller
         $totalQuantityInCart = 0;
         $bagProductFound = null;
 
+        // --- 1. VALIDASI BARANG DISKON DI KERANJANG ---
         foreach ($cartItems as $item) {
             $product = $productsInCart->get($item['product_id']);
             if (!$product)
@@ -1241,6 +1424,7 @@ class PromoController extends Controller
         }
         // ====================================================================
 
+        // --- 2. PENGECEKAN HARDCODE LAMA (BACKWARD COMPATIBILITY) ---
         if ($code === 'SOLHER17') {
             $claim = PromoClaim::where('email', $user->email)->where('promo_code', 'SOLHER17')->first();
             if (!$claim)
@@ -1279,11 +1463,7 @@ class PromoController extends Controller
             ], 200);
         }
 
-        // 👇 [TAMBAHKAN LOGIKA VERIFY SOLHOST35 DI SINI] 👇
         if ($code === 'SOLHOST35') {
-            // $promoStart = Carbon::create(date('Y'), 10, 1, 0, 0, 0, 'Asia/Jakarta');
-            // $promoEnd = Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
-
             $promoStart = Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
             $promoEnd = Carbon::create(now()->year, 10, 8, 19, 0, 0, 'Asia/Jakarta');
 
@@ -1328,22 +1508,105 @@ class PromoController extends Controller
             return response()->json(['message' => 'First Order Voucher applied!', 'discount_value' => 250000], 200);
         }
 
+        // --- 3. [BARU] PENGECEKAN KE DYNAMIC PROMO ENGINE ---
+        $dynamicPromo = \App\Models\Promo::where('code', $code)->first();
+
+        if ($dynamicPromo) {
+            // Cek Status Aktif & Waktu
+            if (!$dynamicPromo->isValidNow()) {
+                return response()->json(['message' => 'Mohon maaf, kode promo ini sedang tidak aktif atau sudah kadaluwarsa.'], 400);
+            }
+
+            // Cek Minimum Belanja
+            $cartSubtotal = collect($cartItems)->sum(function ($item) use ($productsInCart) {
+                $p = $productsInCart->get($item['product_id']);
+                return $p ? ($p->discount_price ?? $p->price) * $item['quantity'] : 0;
+            });
+            if ($cartSubtotal < $dynamicPromo->min_purchase) {
+                return response()->json(['message' => 'Subtotal keranjang Anda belum memenuhi syarat minimum Rp ' . number_format($dynamicPromo->min_purchase, 0, ',', '.')], 400);
+            }
+
+            // Cek First Order
+            if ($dynamicPromo->is_first_order_only) {
+                $hasOrdered = \App\Models\Transaction::where('user_id', $user->id)->where('status', 'completed')->exists();
+                if ($hasOrdered) {
+                    return response()->json(['message' => 'Voucher ini khusus untuk pengguna baru / pembelian pertama.'], 400);
+                }
+            }
+
+            // Cek VIP Member
+            if ($dynamicPromo->is_member_only && !$user->is_membership) {
+                return response()->json(['message' => 'Voucher ini eksklusif hanya untuk VIP Member Solher.'], 400);
+            }
+
+            // Cek Target Kategori Spesifik (Jika disetel)
+            if ($dynamicPromo->target_category_id) {
+                $hasTargetCategory = false;
+                foreach ($cartItems as $item) {
+                    $p = $productsInCart->get($item['product_id']);
+                    if ($p && $p->category_id == $dynamicPromo->target_category_id) {
+                        $hasTargetCategory = true;
+                        break;
+                    }
+                }
+                if (!$hasTargetCategory) {
+                    return response()->json(['message' => 'Voucher ini tidak berlaku untuk produk di keranjang Anda.'], 400);
+                }
+            }
+
+            // Cek Batas Penggunaan per User
+            $userUsageCount = \App\Models\Transaction::where('user_id', $user->id)
+                ->where('promo_code', $code)
+                ->whereIn('status', ['completed', 'processing', 'pending'])
+                ->count();
+            if ($userUsageCount >= $dynamicPromo->max_usage_per_user) {
+                return response()->json(['message' => "Anda sudah mencapai batas pemakaian voucher ini ({$dynamicPromo->max_usage_per_user}x)."], 400);
+            }
+
+            // Hitung Nilai Diskon
+            $finalDiscount = 0;
+            if ($dynamicPromo->discount_type === 'fixed') {
+                $finalDiscount = $dynamicPromo->discount_value;
+            } elseif ($dynamicPromo->discount_type === 'percentage') {
+                $calculatedDiscount = $cartSubtotal * ($dynamicPromo->discount_value / 100);
+                $finalDiscount = $dynamicPromo->max_discount ? min($calculatedDiscount, $dynamicPromo->max_discount) : $calculatedDiscount;
+            } elseif ($dynamicPromo->discount_type === 'free_shipping') {
+                // Return flag khusus untuk memberitahu frontend bahwa ongkir gratis
+                return response()->json([
+                    'message' => 'Voucher Gratis Ongkir berhasil diterapkan!',
+                    'discount_value' => 0, // Nilainya 0 karena akan memotong ongkir, bukan subtotal produk
+                    'promo_type' => 'free_shipping',
+                    'dynamic_promo_id' => $dynamicPromo->id
+                ], 200);
+            }
+
+            return response()->json([
+                'message' => $dynamicPromo->title . ' berhasil diterapkan!',
+                'discount_value' => $finalDiscount,
+                'promo_type' => 'dynamic',
+                'dynamic_promo_id' => $dynamicPromo->id
+            ], 200);
+        }
+
+        // --- 4. PENGECEKAN PERSONAL PROMO (EMAIL BLAST) ---
+        // Jika tidak ketemu di hardcode, dan tidak ketemu di tabel promos,
+        // cek apakah ini promo personal (diklaim via popup welcome email)
         $claim = PromoClaim::where('email', $user->email)->where('promo_code', $code)->first();
 
         if (!$claim) {
-            return response()->json(['message' => 'Invalid promo code for this email address.'], 404);
+            return response()->json(['message' => 'Kode voucher tidak valid atau tidak ditemukan.'], 404);
         }
 
         if (now()->greaterThan($claim->expires_at)) {
-            return response()->json(['message' => 'This promo code has expired.'], 400);
+            return response()->json(['message' => 'Voucher ini sudah kadaluwarsa.'], 400);
         }
 
         if ($claim->is_used) {
-            return response()->json(['message' => 'This promo code has already been used.'], 400);
+            return response()->json(['message' => 'Voucher ini sudah pernah digunakan.'], 400);
         }
 
         return response()->json([
-            'message' => 'Promo applied successfully!',
+            'message' => 'Promo diterapkan!',
             'discount_value' => $claim->discount_value,
             'promo_type' => 'claim'
         ], 200);
