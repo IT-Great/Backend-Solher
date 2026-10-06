@@ -183,10 +183,59 @@ class ProductStockController extends Controller
     /**
      * Menambah stok baru (Batch baru) secara aman dengan Pessimistic Locking.
      */
+    // public function store(Request $request, $productId)
+    // {
+    //     $request->validate([
+    //         'quantity' => 'required|integer|min:1'
+    //     ]);
+
+    //     try {
+    //         DB::transaction(function () use ($request, $productId) {
+
+    //             // 1. AMBIL & KUNCI BARIS (Pessimistic Locking) - AMAN DARI DEADLOCK
+    //             $product = Product::lockForUpdate()->findOrFail($productId);
+
+    //             // 2. Generate Kode Unik Batch
+    //             $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+
+    //             // 3. Catat Riwayat Kedatangan Batch
+    //             ProductStock::create([
+    //                 'product_id' => $product->id,
+    //                 'batch_code' => $batchCode,
+    //                 'quantity' => $request->quantity,
+    //                 'initial_quantity' => $request->quantity
+    //             ]);
+
+    //             // 4. Perbarui Total Stok Master
+    //             $product->increment('stock', $request->quantity);
+    //         });
+
+    //         // 5. Hapus cache spesifik produk agar tidak terjadi Cache Stampede
+    //         Cache::tags(['catalog'])->forget("products.detail.{$productId}");
+
+    //         return response()->json(['message' => 'New stock batch added successfully.']);
+
+    //     } catch (\Exception $e) {
+    //         report($e);
+
+    //         Log::error("Stock Addition Error (Product ID: {$productId}): " . $e->getMessage(), [
+    //             'trace' => $e->getTraceAsString()
+    //         ]);
+
+    //         return response()->json([
+    //             'message' => 'Failed to add stock batch due to system error.'
+    //         ], 500);
+    //     }
+    // }
+
+    /**
+     * Menambah atau Mengurangi stok baru secara aman dengan Pessimistic Locking.
+     */
     public function store(Request $request, $productId)
     {
+        // 👇 PERBAIKAN: Validasi diizinkan menerima angka negatif, kecuali angka 0
         $request->validate([
-            'quantity' => 'required|integer|min:1'
+            'quantity' => 'required|integer|not_in:0'
         ]);
 
         try {
@@ -195,35 +244,51 @@ class ProductStockController extends Controller
                 // 1. AMBIL & KUNCI BARIS (Pessimistic Locking) - AMAN DARI DEADLOCK
                 $product = Product::lockForUpdate()->findOrFail($productId);
 
-                // 2. Generate Kode Unik Batch
-                $batchCode = 'STK-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+                // 2. [BARU] VALIDASI PENGURANGAN STOK
+                // Pastikan jika quantity negatif, stok saat ini cukup untuk dikurangi
+                if ($request->quantity < 0 && $product->stock < abs($request->quantity)) {
+                    // Gunakan exception khusus untuk ditangkap nanti
+                    throw new \Exception('InsufficientStockError');
+                }
 
-                // 3. Catat Riwayat Kedatangan Batch
+                // 3. Generate Kode Unik Batch (Beri tanda -OUT untuk pengeluaran)
+                $prefix = $request->quantity > 0 ? 'STK-IN-' : 'STK-OUT-';
+                $batchCode = $prefix . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+
+                // 4. Catat Riwayat Perubahan Batch
                 ProductStock::create([
                     'product_id' => $product->id,
                     'batch_code' => $batchCode,
                     'quantity' => $request->quantity,
-                    'initial_quantity' => $request->quantity
+                    'initial_quantity' => abs($request->quantity) // Tetap simpan nilai absolut untuk referensi
                 ]);
 
-                // 4. Perbarui Total Stok Master
+                // 5. Perbarui Total Stok Master
+                // increment() aman digunakan dengan nilai negatif (akan menjadi decrement)
                 $product->increment('stock', $request->quantity);
             });
 
-            // 5. Hapus cache spesifik produk agar tidak terjadi Cache Stampede
+            // 6. Hapus cache spesifik produk agar tidak terjadi Cache Stampede
             Cache::tags(['catalog'])->forget("products.detail.{$productId}");
 
-            return response()->json(['message' => 'New stock batch added successfully.']);
+            $msg = $request->quantity > 0 ? 'New stock batch added successfully.' : 'Stock deducted successfully.';
+            return response()->json(['message' => $msg]);
 
         } catch (\Exception $e) {
+            if ($e->getMessage() === 'InsufficientStockError') {
+                 return response()->json([
+                    'message' => 'Stok saat ini tidak mencukupi untuk dilakukan pengurangan.'
+                ], 422);
+            }
+
             report($e);
 
-            Log::error("Stock Addition Error (Product ID: {$productId}): " . $e->getMessage(), [
+            Log::error("Stock Modification Error (Product ID: {$productId}): " . $e->getMessage(), [
                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
-                'message' => 'Failed to add stock batch due to system error.'
+                'message' => 'Failed to process stock modification due to system error.'
             ], 500);
         }
     }
