@@ -1307,6 +1307,15 @@ Route::middleware(['auth:sanctum', 'role:sales_report'])->prefix('admin')->group
     Route::get('/sales-report', [TransactionController::class, 'salesReport']);
 });
 
+// 👇 PENGAMANAN RUTE MANAJEMEN PROMO (DYNAMIC PROMO ENGINE) 👇
+Route::middleware(['auth:sanctum', 'role:dashboard'])->prefix('admin/promos')->group(function () {
+    Route::get('/', [\App\Http\Controllers\PromoController::class, 'indexAdmin']);
+    Route::post('/', [\App\Http\Controllers\PromoController::class, 'storeAdmin']);
+    Route::get('/{id}', [\App\Http\Controllers\PromoController::class, 'showAdmin']);
+    Route::put('/{id}', [\App\Http\Controllers\PromoController::class, 'updateAdmin']);
+    Route::delete('/{id}', [\App\Http\Controllers\PromoController::class, 'destroyAdmin']);
+});
+
 Route::middleware(['auth:sanctum', 'role:accounting_mod'])->prefix('admin')->group(function () {
     Route::post('/transactions/{id}/refund-approve', [TransactionController::class, 'approveRefund'])->middleware('role:accounting_mod,update');
     Route::post('/transactions/{id}/refund-reject', [TransactionController::class, 'rejectRefund'])->middleware('role:accounting_mod,update');

@@ -876,6 +876,137 @@ use Illuminate\Support\Facades\Cache;
 class PromoController extends Controller
 {
     // ====================================================================
+    // [BARU] CRUD MANAGEMENT UNTUK ADMIN PANEL
+    // ====================================================================
+
+    /**
+     * READ: Mengambil semua data promo untuk ditampilkan di tabel Admin.
+     */
+    public function indexAdmin(Request $request)
+    {
+        $promos = \App\Models\Promo::with(['targetCategory', 'targetProduct'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $promos
+        ], 200);
+    }
+
+    /**
+     * CREATE: Menyimpan promo baru.
+     */
+    public function storeAdmin(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string|unique:promos,code',
+            'title' => 'required|string',
+            'description' => 'nullable|string',
+            'discount_type' => 'required|in:fixed,percentage,free_shipping',
+            'discount_value' => 'required|numeric|min:0',
+            'max_discount' => 'nullable|numeric|min:0',
+            'min_purchase' => 'required|numeric|min:0',
+            'quota' => 'nullable|integer|min:1',
+            'max_usage_per_user' => 'required|integer|min:1',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'is_member_only' => 'boolean',
+            'is_first_order_only' => 'boolean',
+            'is_active' => 'boolean',
+            // Foreign Keys
+            'target_category_id' => 'nullable|exists:categories,id',
+            'target_product_id' => 'nullable|exists:products,id',
+        ]);
+
+        try {
+            $promo = \App\Models\Promo::create($request->all());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Promo berhasil dibuat.',
+                'data' => $promo
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error('Gagal membuat Promo Admin: ' . $e->getMessage());
+            return response()->json(['message' => 'Gagal menyimpan promo.'], 500);
+        }
+    }
+
+    /**
+     * READ SINGLE: Mengambil detail satu promo.
+     */
+    public function showAdmin($id)
+    {
+        $promo = \App\Models\Promo::findOrFail($id);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $promo
+        ], 200);
+    }
+
+    /**
+     * UPDATE: Mengubah data promo yang sudah ada.
+     */
+    public function updateAdmin(Request $request, $id)
+    {
+        $promo = \App\Models\Promo::findOrFail($id);
+
+        $request->validate([
+            'code' => 'required|string|unique:promos,code,' . $id,
+            'title' => 'required|string',
+            'description' => 'nullable|string',
+            'discount_type' => 'required|in:fixed,percentage,free_shipping',
+            'discount_value' => 'required|numeric|min:0',
+            'max_discount' => 'nullable|numeric|min:0',
+            'min_purchase' => 'required|numeric|min:0',
+            'quota' => 'nullable|integer|min:1',
+            'max_usage_per_user' => 'required|integer|min:1',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'is_member_only' => 'boolean',
+            'is_first_order_only' => 'boolean',
+            'is_active' => 'boolean',
+            // Foreign Keys
+            'target_category_id' => 'nullable|exists:categories,id',
+            'target_product_id' => 'nullable|exists:products,id',
+        ]);
+
+        try {
+            $promo->update($request->all());
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Promo berhasil diperbarui.',
+                'data' => $promo
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Gagal update Promo Admin: ' . $e->getMessage());
+            return response()->json(['message' => 'Gagal memperbarui promo.'], 500);
+        }
+    }
+
+    /**
+     * DELETE: Menghapus promo.
+     */
+    public function destroyAdmin($id)
+    {
+        $promo = \App\Models\Promo::findOrFail($id);
+
+        try {
+            $promo->delete();
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Promo berhasil dihapus secara permanen.'
+            ], 200);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Pengamanan: Cegah hapus jika sudah ada riwayat transaksi yang terikat dengan promo ini
+            return response()->json(['message' => 'Promo tidak bisa dihapus karena sudah memiliki riwayat klaim.'], 422);
+        }
+    }
+
+    // ====================================================================
     // [FITUR SENIOR] PROMO ABUSE SHIELD HELPERS
     // ====================================================================
 
@@ -1154,7 +1285,7 @@ class PromoController extends Controller
             // $promoEnd = Carbon::create(date('Y'), 10, 3, 23, 59, 59, 'Asia/Jakarta');
 
             $promoStart = Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
-            $promoEnd = Carbon::create(now()->year, 10, 8, 19, 00, 00, 'Asia/Jakarta');
+            $promoEnd = Carbon::create(now()->year, 10, 8, 19, 0, 0, 'Asia/Jakarta');
 
             if (now()->lessThan($promoStart)) {
                 return response()->json(['message' => 'Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!'], 400);
