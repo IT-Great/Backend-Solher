@@ -78,82 +78,6 @@ class PaymentController extends Controller
         // =====================================================================
         // 👇 [PERBAIKAN FATAL TIER 1] LOGIKA MATA UANG & DESIMAL 👇
         // =====================================================================
-        // $currency = $transaction->currency_code ?? 'IDR';
-        // $exchangeRate = 1;
-
-        // if ($currency !== 'IDR') {
-        //     $rates = Cache::get('exchange_rates', []);
-        //     $exchangeRate = $rates[$currency] ?? 1;
-        // }
-
-        // // Poin selalu berbasis IDR (1 Poin = 1000 IDR), lalu dikonversi ke mata uang tujuan.
-        // $pointsUsed = $transaction->points_used ?? 0;
-        // $basePointDiscountIDR = $pointsUsed * 1000;
-        // $pointDiscountAmount = round($basePointDiscountIDR * $exchangeRate, 2);
-
-        // $promoDiscount = round($transaction->promo_discount ?? 0, 2);
-        // $subtotalAfterPromo = max(0, $transaction->total_amount - $promoDiscount);
-        // $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromo);
-
-        // $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
-
-        // $items = [];
-        // foreach ($transaction->details as $detail) {
-        //     $productName = $detail->product->name;
-        //     if (!empty($detail->color)) {
-        //         $productName .= ' - '.$detail->color;
-        //     }
-
-        //     $items[] = [
-        //         'name'     => $productName,
-        //         'quantity' => $detail->quantity,
-        //         // Hapus casting (int) agar desimal (sen) pada USD/SGD tidak hilang
-        //         'price'    => (float) round($detail->price, 2),
-        //         'category' => 'PHYSICAL_PRODUCT',
-        //     ];
-        // }
-
-        // if ($promoDiscount > 0) {
-        //     $items[] = [
-        //         'name'     => 'Promo Code: '.($transaction->promo_code ?? 'DISCOUNT'),
-        //         'quantity' => 1,
-        //         'price'    => -(float) $promoDiscount,
-        //         'category' => 'DISCOUNT',
-        //     ];
-        // }
-
-        // if ($pointDiscountAmount > 0) {
-        //     $items[] = [
-        //         'name'     => 'Loyalty Point Discount ('.$pointsUsed.' Pts)',
-        //         'quantity' => 1,
-        //         'price'    => -(float) $pointDiscountAmount,
-        //         'category' => 'DISCOUNT',
-        //     ];
-        // }
-
-        // $basePriceShipping = 0;
-        // if ($transaction->shipping_cost > 0) {
-        //     $basePriceShipping = round($transaction->shipping_cost / $totalQuantity, 2);
-        //     $items[] = [
-        //         'name'     => 'Shipping Cost ('.$transaction->courier_company.')',
-        //         'quantity' => (int) $totalQuantity,
-        //         'price'    => (float) $basePriceShipping,
-        //         'category' => 'SHIPPING_FEE',
-        //     ];
-        // }
-
-        // // Kalkulasi Final Amount menggunakan tipe float dengan 2 desimal
-        // $finalAmount = round(
-        //     $transaction->total_amount
-        //     + ($basePriceShipping * $totalQuantity)
-        //     - $pointDiscountAmount
-        //     - $promoDiscount,
-        // 2);
-        // 👆 ===================================================================== 👆
-
-        // =====================================================================
-        // 👇 [PERBAIKAN FATAL TIER 1] LOGIKA MATA UANG, DESIMAL & PRIVILEGE TIER 👇
-        // =====================================================================
         $currency = $transaction->currency_code ?? 'IDR';
         $exchangeRate = 1;
 
@@ -162,43 +86,14 @@ class PaymentController extends Controller
             $exchangeRate = $rates[$currency] ?? 1;
         }
 
-        // Poin selalu berbasis IDR
+        // Poin selalu berbasis IDR (1 Poin = 1000 IDR), lalu dikonversi ke mata uang tujuan.
         $pointsUsed = $transaction->points_used ?? 0;
         $basePointDiscountIDR = $pointsUsed * 1000;
         $pointDiscountAmount = round($basePointDiscountIDR * $exchangeRate, 2);
 
         $promoDiscount = round($transaction->promo_discount ?? 0, 2);
-
-        // --- LOGIKA HITUNG TIER PRIVILEGE BERDASARKAN STATUS FINAL SALE ---
-        $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
-        $tierDiscountAmount = 0;
-
-        if ($tierDiscountPercentage > 0) {
-            $discountableAmountIDR = 0;
-            $selectedItemIds = $request->tier_discount_item_ids ?? []; // Array Cart ID
-
-            foreach ($transaction->details as $detail) {
-                // Lewati produk Clearance
-                if ($detail->product->is_final_sale) continue;
-
-                // Jika ada spesifik ID (Kasus Mixed Cart), pastikan item ini ada di array yang dikirim
-                // Catatan: Anda mungkin harus mengirim ID produk, bukan ID cart jika cart sudah dihapus saat checkout.
-                // Disini kita asumsi diskon dihitung berdasarkan item yg diceklis.
-                if (!empty($selectedItemIds) && !in_array($detail->cart_id, $selectedItemIds) && !in_array($detail->product_id, $selectedItemIds)) {
-                    continue;
-                }
-
-                $discountableAmountIDR += ($detail->price * $detail->quantity);
-            }
-
-            // Kurangi dengan diskon bundle agar tidak didiskon dobel (Opsional)
-            $tierDiscountAmountIDR = $discountableAmountIDR * $tierDiscountPercentage;
-            $tierDiscountAmount = round($tierDiscountAmountIDR * $exchangeRate, 2);
-        }
-        // ------------------------------------------------------------------
-
-        $subtotalAfterPromoAndTier = max(0, $transaction->total_amount - $promoDiscount - $tierDiscountAmount);
-        $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromoAndTier);
+        $subtotalAfterPromo = max(0, $transaction->total_amount - $promoDiscount);
+        $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromo);
 
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
 
@@ -212,18 +107,9 @@ class PaymentController extends Controller
             $items[] = [
                 'name'     => $productName,
                 'quantity' => $detail->quantity,
-                'price'    => (float) round($detail->price * $exchangeRate, 2), // Pastikan harga diconvert ke curr aktif
+                // Hapus casting (int) agar desimal (sen) pada USD/SGD tidak hilang
+                'price'    => (float) round($detail->price, 2),
                 'category' => 'PHYSICAL_PRODUCT',
-            ];
-        }
-
-        // Masukkan Line Item Diskon Tier jika ada
-        if ($tierDiscountAmount > 0) {
-            $items[] = [
-                'name'     => 'Tier Privilege Discount (' . ($tierDiscountPercentage * 100) . '%)',
-                'quantity' => 1,
-                'price'    => -(float) $tierDiscountAmount,
-                'category' => 'DISCOUNT',
             ];
         }
 
@@ -247,7 +133,7 @@ class PaymentController extends Controller
 
         $basePriceShipping = 0;
         if ($transaction->shipping_cost > 0) {
-            $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
+            $basePriceShipping = round($transaction->shipping_cost / $totalQuantity, 2);
             $items[] = [
                 'name'     => 'Shipping Cost ('.$transaction->courier_company.')',
                 'quantity' => (int) $totalQuantity,
@@ -256,15 +142,12 @@ class PaymentController extends Controller
             ];
         }
 
-        // Kalkulasi Final Amount (Pastikan dalam mata uang asing jika dipilih)
-        $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
-
+        // Kalkulasi Final Amount menggunakan tipe float dengan 2 desimal
         $finalAmount = round(
-            $transactionTotalActiveCurrency
+            $transaction->total_amount
             + ($basePriceShipping * $totalQuantity)
             - $pointDiscountAmount
-            - $promoDiscount
-            - $tierDiscountAmount, // 👈 Kurangi Diskon Tier
+            - $promoDiscount,
         2);
         // 👆 ===================================================================== 👆
 
