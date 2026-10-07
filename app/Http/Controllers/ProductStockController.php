@@ -234,45 +234,126 @@ class ProductStockController extends Controller
 /**
      * Menambah (In) atau Mengurangi (Out) stok baru secara aman dengan Pessimistic Locking.
      */
+    // public function store(Request $request, $productId)
+    // {
+    //     // 👇 PERBAIKAN 1: Izinkan angka negatif (Stok Keluar), tapi larang angka 0
+    //     $request->validate([
+    //         'quantity' => 'required|integer|not_in:0'
+    //     ]);
+
+    //     try {
+    //         DB::transaction(function () use ($request, $productId) {
+
+    //             // 1. AMBIL & KUNCI BARIS (Pessimistic Locking) - AMAN DARI DEADLOCK
+    //             $product = Product::lockForUpdate()->findOrFail($productId);
+
+    //             // 👇 PERBAIKAN 2: Validasi Pengurangan Stok
+    //             // Jika admin ingin mengurangi stok (-), pastikan stok saat ini cukup
+    //             if ($request->quantity < 0 && $product->stock < abs($request->quantity)) {
+    //                 throw new \Exception('INSUFFICIENT_STOCK');
+    //             }
+
+    //             // 2. Generate Kode Unik Batch (Beri tanda IN atau OUT)
+    //             $prefix = $request->quantity > 0 ? 'STK-IN-' : 'STK-OUT-';
+    //             $batchCode = $prefix . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
+
+    //             // 3. Catat Riwayat Perubahan Batch
+    //             ProductStock::create([
+    //                 'product_id' => $product->id,
+    //                 'batch_code' => $batchCode,
+    //                 'quantity' => $request->quantity,
+    //                 'initial_quantity' => abs($request->quantity) // Catat nilai mutlak untuk riwayat
+    //             ]);
+
+    //             // 4. Perbarui Total Stok Master
+    //             // increment() aman dengan nilai negatif (otomatis menjadi pengurangan)
+    //             $product->increment('stock', $request->quantity);
+    //         });
+
+    //         // 👇 PERBAIKAN 3 (BUG FIX SOLD OUT): Hapus SELURUH cache katalog
+    //         // Ini memaksa halaman Collections untuk merender ulang status stok terbaru
+    //         Cache::tags(['catalog'])->flush();
+
+    //         $msg = $request->quantity > 0 ? 'Stock batch added successfully.' : 'Stock deducted successfully.';
+    //         return response()->json(['message' => $msg]);
+
+    //     } catch (\Exception $e) {
+    //         // Tangkap exception khusus jika stok tidak cukup
+    //         if ($e->getMessage() === 'INSUFFICIENT_STOCK') {
+    //             return response()->json([
+    //                 'message' => 'Stok saat ini tidak mencukupi untuk dilakukan pengurangan.'
+    //             ], 422);
+    //         }
+
+    //         report($e);
+
+    //         Log::error("Stock Modification Error (Product ID: {$productId}): " . $e->getMessage(), [
+    //             'trace' => $e->getTraceAsString()
+    //         ]);
+
+    //         return response()->json([
+    //             'message' => 'Failed to modify stock due to system error.'
+    //         ], 500);
+    //     }
+    // }
+
+    /**
+     * Menambah (In) atau Mengurangi (Out) stok baru secara aman dengan Pessimistic Locking.
+     */
     public function store(Request $request, $productId)
     {
-        // 👇 PERBAIKAN 1: Izinkan angka negatif (Stok Keluar), tapi larang angka 0
         $request->validate([
             'quantity' => 'required|integer|not_in:0'
         ]);
 
         try {
-            DB::transaction(function () use ($request, $productId) {
+            $oldStock = 0; // 👈 Deklarasikan penampung status stok SEBELUM ditambah
 
-                // 1. AMBIL & KUNCI BARIS (Pessimistic Locking) - AMAN DARI DEADLOCK
+            DB::transaction(function () use ($request, $productId, &$oldStock) {
+
+                // 1. AMBIL & KUNCI BARIS (Pessimistic Locking)
                 $product = Product::lockForUpdate()->findOrFail($productId);
 
-                // 👇 PERBAIKAN 2: Validasi Pengurangan Stok
-                // Jika admin ingin mengurangi stok (-), pastikan stok saat ini cukup
+                // 👇 TANGKAP STOK SAAT INI SEBELUM DIUBAH 👇
+                $oldStock = $product->stock;
+
+                // 2. Validasi Pengurangan Stok
                 if ($request->quantity < 0 && $product->stock < abs($request->quantity)) {
                     throw new \Exception('INSUFFICIENT_STOCK');
                 }
 
-                // 2. Generate Kode Unik Batch (Beri tanda IN atau OUT)
+                // 3. Generate Kode Unik Batch
                 $prefix = $request->quantity > 0 ? 'STK-IN-' : 'STK-OUT-';
                 $batchCode = $prefix . now()->format('YmdHis') . '-' . strtoupper(Str::random(4));
 
-                // 3. Catat Riwayat Perubahan Batch
+                // 4. Catat Riwayat Perubahan Batch
                 ProductStock::create([
                     'product_id' => $product->id,
                     'batch_code' => $batchCode,
                     'quantity' => $request->quantity,
-                    'initial_quantity' => abs($request->quantity) // Catat nilai mutlak untuk riwayat
+                    'initial_quantity' => abs($request->quantity)
                 ]);
 
-                // 4. Perbarui Total Stok Master
-                // increment() aman dengan nilai negatif (otomatis menjadi pengurangan)
+                // 5. Perbarui Total Stok Master
                 $product->increment('stock', $request->quantity);
             });
 
-            // 👇 PERBAIKAN 3 (BUG FIX SOLD OUT): Hapus SELURUH cache katalog
-            // Ini memaksa halaman Collections untuk merender ulang status stok terbaru
+            // 6. Hapus cache katalog
             Cache::tags(['catalog'])->flush();
+
+            // =====================================================================
+            // 👇 [FITUR BARU] TRIGGER NOTIFIKASI EMAIL MASSAL 👇
+            // Hanya dijalankan JIKA produk tersebut sebelumnya habis (0) DAN ada penambahan stok (+)
+            // =====================================================================
+            if ($oldStock == 0 && $request->quantity > 0) {
+                // Ambil data produk yang sudah segar
+                $updatedProduct = Product::find($productId);
+
+                // Lempar ke Queue Job agar email dikirim di background
+                // (Mencegah panel admin loading berjam-jam)
+                \App\Jobs\SendProductRestockNotificationJob::dispatch($updatedProduct, $request->quantity);
+            }
+            // =====================================================================
 
             $msg = $request->quantity > 0 ? 'Stock batch added successfully.' : 'Stock deducted successfully.';
             return response()->json(['message' => $msg]);
