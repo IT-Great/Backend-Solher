@@ -1570,6 +1570,7 @@ namespace App\Http\Controllers;
 use App\Models\Cart;
 use App\Models\Address;
 use App\Models\Payment;
+use App\Models\PromoClaim;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use App\Services\PaymentFactory;
@@ -1626,7 +1627,6 @@ class PaymentController extends Controller
                 'courier_company' => $courierCompany,
                 'courier_type'    => $courierType,
                 'shipping_cost'   => $totalShippingCost,
-                'total_amount'    => $transaction->total_amount,
                 'delivery_type'   => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
                 'delivery_date'   => $request->delivery_date,
                 'delivery_time'   => $request->delivery_time,
@@ -1639,32 +1639,49 @@ class PaymentController extends Controller
             ]);
         }
 
-        $currency = $transaction->currency_code ?? 'IDR';
-        $exchangeRate = 1;
+        // =====================================================================
+        // 🔥 PENYEMBUH MATEMATIKA OTOMATIS (AUTO-HEALER) 🔥
+        // =====================================================================
 
-        if ($currency !== 'IDR') {
-            $rates = Cache::get('exchange_rates', []);
-            $exchangeRate = $rates[$currency] ?? 1;
+        // 1. Hitung ulang Subtotal murni dari Produk yang dibeli
+        $calculatedSubtotalIDR = 0;
+        foreach ($transaction->details as $detail) {
+            $calculatedSubtotalIDR += ($detail->price * $detail->quantity);
         }
 
-        // =====================================================================
-        // 👇 PERBAIKAN FINAL: KALKULASI DISKON SEBELUM MASUK XENDIT 👇
-        // =====================================================================
-
-        // 1. Ambil semua komponen harga mentah (IDR) dari Database
-        $totalAmountIDR = $transaction->total_amount ?? 0;
-        $shippingCostIDR = $transaction->shipping_cost ?? 0;
+        // 2. Ambil Diskon Promo
         $promoDiscountIDR = $transaction->promo_discount ?? 0;
-        $pointDiscountIDR = ($transaction->points_used ?? 0) * 1000;
+        $promoCode = $transaction->promo_code;
 
-        // 2. Hitung Diskon Tier (Jika Ada)
+        // Auto-heal jika database gagal menyimpan nominal diskon (Bug Gambar 2)
+        if ($promoDiscountIDR == 0 && $promoCode) {
+            if (in_array($promoCode, ['SOLHOST34', 'SOLHOST35'])) {
+                $promoDiscountIDR = 3400000;
+            } elseif (in_array($promoCode, ['SOLHERMEMBER', 'SOLHER17'])) {
+                $promoDiscountIDR = 500000;
+            } elseif ($promoCode === 'FIRSTORDER') {
+                $promoDiscountIDR = 250000;
+            } else {
+                $claim = PromoClaim::where('promo_code', $promoCode)->first();
+                if ($claim) {
+                    $promoDiscountIDR = $claim->discount_value;
+                }
+            }
+        }
+
+        // 🚨 CAPPING SANGAT PENTING: Diskon tidak boleh lebih besar dari harga barang! (Bug Gambar 3)
+        $promoDiscountIDR = min($promoDiscountIDR, $calculatedSubtotalIDR);
+
+        // 3. Ambil Poin & Tier Privilege (Jika ada)
+        $pointsUsed = $transaction->points_used ?? 0;
+        $pointDiscountIDR = $pointsUsed * 1000;
+
         $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
         $tierDiscountAmountIDR = 0;
 
         if ($tierDiscountPercentage > 0) {
             $discountableAmountIDR = 0;
             $selectedItemIds = $request->tier_discount_item_ids ?? [];
-
             foreach ($transaction->details as $detail) {
                 if ($detail->product->is_final_sale) continue;
                 if (!empty($selectedItemIds) && !in_array($detail->cart_id, $selectedItemIds) && !in_array($detail->product_id, $selectedItemIds)) {
@@ -1675,23 +1692,41 @@ class PaymentController extends Controller
             $tierDiscountAmountIDR = $discountableAmountIDR * $tierDiscountPercentage;
         }
 
-        // 3. Kalkulasi Grand Total IDR (Produk + Ongkir - Semua Diskon)
-        $grandTotalIDR = $totalAmountIDR + $shippingCostIDR - $promoDiscountIDR - $pointDiscountIDR - $tierDiscountAmountIDR;
+        // 🚨 CAPPING GABUNGAN: Pastikan semua potongan tidak membuat total jadi minus
+        $tierDiscountAmountIDR = min($tierDiscountAmountIDR, $calculatedSubtotalIDR - $promoDiscountIDR);
+        $pointDiscountIDR = min($pointDiscountIDR, $calculatedSubtotalIDR - $promoDiscountIDR - $tierDiscountAmountIDR);
 
-        // Cegah minus jika diskon melebihi harga
-        if ($grandTotalIDR < 0) {
-            $grandTotalIDR = 0;
+        // 4. Kalkulasi Akhir Harga Kotor (IDR)
+        $shippingCostIDR = $transaction->shipping_cost ?? 0;
+        $grandTotalIDR = $calculatedSubtotalIDR + $shippingCostIDR - $promoDiscountIDR - $tierDiscountAmountIDR - $pointDiscountIDR;
+
+        // Paksa menjadi nilai mutlak jika secara logika aneh masih minus
+        $grandTotalIDR = max(0, $grandTotalIDR);
+
+        // 🛠️ PERBAIKI DATABASE YANG RUSAK SECARA PERMANEN 🛠️
+        $transaction->update([
+            'total_amount' => $grandTotalIDR,
+            'promo_discount' => $promoDiscountIDR,
+        ]);
+
+        // =====================================================================
+        // KONVERSI MATA UANG & PEMBUATAN INVOICE XENDIT
+        // =====================================================================
+        $currency = $transaction->currency_code ?? 'IDR';
+        $exchangeRate = 1;
+
+        if ($currency !== 'IDR') {
+            $rates = Cache::get('exchange_rates', []);
+            $exchangeRate = $rates[$currency] ?? 1;
         }
 
-        // 4. Konversi ke Mata Uang Asing (Bila Berlaku)
         $finalAmount = round($grandTotalIDR * $exchangeRate, 2);
 
-        // 5. Pengaman Xendit/Stripe: Batas tagihan minimum agar tidak ditolak gateway
+        // Pengaman Payment Gateway: Xendit/Stripe menolak tagihan Rp 0. Harus minimal 1 sen.
         if ($finalAmount <= 0) {
             $finalAmount = ($currency === 'IDR') ? 10000 : 0.50;
         }
 
-        // 6. Buat 1 Item Lump Sum Sesuai Grand Total
         $items = [
             [
                 'name'     => 'Solher Order ' . $transaction->order_id,
@@ -1700,7 +1735,6 @@ class PaymentController extends Controller
                 'category' => 'PHYSICAL_PRODUCT',
             ]
         ];
-        // 👆 ===================================================================== 👆
 
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
         $paymentGateway = PaymentFactory::make($currency);
