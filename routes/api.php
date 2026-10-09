@@ -1260,8 +1260,7 @@ Route::middleware(['auth:sanctum', 'role:messages'])->prefix('admin/messages')->
     Route::get('/{id}', [ContactController::class, 'showAdminMessage']);
     Route::post('/{id}/respond', [ContactController::class, 'respondMessage']);
 
-    Route::get('/admin/consultations', [\App\Http\Controllers\ConsultationController::class, 'indexAdmin']);
-    Route::post('/admin/consultations/{id}/resolve', [\App\Http\Controllers\ConsultationController::class, 'resolveAdmin']);
+
 });
 
 Route::middleware(['auth:sanctum', 'role:products'])->prefix('products')->group(function () {
@@ -1360,6 +1359,9 @@ Route::middleware('auth:sanctum')->group(function () {
         // Route khusus admin untuk melihat profil intake klien saat membalas chat
         Route::get('/intake/{userId}', [\App\Http\Controllers\ConsultationController::class, 'getActiveIntake']);
     });
+
+    Route::get('/admin/consultations', [\App\Http\Controllers\ConsultationController::class, 'indexAdmin']);
+    Route::post('/admin/consultations/{id}/resolve', [\App\Http\Controllers\ConsultationController::class, 'resolveAdmin']);
 });
 
 // Route::get('/exchange-rates', function () {
