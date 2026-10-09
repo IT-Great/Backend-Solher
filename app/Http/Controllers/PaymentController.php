@@ -1565,12 +1565,452 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use App\Models\Cart;
+// use App\Models\Address;
+// use App\Models\Payment;
+// use App\Models\PromoClaim;
+// use App\Models\Transaction;
+// use Illuminate\Http\Request;
+// use App\Services\PaymentFactory;
+// use App\Services\ShippingFactory;
+// use App\Traits\IdempotentWebhook;
+// use Illuminate\Support\Facades\DB;
+// use Illuminate\Support\Facades\Log;
+// use Illuminate\Support\Facades\Http;
+// use Illuminate\Support\Facades\Cache;
+
+// class PaymentController extends Controller
+// {
+//     use IdempotentWebhook;
+
+//     public function createInvoice(Request $request)
+//     {
+//         $request->validate([
+//             'transaction_id'  => 'required|exists:transactions,id',
+//             'address_id'      => 'required',
+//             'shipping_method' => 'required|in:free,biteship',
+//             'courier_company' => 'nullable|string',
+//             'courier_type'    => 'nullable|string',
+//             'shipping_cost'   => 'nullable|numeric',
+//             'delivery_type'   => 'nullable|string|in:now,later,scheduled',
+//             'delivery_date'   => 'nullable|date',
+//             'delivery_time'   => 'nullable|date_format:H:i',
+//             'use_points'      => 'nullable|integer|min:0',
+//             'currency'        => 'required|string|in:IDR,USD,SGD,EUR,MYR,AUD',
+//         ]);
+
+//         $transaction = Transaction::with(['user', 'details.product', 'payment'])
+//             ->where('user_id', $request->user()->id)
+//             ->findOrFail($request->transaction_id);
+
+//         if ($transaction->payment && $transaction->payment->status === 'pending' && !empty($transaction->payment->checkout_url)) {
+//             return response()->json([
+//                 'checkout_url' => $transaction->payment->checkout_url,
+//                 'gateway'      => $request->currency === 'IDR' ? 'Xendit' : 'Stripe',
+//             ]);
+//         }
+
+//         $totalQuantity = $transaction->details->sum('quantity') ?: 1;
+
+//         if (!$transaction->shipping_cost || $transaction->shipping_cost == 0) {
+//             $baseShippingRate = $request->shipping_method === 'free' ? 0 : $request->shipping_cost;
+//             $totalShippingCost = $baseShippingRate * $totalQuantity;
+
+//             $courierCompany = $request->shipping_method === 'free' ? 'Internal' : $request->courier_company;
+//             $courierType = $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type;
+
+//             $transaction->update([
+//                 'address_id'      => $request->address_id,
+//                 'shipping_method' => $request->shipping_method,
+//                 'courier_company' => $courierCompany,
+//                 'courier_type'    => $courierType,
+//                 'shipping_cost'   => $totalShippingCost,
+//                 'delivery_type'   => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
+//                 'delivery_date'   => $request->delivery_date,
+//                 'delivery_time'   => $request->delivery_time,
+//                 'status'          => 'pending',
+//                 'currency_code'   => $request->currency,
+//             ]);
+//         } else {
+//             $transaction->update([
+//                 'currency_code' => $request->currency,
+//             ]);
+//         }
+
+//         // =====================================================================
+//         // 🔥 PENYEMBUH MATEMATIKA OTOMATIS (AUTO-HEALER) 🔥
+//         // =====================================================================
+
+//         // 1. Hitung ulang Subtotal murni dari Produk yang dibeli
+//         $calculatedSubtotalIDR = 0;
+//         foreach ($transaction->details as $detail) {
+//             $calculatedSubtotalIDR += ($detail->price * $detail->quantity);
+//         }
+
+//         // 2. Ambil Diskon Promo
+//         $promoDiscountIDR = $transaction->promo_discount ?? 0;
+//         $promoCode = $transaction->promo_code;
+
+//         // Auto-heal jika database gagal menyimpan nominal diskon (Bug Gambar 2)
+//         if ($promoDiscountIDR == 0 && $promoCode) {
+//             if (in_array($promoCode, ['SOLHOST34', 'SOLHOST35'])) {
+//                 $promoDiscountIDR = 3400000;
+//             } elseif (in_array($promoCode, ['SOLHERMEMBER', 'SOLHER17'])) {
+//                 $promoDiscountIDR = 500000;
+//             } elseif ($promoCode === 'FIRSTORDER') {
+//                 $promoDiscountIDR = 250000;
+//             } else {
+//                 $claim = PromoClaim::where('promo_code', $promoCode)->first();
+//                 if ($claim) {
+//                     $promoDiscountIDR = $claim->discount_value;
+//                 }
+//             }
+//         }
+
+//         // 🚨 CAPPING SANGAT PENTING: Diskon tidak boleh lebih besar dari harga barang! (Bug Gambar 3)
+//         $promoDiscountIDR = min($promoDiscountIDR, $calculatedSubtotalIDR);
+
+//         // 3. Ambil Poin & Tier Privilege (Jika ada)
+//         $pointsUsed = $transaction->points_used ?? 0;
+//         $pointDiscountIDR = $pointsUsed * 1000;
+
+//         $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
+//         $tierDiscountAmountIDR = 0;
+
+//         if ($tierDiscountPercentage > 0) {
+//             $discountableAmountIDR = 0;
+//             $selectedItemIds = $request->tier_discount_item_ids ?? [];
+//             foreach ($transaction->details as $detail) {
+//                 if ($detail->product->is_final_sale) continue;
+//                 if (!empty($selectedItemIds) && !in_array($detail->cart_id, $selectedItemIds) && !in_array($detail->product_id, $selectedItemIds)) {
+//                     continue;
+//                 }
+//                 $discountableAmountIDR += ($detail->price * $detail->quantity);
+//             }
+//             $tierDiscountAmountIDR = $discountableAmountIDR * $tierDiscountPercentage;
+//         }
+
+//         // 🚨 CAPPING GABUNGAN: Pastikan semua potongan tidak membuat total jadi minus
+//         $tierDiscountAmountIDR = min($tierDiscountAmountIDR, $calculatedSubtotalIDR - $promoDiscountIDR);
+//         $pointDiscountIDR = min($pointDiscountIDR, $calculatedSubtotalIDR - $promoDiscountIDR - $tierDiscountAmountIDR);
+
+//         // 4. Kalkulasi Akhir Harga Kotor (IDR)
+//         $shippingCostIDR = $transaction->shipping_cost ?? 0;
+//         $grandTotalIDR = $calculatedSubtotalIDR + $shippingCostIDR - $promoDiscountIDR - $tierDiscountAmountIDR - $pointDiscountIDR;
+
+//         // Paksa menjadi nilai mutlak jika secara logika aneh masih minus
+//         $grandTotalIDR = max(0, $grandTotalIDR);
+
+//         // 🛠️ PERBAIKI DATABASE YANG RUSAK SECARA PERMANEN 🛠️
+//         $transaction->update([
+//             'total_amount' => $grandTotalIDR,
+//             'promo_discount' => $promoDiscountIDR,
+//         ]);
+
+//         // =====================================================================
+//         // KONVERSI MATA UANG & PEMBUATAN INVOICE XENDIT
+//         // =====================================================================
+//         $currency = $transaction->currency_code ?? 'IDR';
+//         $exchangeRate = 1;
+
+//         if ($currency !== 'IDR') {
+//             $rates = Cache::get('exchange_rates', []);
+//             $exchangeRate = $rates[$currency] ?? 1;
+//         }
+
+//         $finalAmount = round($grandTotalIDR * $exchangeRate, 2);
+
+//         // Pengaman Payment Gateway: Xendit/Stripe menolak tagihan Rp 0. Harus minimal 1 sen.
+//         if ($finalAmount <= 0) {
+//             $finalAmount = ($currency === 'IDR') ? 10000 : 0.50;
+//         }
+
+//         $items = [
+//             [
+//                 'name'     => 'Solher Order ' . $transaction->order_id,
+//                 'quantity' => 1,
+//                 'price'    => (float) $finalAmount,
+//                 'category' => 'PHYSICAL_PRODUCT',
+//             ]
+//         ];
+
+//         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
+//         $paymentGateway = PaymentFactory::make($currency);
+
+//         $frontendSuccessUrl = config('app.frontend_url')
+//             . '/payment-success?external_id=' . $externalId
+//             . '&order_id=' . $transaction->order_id;
+
+//         $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' . $transaction->order_id);
+//         $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
+
+//         $checkoutUrl = $paymentGateway->createInvoice([
+//             'order_id'             => $transaction->order_id,
+//             'external_id'          => $externalId,
+//             'payer_email'          => $transaction->user->email,
+//             'amount'               => $finalAmount,
+//             'currency'             => $currency,
+//             'items'                => $items,
+//             'success_redirect_url' => $dynamicSuccessUrl,
+//             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
+//         ]);
+
+//         Payment::updateOrCreate(
+//             ['transaction_id' => $transaction->id],
+//             [
+//                 'external_id'  => $externalId,
+//                 'checkout_url' => $checkoutUrl,
+//                 'amount'       => $finalAmount,
+//                 'status'       => 'pending',
+//             ]
+//         );
+
+//         \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addHours(24));
+
+//         return response()->json([
+//             'checkout_url' => $checkoutUrl,
+//             'gateway'      => $currency === 'IDR' ? 'Xendit' : 'Stripe',
+//         ]);
+//     }
+
+//     public function xenditCallback(Request $request)
+//     {
+//         $payload = $request->all();
+//         $eventId = (string) ($request->input('id') ?? $request->input('external_id'));
+
+//         \App\Jobs\ProcessPaymentWebhookJob::dispatch('xendit', $eventId, $payload);
+//         return response()->json(['message' => 'Xendit webhook queued'], 200);
+//     }
+
+//     public function stripeWebhook(Request $request)
+//     {
+//         $payloadContent = $request->getContent();
+//         $sigHeader = $request->header('Stripe-Signature');
+//         $endpointSecret = config('services.stripe.webhook_secret');
+
+//         try {
+//             if ($endpointSecret) {
+//                 \Stripe\Webhook::constructEvent($payloadContent, $sigHeader, $endpointSecret);
+//             }
+//         } catch (\Exception $e) {
+//             return response()->json(['error' => 'Invalid signature or payload'], 400);
+//         }
+
+//         $payloadArray = json_decode($payloadContent, true) ?? [];
+//         $eventId = (string) ($payloadArray['id'] ?? '');
+
+//         \App\Jobs\ProcessPaymentWebhookJob::dispatch('stripe', $eventId, $payloadArray);
+//         return response()->json(['message' => 'Stripe webhook queued'], 200);
+//     }
+
+//     public function paypalWebhook(Request $request)
+//     {
+//         $payload = $request->all();
+//         $eventId = (string) ($payload['id'] ?? '');
+
+//         \App\Jobs\ProcessPaymentWebhookJob::dispatch('paypal', $eventId, $payload);
+//         return response()->json(['message' => 'PayPal webhook queued'], 200);
+//     }
+
+//     public function capturePayPal(Request $request)
+//     {
+//         $paypalToken = $request->query('token');
+//         $externalId = $request->query('external_id');
+//         $orderId = $request->query('order_id');
+
+//         $paypalService = app(\App\Services\PayPalService::class);
+//         $paypalService->capturePayment($paypalToken);
+
+//         $frontendSuccessUrl = config('app.frontend_url')
+//             . '/payment-success?external_id=' . $externalId
+//             . '&order_id=' . $orderId;
+
+//         return redirect($frontendSuccessUrl);
+//     }
+
+//     public function getShippingRates(Request $request)
+//     {
+//         $request->validate([
+//             'is_guest' => 'nullable|boolean',
+//         ]);
+
+//         try {
+//             $origin = [
+//                 'postal_code' => config('services.biteship.origin_postal_code', '60272'),
+//                 'latitude'    => -7.25653,
+//                 'longitude'   => 112.74877,
+//             ];
+
+//             if ($request->is_guest) {
+//                 $request->validate([
+//                     'guest_address' => 'required|array',
+//                     'cart_items' => 'required|array'
+//                 ]);
+
+//                 $gAddress = $request->guest_address;
+//                 $destinationCountry = $gAddress['region'] ?? 'Indonesia';
+
+//                 $destination = [
+//                     'name'         => trim($gAddress['first_name'] . ' ' . ($gAddress['last_name'] ?? '')),
+//                     'phone'        => $gAddress['phone'] ?? '08123456789',
+//                     'address'      => $gAddress['address_location'],
+//                     'postal_code'  => $gAddress['postal_code'],
+//                     'latitude'     => null,
+//                     'longitude'    => null,
+//                     'city'         => $gAddress['city'],
+//                     'province'     => $gAddress['province'],
+//                 ];
+
+//                 $cartItems = collect();
+//                 foreach($request->cart_items as $ci) {
+//                     $prod = \App\Models\Product::find($ci['product_id']);
+//                     if($prod) {
+//                         $cart = new \App\Models\Cart();
+//                         $cart->product = $prod;
+//                         $cart->quantity = $ci['quantity'];
+//                         $cartItems->push($cart);
+//                     }
+//                 }
+//             } else {
+//                 $user = $request->user('sanctum');
+//                 if (!$user) {
+//                     return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
+//                 }
+
+//                 $request->validate([
+//                     'address_id' => 'required|exists:addresses,id',
+//                     'cart_ids'   => 'required|array',
+//                     'cart_ids.*' => 'exists:carts,id',
+//                 ]);
+
+//                 $address = \App\Models\Address::where('user_id', $user->id)->find($request->address_id);
+
+//                 if (!$address && app()->environment('testing')) {
+//                     $address = \App\Models\Address::find($request->address_id);
+//                 }
+
+//                 if (!$address || !$address->postal_code) {
+//                     return response()->json(['message' => 'Alamat tidak valid atau bukan milik Anda.'], 400);
+//                 }
+
+//                 $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
+
+//                 $destinationCountry = !empty($address->region)
+//                     ? $address->region
+//                     : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
+
+//                 $destination = [
+//                     'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
+//                     'phone'        => $user->phone ?? '08123456789',
+//                     'address'      => $address->address_location,
+//                     'postal_code'  => $address->postal_code,
+//                     'latitude'     => $address->latitude,
+//                     'longitude'    => $address->longitude,
+//                     'city'         => $address->city ?? 'Unknown City',
+//                     'province'     => $address->province ?? 'Unknown Province',
+//                 ];
+//             }
+
+//             $countryCode = match (strtolower(trim($destinationCountry))) {
+//                 'indonesia' => 'ID',
+//                 'singapore', 'singapura' => 'SG',
+//                 'malaysia' => 'MY',
+//                 'united states', 'usa', 'amerika', 'amerika serikat' => 'US',
+//                 'australia' => 'AU',
+//                 'japan', 'jepang' => 'JP',
+//                 'united kingdom', 'uk', 'inggris' => 'GB',
+//                 'taiwan' => 'TW',
+//                 'china', 'tiongkok' => 'CN',
+//                 default => null
+//             };
+
+//             if (!$countryCode) {
+//                 if (app()->environment('testing')) {
+//                     $countryCode = 'ID';
+//                 } else {
+//                     return response()->json([
+//                         'message' => "Pengiriman ke negara '{$destinationCountry}' saat ini belum didukung oleh sistem logistik kami."
+//                     ], 400);
+//                 }
+//             }
+
+//             $destination['country_code'] = $countryCode;
+
+//             $items = [];
+//             $totalFinalWeightGrams = 0;
+
+//             foreach ($cartItems as $item) {
+//                 $prod = $item->product;
+
+//                 $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+//                 $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
+
+//                 $length = $prod->length > 0 ? $prod->length : 20;
+//                 $width  = $prod->width > 0  ? $prod->width  : 20;
+//                 $height = $prod->height > 0 ? $prod->height : 10;
+
+//                 $volumetricWeightGrams = ($length * $width * $height) / 6;
+//                 $billableWeightPerItem = max($actualWeightGrams, $volumetricWeightGrams);
+
+//                 $totalFinalWeightGrams += ($billableWeightPerItem * $item->quantity);
+
+//                 $validPrice = $prod->price;
+//                 if (!empty($prod->discount_price) && $prod->discount_start_date <= now() && $prod->discount_end_date >= now()) {
+//                     $validPrice = $prod->discount_price;
+//                 }
+
+//                 $items[] = [
+//                     'name'     => $prod->name,
+//                     'value'    => $validPrice,
+//                     'quantity' => $item->quantity,
+//                     'weight'   => (int) $actualWeightGrams,
+//                     'length'   => (int) $length,
+//                     'width'    => (int) $width,
+//                     'height'   => (int) $height,
+//                 ];
+//             }
+
+//             $parcelData = [
+//                 'items'  => $items,
+//                 'weight' => (int) round($totalFinalWeightGrams),
+//             ];
+
+//             $shippingGateway = ShippingFactory::make($destinationCountry);
+//             $rates = $shippingGateway->calculateRates($origin, $destination, $parcelData);
+
+//             return response()->json($rates);
+
+//         } catch (\Exception $e) {
+//             report($e);
+//             return response()->json([
+//                 'message' => 'Gagal mengambil ongkos kirim: '.$e->getMessage(),
+//             ], 500);
+//         }
+//     }
+
+//     private function checkAndAssignMembership($user)
+//     {
+//         if ($user->is_membership) {
+//             return;
+//         }
+
+//         $totalSpent = Transaction::where('user_id', $user->id)
+//             ->where('status', 'completed')
+//             ->sum('total_amount');
+
+//         if ($totalSpent >= 100000) {
+//             $user->update(['is_membership' => true]);
+//         }
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use App\Models\Cart;
 use App\Models\Address;
 use App\Models\Payment;
-use App\Models\PromoClaim;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use App\Services\PaymentFactory;
@@ -1639,79 +2079,6 @@ class PaymentController extends Controller
             ]);
         }
 
-        // =====================================================================
-        // 🔥 PENYEMBUH MATEMATIKA OTOMATIS (AUTO-HEALER) 🔥
-        // =====================================================================
-
-        // 1. Hitung ulang Subtotal murni dari Produk yang dibeli
-        $calculatedSubtotalIDR = 0;
-        foreach ($transaction->details as $detail) {
-            $calculatedSubtotalIDR += ($detail->price * $detail->quantity);
-        }
-
-        // 2. Ambil Diskon Promo
-        $promoDiscountIDR = $transaction->promo_discount ?? 0;
-        $promoCode = $transaction->promo_code;
-
-        // Auto-heal jika database gagal menyimpan nominal diskon (Bug Gambar 2)
-        if ($promoDiscountIDR == 0 && $promoCode) {
-            if (in_array($promoCode, ['SOLHOST34', 'SOLHOST35'])) {
-                $promoDiscountIDR = 3400000;
-            } elseif (in_array($promoCode, ['SOLHERMEMBER', 'SOLHER17'])) {
-                $promoDiscountIDR = 500000;
-            } elseif ($promoCode === 'FIRSTORDER') {
-                $promoDiscountIDR = 250000;
-            } else {
-                $claim = PromoClaim::where('promo_code', $promoCode)->first();
-                if ($claim) {
-                    $promoDiscountIDR = $claim->discount_value;
-                }
-            }
-        }
-
-        // 🚨 CAPPING SANGAT PENTING: Diskon tidak boleh lebih besar dari harga barang! (Bug Gambar 3)
-        $promoDiscountIDR = min($promoDiscountIDR, $calculatedSubtotalIDR);
-
-        // 3. Ambil Poin & Tier Privilege (Jika ada)
-        $pointsUsed = $transaction->points_used ?? 0;
-        $pointDiscountIDR = $pointsUsed * 1000;
-
-        $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
-        $tierDiscountAmountIDR = 0;
-
-        if ($tierDiscountPercentage > 0) {
-            $discountableAmountIDR = 0;
-            $selectedItemIds = $request->tier_discount_item_ids ?? [];
-            foreach ($transaction->details as $detail) {
-                if ($detail->product->is_final_sale) continue;
-                if (!empty($selectedItemIds) && !in_array($detail->cart_id, $selectedItemIds) && !in_array($detail->product_id, $selectedItemIds)) {
-                    continue;
-                }
-                $discountableAmountIDR += ($detail->price * $detail->quantity);
-            }
-            $tierDiscountAmountIDR = $discountableAmountIDR * $tierDiscountPercentage;
-        }
-
-        // 🚨 CAPPING GABUNGAN: Pastikan semua potongan tidak membuat total jadi minus
-        $tierDiscountAmountIDR = min($tierDiscountAmountIDR, $calculatedSubtotalIDR - $promoDiscountIDR);
-        $pointDiscountIDR = min($pointDiscountIDR, $calculatedSubtotalIDR - $promoDiscountIDR - $tierDiscountAmountIDR);
-
-        // 4. Kalkulasi Akhir Harga Kotor (IDR)
-        $shippingCostIDR = $transaction->shipping_cost ?? 0;
-        $grandTotalIDR = $calculatedSubtotalIDR + $shippingCostIDR - $promoDiscountIDR - $tierDiscountAmountIDR - $pointDiscountIDR;
-
-        // Paksa menjadi nilai mutlak jika secara logika aneh masih minus
-        $grandTotalIDR = max(0, $grandTotalIDR);
-
-        // 🛠️ PERBAIKI DATABASE YANG RUSAK SECARA PERMANEN 🛠️
-        $transaction->update([
-            'total_amount' => $grandTotalIDR,
-            'promo_discount' => $promoDiscountIDR,
-        ]);
-
-        // =====================================================================
-        // KONVERSI MATA UANG & PEMBUATAN INVOICE XENDIT
-        // =====================================================================
         $currency = $transaction->currency_code ?? 'IDR';
         $exchangeRate = 1;
 
@@ -1720,13 +2087,36 @@ class PaymentController extends Controller
             $exchangeRate = $rates[$currency] ?? 1;
         }
 
+        // =====================================================================
+        // 👇 PERBAIKAN FINAL: PERHITUNGAN BERSIH TANPA DUPLIKASI 👇
+        // =====================================================================
+
+        // 1. Ambil data mentah langsung dari Database (Nilainya dijamin akurat)
+        $totalAmountIDR = $transaction->total_amount ?? 0;
+        $shippingCostIDR = $transaction->shipping_cost ?? 0;
+        $pointDiscountIDR = ($transaction->points_used ?? 0) * 1000;
+
+        // Catatan: promo_discount di DB SUDAH mencakup Tier Privilege & Promo
+        // (karena digabung di CalculateCartTotalsAction). JANGAN hitung ulang Tier Discount.
+        $promoDiscountIDR = $transaction->promo_discount ?? 0;
+
+        // 2. Kalkulasi Grand Total IDR (Produk + Ongkir - Promo - Poin)
+        $grandTotalIDR = $totalAmountIDR + $shippingCostIDR - $promoDiscountIDR - $pointDiscountIDR;
+
+        // Cegah minus jika terjadi selisih
+        if ($grandTotalIDR < 0) {
+            $grandTotalIDR = 0;
+        }
+
+        // 3. Konversi ke Mata Uang Asing
         $finalAmount = round($grandTotalIDR * $exchangeRate, 2);
 
-        // Pengaman Payment Gateway: Xendit/Stripe menolak tagihan Rp 0. Harus minimal 1 sen.
+        // 4. Pengaman Gateway: Minimal transaksi
         if ($finalAmount <= 0) {
             $finalAmount = ($currency === 'IDR') ? 10000 : 0.50;
         }
 
+        // 5. Buat 1 Item Lump Sum (Mencegah Xendit Crash karena harga minus)
         $items = [
             [
                 'name'     => 'Solher Order ' . $transaction->order_id,
@@ -1735,6 +2125,7 @@ class PaymentController extends Controller
                 'category' => 'PHYSICAL_PRODUCT',
             ]
         ];
+        // 👆 ===================================================================== 👆
 
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
         $paymentGateway = PaymentFactory::make($currency);

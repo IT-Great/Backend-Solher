@@ -1716,7 +1716,7 @@ class CalculateCartTotalsAction
     {
         $currency = $request->currency;
         $now = now();
-        $totalAmountKotor = 0; // 👈 PERUBAHAN UTAMA: Ini adalah harga kotor produk
+        $totalAmountKotor = 0; // WAJIB HARGA KOTOR
         $finalItemPrices = [];
 
         // 1. KELOMPOKKAN ITEM BERDASARKAN KATEGORI & MIX GROUP
@@ -1878,7 +1878,17 @@ class CalculateCartTotalsAction
                 $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->where('is_used', true)->first();
                 if ($claimCheck) throw new \Exception('Voucher sudah pernah digunakan.');
 
-                $promoDiscountAmount = 3400000;
+                // 👇 PERBAIKAN LOGIKA: Capping & Konversi Mata Uang 👇
+                $baseDiscountIDR = 3400000;
+                $activeDiscountValue = $baseDiscountIDR;
+                if ($currency !== 'IDR') {
+                    $rates = \Illuminate\Support\Facades\Cache::get('exchange_rates', []);
+                    $exchangeRate = $rates[$currency] ?? 1;
+                    $activeDiscountValue = $baseDiscountIDR * $exchangeRate;
+                }
+
+                // CAPPING: Diskon tidak boleh melebihi Harga Kotor Produk
+                $promoDiscountAmount = min($activeDiscountValue, $totalAmountKotor);
                 $appliedPromoCode = $promoCode;
 
                 PromoClaim::updateOrCreate(
@@ -1889,7 +1899,15 @@ class CalculateCartTotalsAction
                 if (!$lockedUser->is_membership) throw new \Exception('Hanya untuk VIP Member.');
                 if ($lockedUser->has_used_member_voucher) throw new \Exception('Voucher sudah pernah digunakan.');
 
-                $promoDiscountAmount = ($currency === 'IDR') ? 500000 : 35;
+                $baseDiscountIDR = 500000;
+                $activeDiscountValue = $baseDiscountIDR;
+                if ($currency !== 'IDR') {
+                    $rates = \Illuminate\Support\Facades\Cache::get('exchange_rates', []);
+                    $exchangeRate = $rates[$currency] ?? 1;
+                    $activeDiscountValue = $baseDiscountIDR * $exchangeRate;
+                }
+
+                $promoDiscountAmount = min($activeDiscountValue, $totalAmountKotor);
                 $appliedPromoCode = 'SOLHERMEMBER';
                 $lockedUser->update(['has_used_member_voucher' => true]);
             } else {
@@ -1941,7 +1959,6 @@ class CalculateCartTotalsAction
         }
 
         // 5. Kalkulasi Poin
-        // Poin hanya dihitung dari Subtotal setelah promo & tier
         $totalAfterPromo = max(0, $totalAmountKotor - $tierDiscountAmount - $promoDiscountAmount);
         $earnedPoints = floor($totalAfterPromo / 1000);
         $pointsUsed = 0;
@@ -1961,11 +1978,10 @@ class CalculateCartTotalsAction
         $totalQuantity = $cartItems->sum('quantity') ?: 1;
         $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
 
-        // 👇 PERUBAHAN MUTLAK: KITA KEMBALIKAN HARGA KOTOR (SEBELUM DISKON) KE DATABASE 👇
         return [
-            'totalAmount' => $totalAmountKotor, // 👈 INI HARGA KOTOR PRODUK SAJA.
+            'totalAmount' => $totalAmountKotor, // WAJIB BERISI HARGA KOTOR PRODUK
             'finalItemPrices' => $finalItemPrices,
-            'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,
+            'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount, // Tier & Promo digabung ke DB
             'appliedPromoCode' => $appliedPromoCode,
             'earnedPoints' => $earnedPoints,
             'pointsUsed' => $pointsUsed,
