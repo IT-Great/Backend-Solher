@@ -1232,6 +1232,7 @@ class PaymentController extends Controller
 
         $totalQuantity = $transaction->details->sum('quantity') ?: 1;
 
+        // Jika ongkir belum tersimpan di transaksi, perbarui data transaksi
         if (!$transaction->shipping_cost || $transaction->shipping_cost == 0) {
             $baseShippingRate = $request->shipping_method === 'free' ? 0 : $request->shipping_cost;
             $totalShippingCost = $baseShippingRate * $totalQuantity;
@@ -1245,7 +1246,6 @@ class PaymentController extends Controller
                 'courier_company' => $courierCompany,
                 'courier_type'    => $courierType,
                 'shipping_cost'   => $totalShippingCost,
-                'total_amount'    => $transaction->total_amount,
                 'delivery_type'   => $request->shipping_method === 'free' ? 'later' : ($request->delivery_type ?? 'later'),
                 'delivery_date'   => $request->delivery_date,
                 'delivery_time'   => $request->delivery_time,
@@ -1258,6 +1258,7 @@ class PaymentController extends Controller
             ]);
         }
 
+        // 1. Dapatkan Exchange Rate jika bukan IDR
         $currency = $transaction->currency_code ?? 'IDR';
         $exchangeRate = 1;
 
@@ -1266,67 +1267,35 @@ class PaymentController extends Controller
             $exchangeRate = $rates[$currency] ?? 1;
         }
 
-        $pointsUsed = $transaction->points_used ?? 0;
-        $basePointDiscountIDR = $pointsUsed * 1000;
-        $pointDiscountAmount = round($basePointDiscountIDR * $exchangeRate, 2);
+        // 2. Kalkulasi Nilai Akhir
+        // total_amount di DB SUDAH bersih (sudah dikurangi Poin, Promo, Tier, dll oleh CalculateCartTotalsAction)
+        $productTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
 
-        $promoDiscount = round($transaction->promo_discount ?? 0, 2);
-
-        $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
-        $tierDiscountAmount = 0;
-
-        if ($tierDiscountPercentage > 0) {
-            $discountableAmountIDR = 0;
-            $selectedItemIds = $request->tier_discount_item_ids ?? [];
-
-            foreach ($transaction->details as $detail) {
-                if ($detail->product->is_final_sale) continue;
-                if (!empty($selectedItemIds) && !in_array($detail->cart_id, $selectedItemIds) && !in_array($detail->product_id, $selectedItemIds)) {
-                    continue;
-                }
-                $discountableAmountIDR += ($detail->price * $detail->quantity);
-            }
-
-            $tierDiscountAmountIDR = $discountableAmountIDR * $tierDiscountPercentage;
-            $tierDiscountAmount = round($tierDiscountAmountIDR * $exchangeRate, 2);
-        }
-
-        $subtotalAfterPromoAndTier = max(0, $transaction->total_amount - $promoDiscount - $tierDiscountAmount);
-        $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromoAndTier);
-
-        $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
-        $basePriceShipping = 0;
-
+        $shippingActiveCurrency = 0;
         if ($transaction->shipping_cost > 0) {
-            $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
+            $shippingActiveCurrency = round($transaction->shipping_cost * $exchangeRate, 2);
         }
 
-        $mathTotal = $transactionTotalActiveCurrency + ($basePriceShipping * $totalQuantity) - $pointDiscountAmount - $promoDiscount - $tierDiscountAmount;
-        $finalAmount = round($mathTotal, 2);
+        // Final Amount adalah Total Produk + Total Ongkir
+        $finalAmount = round($productTotalActiveCurrency + $shippingActiveCurrency, 2);
 
-        // Jika total akhir jadi 0 atau negatif, paksa jadi nilai terkecil yang valid untuk API pembayaran
+        // Pengaman: Jika total akhir 0 atau negatif, paksa ke minimal transaksi agar Xendit tidak error
         if ($finalAmount <= 0) {
-            // Stripe akan menolak nilai 0. Batas minimal biasanya 1 sen (0.01) atau Rp 1.
-            $finalAmount = ($currency === 'IDR') ? 10000 : 0.50; // Minimal transaksi aman
+            $finalAmount = ($currency === 'IDR') ? 10000 : 0.50;
         }
 
-        $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
-
-        // =====================================================================
-        // 👇 PERBAIKAN MUTLAK TIER 1: SATU ITEM GLOBAL UNTUK MENCEGAH MISMATCH 👇
-        // =====================================================================
-        // Xendit/Stripe mewajibkan jika array "items" dikirim, Total Harga Item HARUS SAMA PERSIS dengan Amount Invoice.
-        // Karena ada banyak diskon (Poin, Promo, Tier) dan pajak/ongkir, kita rangkum seluruh keranjang menjadi 1 Baris Tagihan (Lump Sum).
+        // 3. Rakit sebagai 1 Item Tunggal (Lump Sum) untuk menghindari Mismatch Xendit/Stripe
         $items = [
             [
                 'name'     => 'Solher Order ' . $transaction->order_id,
                 'quantity' => 1,
-                'price'    => (float) $finalAmount, // Nilainya 100% SAMA dengan $finalAmount
+                'price'    => (float) $finalAmount,
                 'category' => 'PHYSICAL_PRODUCT',
             ]
         ];
-        // 👆 ===================================================================== 👆
 
+        // 4. Generate URL Pembayaran
+        $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
         $paymentGateway = PaymentFactory::make($currency);
 
         $frontendSuccessUrl = config('app.frontend_url')
@@ -1342,7 +1311,7 @@ class PaymentController extends Controller
             'payer_email'          => $transaction->user->email,
             'amount'               => $finalAmount,
             'currency'             => $currency,
-            'items'                => $items, // 👈 DIKIRIM SEBAGAI 1 ITEM (LUMP SUM)
+            'items'                => $items,
             'success_redirect_url' => $dynamicSuccessUrl,
             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
