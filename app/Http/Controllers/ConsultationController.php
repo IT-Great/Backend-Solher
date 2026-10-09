@@ -74,4 +74,23 @@ class ConsultationController extends Controller
             'data' => $intake
         ]);
     }
+
+    /**
+     * [ADMIN] Mendapatkan list semua konsultasi intake
+     */
+    public function indexAdmin(Request $request)
+    {
+        $intakes = ConsultationIntake::with('user')->orderBy('created_at', 'desc')->get();
+        return response()->json(['data' => $intakes]);
+    }
+
+    /**
+     * [ADMIN] Menandai masalah selesai
+     */
+    public function resolveAdmin($id)
+    {
+        $intake = ConsultationIntake::findOrFail($id);
+        $intake->update(['status' => 'resolved']);
+        return response()->json(['message' => 'Tandai Selesai']);
+    }
 }

@@ -1259,6 +1259,9 @@ Route::middleware(['auth:sanctum', 'role:messages'])->prefix('admin/messages')->
     Route::get('/unread-count', [ContactController::class, 'getUnreadCount']);
     Route::get('/{id}', [ContactController::class, 'showAdminMessage']);
     Route::post('/{id}/respond', [ContactController::class, 'respondMessage']);
+
+    Route::get('/admin/consultations', [\App\Http\Controllers\ConsultationController::class, 'indexAdmin']);
+    Route::post('/admin/consultations/{id}/resolve', [\App\Http\Controllers\ConsultationController::class, 'resolveAdmin']);
 });
 
 Route::middleware(['auth:sanctum', 'role:products'])->prefix('products')->group(function () {
