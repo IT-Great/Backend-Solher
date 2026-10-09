@@ -1351,6 +1351,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/chat/read/{id}', [ChatController::class, 'markAsRead']);
     Route::post('/chat/typing', [ChatController::class, 'typing']);
+
+    Route::prefix('consultation')->group(function () {
+        Route::post('/intake', [\App\Http\Controllers\ConsultationController::class, 'storeIntake']);
+        // Route khusus admin untuk melihat profil intake klien saat membalas chat
+        Route::get('/intake/{userId}', [\App\Http\Controllers\ConsultationController::class, 'getActiveIntake']);
+    });
 });
 
 // Route::get('/exchange-rates', function () {
