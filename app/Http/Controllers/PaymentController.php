@@ -856,11 +856,28 @@ class PaymentController extends Controller
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
 
         // Kalkulasi Final Amount (Pastikan dalam mata uang asing jika dipilih)
+        // $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
+        // $basePriceShipping = 0;
+
+        // if ($transaction->shipping_cost > 0) {
+        //     $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
+        // }
+
+        // Kalkulasi Final Amount (Pastikan dalam mata uang asing jika dipilih)
         $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
         $basePriceShipping = 0;
 
         if ($transaction->shipping_cost > 0) {
             $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
+        }
+
+        // 👇 PERBAIKAN SINTAKS MATH ROUND 👇
+        $mathTotal = $transactionTotalActiveCurrency + ($basePriceShipping * $totalQuantity) - $pointDiscountAmount - $promoDiscount - $tierDiscountAmount;
+        $finalAmount = round($mathTotal, 2);
+
+        // Jika total akhir jadi 0 atau negatif, paksa jadi 0
+        if ($finalAmount < 0) {
+            $finalAmount = 0;
         }
 
         $finalAmount = round(
