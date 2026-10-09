@@ -285,7 +285,7 @@ it('rejects SOLHOST35 if used after October 3rd', function () {
     $request = new Request(['currency' => 'IDR', 'promo_code' => 'SOLHOST35']);
 
     // 👇 [PERBAIKAN] Pastikan setTestNow menggunakan zona waktu Asia/Jakarta 👇
-    \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-10-04 00:00:01', 'Asia/Jakarta'));
+    \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-10-10 00:00:01', 'Asia/Jakarta'));
 
     expect(fn() => $this->action->execute($this->user, $cartItems, $request, $this->promoService))
         ->toThrow(\Exception::class, 'Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.');
