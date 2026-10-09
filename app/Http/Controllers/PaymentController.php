@@ -814,12 +814,14 @@ class PaymentController extends Controller
             $exchangeRate = $rates[$currency] ?? 1;
         }
 
+        // Kalkulasi Dasar Diskon
         $pointsUsed = $transaction->points_used ?? 0;
         $basePointDiscountIDR = $pointsUsed * 1000;
         $pointDiscountAmount = round($basePointDiscountIDR * $exchangeRate, 2);
 
         $promoDiscount = round($transaction->promo_discount ?? 0, 2);
 
+        // Kalkulasi Tier Discount
         $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
         $tierDiscountAmount = 0;
 
@@ -842,23 +844,76 @@ class PaymentController extends Controller
         $subtotalAfterPromoAndTier = max(0, $transaction->total_amount - $promoDiscount - $tierDiscountAmount);
         $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromoAndTier);
 
-        $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
-
         $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
-        $basePriceShipping = 0;
 
-        if ($transaction->shipping_cost > 0) {
-            $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
+        // =====================================================================
+        // ALGORITMA DISTRIBUSI DISKON PROPORSIONAL (MENCEGAH ERROR XENDIT)
+        // =====================================================================
+        $totalGlobalDiscount = $pointDiscountAmount + $promoDiscount + $tierDiscountAmount;
+        $items = [];
+        $runningItemsTotal = 0;
+
+        foreach ($transaction->details as $detail) {
+            $productName = $detail->product->name;
+            if (!empty($detail->color)) {
+                $productName .= ' - '.$detail->color;
+            }
+
+            $originalPriceItemActiveCurrency = (float) round($detail->price * $exchangeRate, 2);
+            $finalPriceItem = $originalPriceItemActiveCurrency;
+
+            // Jika ada diskon global, bagi rata secara proporsional ke semua item
+            if ($totalGlobalDiscount > 0 && $transactionTotalActiveCurrency > 0) {
+                // Bobot harga item ini terhadap total harga produk mentah
+                $itemWeightRatio = ($originalPriceItemActiveCurrency * $detail->quantity) / $transactionTotalActiveCurrency;
+
+                // Berapa banyak diskon yang harus ditanggung oleh 1 piece barang ini
+                $discountShareForThisQty = $totalGlobalDiscount * $itemWeightRatio;
+                $discountSharePerItem = $discountShareForThisQty / $detail->quantity;
+
+                // Harga akhir per-item setelah menanggung beban diskon
+                $finalPriceItem = round($originalPriceItemActiveCurrency - $discountSharePerItem, 2);
+
+                // Pastikan tidak tembus ke negatif (walau tidak mungkin secara logis)
+                if ($finalPriceItem < 0) $finalPriceItem = 0;
+            }
+
+            $items[] = [
+                'name'     => $productName,
+                'quantity' => (int) $detail->quantity,
+                'price'    => (float) $finalPriceItem,
+                'category' => 'PHYSICAL_PRODUCT',
+            ];
+
+            $runningItemsTotal += ($finalPriceItem * $detail->quantity);
         }
 
-        // PERBAIKAN SINTAKS MATH ROUND - HARAP JANGAN UBAH BAGIAN INI
-        $mathTotal = $transactionTotalActiveCurrency + ($basePriceShipping * $totalQuantity) - $pointDiscountAmount - $promoDiscount - $tierDiscountAmount;
-        $finalAmount = round($mathTotal, 2);
+        // =====================================================================
+        // TAMBAHKAN ONGKOS KIRIM SEBAGAI LINE ITEM BERSYARAT
+        // =====================================================================
+        $basePriceShipping = 0;
+        if ($transaction->shipping_cost > 0) {
+            $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
+
+            $items[] = [
+                'name'     => 'Shipping Cost ('.$transaction->courier_company.')',
+                'quantity' => (int) $totalQuantity,
+                'price'    => (float) $basePriceShipping,
+                'category' => 'SHIPPING_FEE',
+            ];
+
+            $runningItemsTotal += ($basePriceShipping * $totalQuantity);
+        }
+
+        // Kalkulasi Grand Total menggunakan nilai yang benar-benar dirakit oleh item
+        $finalAmount = round($runningItemsTotal, 2);
 
         if ($finalAmount < 0) {
             $finalAmount = 0;
         }
 
+        // Identifier Transaksi Unik
+        $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
         $paymentGateway = PaymentFactory::make($currency);
 
         $frontendSuccessUrl = config('app.frontend_url')
@@ -868,12 +923,14 @@ class PaymentController extends Controller
         $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' . $transaction->order_id);
         $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
 
+        // Xendit dan Stripe sekarang aman karena tidak ada item diskon negatif
         $checkoutUrl = $paymentGateway->createInvoice([
             'order_id'             => $transaction->order_id,
             'external_id'          => $externalId,
             'payer_email'          => $transaction->user->email,
             'amount'               => $finalAmount,
             'currency'             => $currency,
+            'items'                => $items, // 👈 KIRIM KEMBALI KARENA XENDIT MEMBUTUHKANNYA!
             'success_redirect_url' => $dynamicSuccessUrl,
             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
