@@ -1646,6 +1646,25 @@ class CalculateCartTotalsAction
             }
         }
 
+        // // Total pembayaran final produk = Subtotal - Tier Discount - Promo - Poin
+        // $finalProductTotal = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount - ($pointsUsed * 1000));
+
+        // // 5. Kalkulasi Ongkos Kirim
+        // $totalQuantity = $cartItems->sum('quantity') ?: 1;
+        // $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+
+        // return [
+        //     // Gunakan finalProductTotal untuk merefleksikan harga sesungguhnya sebelum ongkir
+        //     'totalAmount' => $finalProductTotal,
+        //     'finalItemPrices' => $finalItemPrices,
+        //     'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,  // Gabung agar mudah dibaca di Invoice (DB)
+        //     'appliedPromoCode' => $appliedPromoCode,
+        //     'earnedPoints' => $earnedPoints,
+        //     'pointsUsed' => $pointsUsed,
+        //     'totalShippingCost' => $totalShippingCost,
+        //     'totalQuantity' => $totalQuantity
+        // ];
+
         // Total pembayaran final produk = Subtotal - Tier Discount - Promo - Poin
         $finalProductTotal = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount - ($pointsUsed * 1000));
 
@@ -1654,8 +1673,8 @@ class CalculateCartTotalsAction
         $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
 
         return [
-            // Gunakan finalProductTotal untuk merefleksikan harga sesungguhnya sebelum ongkir
-            'totalAmount' => $finalProductTotal,
+            // 👇 PERBAIKAN 1: Kembalikan ke $totalAmount agar DB tidak minus 3 juta 👇
+            'totalAmount' => $totalAmount,
             'finalItemPrices' => $finalItemPrices,
             'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,  // Gabung agar mudah dibaca di Invoice (DB)
             'appliedPromoCode' => $appliedPromoCode,
