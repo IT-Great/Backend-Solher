@@ -1041,6 +1041,1014 @@
 //     }
 // }
 
+// namespace App\Http\Controllers;
+
+// use App\Models\Cart;
+// use App\Models\User;
+// use App\Models\Product;
+// use App\Models\Transaction;
+// use Illuminate\Support\Str;
+// use App\Models\ProductStock;
+// use Illuminate\Http\Request;
+// use App\Mail\RefundResultMail;
+// use App\Services\BiteshipService;
+// use Illuminate\Support\Facades\DB;
+// use Illuminate\Support\Facades\Log;
+// use Illuminate\Support\Facades\Http;
+// use Illuminate\Support\Facades\Mail;
+// use App\Services\PromoMerdekaService;
+// use Illuminate\Support\Facades\Cache;
+// use App\Actions\Order\ProcessRefundAction;
+// use App\Actions\Order\RestoreInventoryAction;
+// use App\Actions\Order\CancelTransactionAction;
+// use App\Actions\Checkout\DeductInventoryAction;
+// use App\Actions\Checkout\CreateTransactionAction;
+// use App\Actions\Checkout\CalculateCartTotalsAction;
+// use App\Services\FileUploadService;  // Pastikan Anda sudah membuat file ini di App\Services
+
+// class TransactionController extends Controller
+// {
+//     // =========================================================================
+//     // HELPER FUNCTIONS (Prinsip DRY - Don't Repeat Yourself)
+//     // =========================================================================
+
+//     private function clearTransactionProductCache(Transaction $transaction)
+//     {
+//         foreach ($transaction->details as $detail) {
+//             Cache::tags(['catalog'])->forget("products.detail.{$detail->product_id}");
+//         }
+//     }
+
+//     private function checkAndAssignMembership(User $user)
+//     {
+//         if ($user->is_membership)
+//             return;
+//         $totalSpent = Transaction::where('user_id', $user->id)->where('status', 'completed')->sum('total_amount');
+//         if ($totalSpent >= 100000) {
+//             $user->update(['is_membership' => true]);
+//         }
+//     }
+
+//     private function revokeMembershipIfBelowThreshold(User $user)
+//     {
+//         if (!$user->is_membership)
+//             return;
+//         $totalSpent = Transaction::where('user_id', $user->id)->where('status', 'completed')->sum('total_amount');
+//         if ($totalSpent < 100000) {
+//             $user->update(['is_membership' => false]);
+//         }
+//     }
+
+//     public function restoreProductStock($productId, $quantityToRestore)
+//     {
+//         if ($quantityToRestore <= 0) {
+//             return;
+//         }
+
+//         $product = Product::lockForUpdate()->find($productId);
+//         if (!$product) {
+//             return;
+//         }
+
+//         $remainingToRestore = $quantityToRestore;
+
+//         $incompleteBatches = ProductStock::where('product_id', $productId)
+//             ->whereColumn('quantity', '<', 'initial_quantity')
+//             ->orderBy('created_at', 'asc')
+//             ->lockForUpdate()
+//             ->get();
+
+//         foreach ($incompleteBatches as $batch) {
+//             if ($remainingToRestore <= 0) {
+//                 break;
+//             }
+
+//             $spaceAvailable = $batch->initial_quantity - $batch->quantity;
+
+//             if ($spaceAvailable >= $remainingToRestore) {
+//                 $batch->increment('quantity', $remainingToRestore);
+//                 $remainingToRestore = 0;
+//             } else {
+//                 $batch->increment('quantity', $spaceAvailable);
+//                 $remainingToRestore -= $spaceAvailable;
+//             }
+//         }
+
+//         if ($remainingToRestore > 0) {
+//             $latestBatch = ProductStock::where('product_id', $productId)
+//                 ->orderBy('created_at', 'desc')
+//                 ->lockForUpdate()
+//                 ->first();
+
+//             if ($latestBatch) {
+//                 $latestBatch->increment('quantity', $remainingToRestore);
+//                 $latestBatch->increment('initial_quantity', $remainingToRestore);
+//             } else {
+//                 ProductStock::create([
+//                     'product_id' => $productId,
+//                     'batch_code' => 'RET-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(4)),
+//                     'quantity' => $remainingToRestore,
+//                     'initial_quantity' => $remainingToRestore,
+//                 ]);
+//             }
+//         }
+
+//         $product->increment('stock', $quantityToRestore);
+//     }
+
+//     // --- USER ACTIONS ---
+//     // public function checkout(
+//     //     Request $request,
+//     //     PromoMerdekaService $promoService,
+//     //     CalculateCartTotalsAction $calculateTotals,
+//     //     CreateTransactionAction $createTransaction,
+//     //     DeductInventoryAction $deductInventory
+//     // ) {
+//     //     try {
+//     //         $request->validate([
+//     //             'address_id' => 'required',
+//     //             'shipping_method' => 'required|in:free,biteship',
+//     //             'use_points' => 'nullable|integer|min:0',
+//     //             'cart_ids' => 'required|array',
+//     //             'cart_ids.*' => 'exists:carts,id',
+//     //             'shipping_cost' => 'nullable|numeric',
+//     //             'courier_company' => 'nullable|string',
+//     //             'courier_type' => 'nullable|string',
+//     //             'delivery_type' => 'nullable|string',
+//     //             'currency' => 'required|string',
+//     //             'referral_code' => 'nullable|string',
+//     //         ]);
+
+//     //         $user = $request->user();
+
+//     //         $cartItems = Cart::with('product.category')
+//     //             ->where('user_id', $user->id)
+//     //             ->whereIn('id', $request->cart_ids)
+//     //             ->get();
+
+//     //         if ($cartItems->isEmpty()) {
+//     //             return response()->json(['message' => 'No items selected for checkout'], 400);
+//     //         }
+
+//     //         $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
+//     //             $lockedUser = User::lockForUpdate()->find($user->id);
+
+//     //             $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
+//     //             $transaction = $createTransaction->execute($lockedUser, $request, $totals);
+//     //             $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
+
+//     //             return [
+//     //                 'transaction' => $transaction,
+//     //                 'currency' => $request->currency,
+//     //             ];
+//     //         });
+
+//     //         event(new \App\Events\DashboardUpdated());
+
+//     //         $paymentController = app(PaymentController::class);
+//     //         $request->merge([
+//     //             'transaction_id' => $transactionData['transaction']->id,
+//     //             'currency' => $transactionData['currency']
+//     //         ]);
+
+//     //         return $paymentController->createInvoice($request);
+//     //     } catch (\Throwable $e) {
+//     //         report($e);
+//     //         Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+//     //         return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
+//     //     }
+//     // }
+
+//     // --- USER ACTIONS ---
+//     // public function checkout(
+//     //     Request $request,
+//     //     PromoMerdekaService $promoService,
+//     //     CalculateCartTotalsAction $calculateTotals,
+//     //     CreateTransactionAction $createTransaction,
+//     //     DeductInventoryAction $deductInventory
+//     // ) {
+//     //     try {
+//     //         $request->validate([
+//     //             'address_id' => 'required',
+//     //             'shipping_method' => 'required|in:free,biteship',
+//     //             'use_points' => 'nullable|integer|min:0',
+//     //             'cart_ids' => 'required|array',
+//     //             'cart_ids.*' => 'exists:carts,id',
+//     //             'shipping_cost' => 'nullable|numeric',
+//     //             'courier_company' => 'nullable|string',
+//     //             'courier_type' => 'nullable|string',
+//     //             'delivery_type' => 'nullable|string',
+//     //             'currency' => 'required|string',
+//     //             'referral_code' => 'nullable|string',
+//     //         ]);
+
+//     //         $user = $request->user();
+
+//     //         $cartItems = Cart::with('product.category')
+//     //             ->where('user_id', $user->id)
+//     //             ->whereIn('id', $request->cart_ids)
+//     //             ->get();
+
+//     //         if ($cartItems->isEmpty()) {
+//     //             return response()->json(['message' => 'No items selected for checkout'], 400);
+//     //         }
+
+//     //         // =========================================================================
+//     //         // [FITUR SENIOR] REDIS REDLOCK (ATOMIC LOCK) - PENCEGAH OVERSELLING
+//     //         // =========================================================================
+//     //         $locks = [];
+
+//     //         // Urutkan ID produk untuk mencegah Deadlock pada sistem Redis
+//     //         $productIds = $cartItems->pluck('product_id')->sort()->unique();
+
+//     //         foreach ($productIds as $pId) {
+//     //             // Kunci produk di RAM (Redis) selama 15 detik khusus untuk transaksi ini.
+//     //             // Parameter block(5) berarti jika ada pengguna lain yang checkout barang yang sama di detik yang sama,
+//     //             // sistem akan menyuruh mereka "mengantre" maksimal 5 detik.
+//     //             $lock = Cache::lock('checkout_product_' . $pId, 15);
+
+//     //             if (!$lock->block(5)) {
+//     //                 // Jika antrean > 5 detik (trafik flash sale meledak), gagalkan dengan kode 429
+//     //                 foreach ($locks as $acquiredLock) {
+//     //                     $acquiredLock->release();
+//     //                 }
+//     //                 return response()->json([
+//     //                     'message' => 'Lalu lintas antrean sangat padat untuk barang ini. Sistem sedang mengamankan stok Anda, silakan klik tombol Pay Now sekali lagi dalam beberapa detik.'
+//     //                 ], 429);
+//     //             }
+//     //             $locks[] = $lock;
+//     //         }
+
+//     //         // Jika semua kunci produk di keranjang berhasil didapat, eksekusi pemotongan stok DB!
+//     //         try {
+//     //             $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
+//     //                 $lockedUser = User::lockForUpdate()->find($user->id);
+
+//     //                 $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
+//     //                 $transaction = $createTransaction->execute($lockedUser, $request, $totals);
+
+//     //                 // Disini MySQL mengeksekusi pemotongan stok dengan rasa aman 100% tanpa Race Condition
+//     //                 $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
+
+//     //                 return [
+//     //                     'transaction' => $transaction,
+//     //                     'currency' => $request->currency,
+//     //                 ];
+//     //             });
+
+//     //             event(new \App\Events\DashboardUpdated());
+
+//     //             $paymentController = app(PaymentController::class);
+//     //             $request->merge([
+//     //                 'transaction_id' => $transactionData['transaction']->id,
+//     //                 'currency' => $transactionData['currency']
+//     //             ]);
+
+//     //             return $paymentController->createInvoice($request);
+
+//     //         } finally {
+//     //             // WAJIB: Lepaskan kunci Redis segera setelah transaksi sukses/gagal
+//     //             // agar pengunjung dalam antrean berikutnya bisa masuk
+//     //             foreach ($locks as $lock) {
+//     //                 $lock->release();
+//     //             }
+//     //         }
+//     //     } catch (\Throwable $e) {
+//     //         report($e);
+//     //         Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+//     //         return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
+//     //     }
+//     // }
+
+//     // --- USER ACTIONS ---
+//     public function checkout(
+//         Request $request,
+//         PromoMerdekaService $promoService,
+//         CalculateCartTotalsAction $calculateTotals,
+//         CreateTransactionAction $createTransaction,
+//         DeductInventoryAction $deductInventory
+//     ) {
+//         try {
+//             // 👇 [GUEST CHECKOUT 1] Validasi Fleksibel 👇
+//             $rules = [
+//                 'shipping_method' => 'required|in:free,biteship',
+//                 'use_points' => 'nullable|integer|min:0',
+//                 'shipping_cost' => 'nullable|numeric',
+//                 'courier_company' => 'nullable|string',
+//                 'courier_type' => 'nullable|string',
+//                 'delivery_type' => 'nullable|string',
+//                 'currency' => 'required|string',
+//                 'referral_code' => 'nullable|string',
+//                 'is_guest' => 'nullable|boolean',
+//             ];
+
+//             if ($request->is_guest) {
+//                 $rules['guest_data'] = 'required|array';
+//                 $rules['cart_items'] = 'required|array';
+//             } else {
+//                 $rules['address_id'] = 'required';
+//                 $rules['cart_ids'] = 'required|array';
+//                 $rules['cart_ids.*'] = 'exists:carts,id';
+//             }
+
+//             $request->validate($rules);
+
+//             // 👇 [GUEST CHECKOUT 2] Pembuatan Shadow User 👇
+//             if ($request->is_guest) {
+//                 $guest = $request->guest_data;
+
+//                 // 1. Cari user berdasarkan email, jika tidak ada, buat Shadow User
+//                 $user = User::firstOrCreate(
+//                     ['email' => $guest['email']],
+//                     [
+//                         // 'name' => trim($guest['first_name'] . ' ' . ($guest['last_name'] ?? '')),
+//                         // 'phone' => $guest['phone'],
+//                         // 'password' => bcrypt(Str::random(16)), // Password acak agar aman
+//                         // 'usertype' => 'guest', // Menandai ini bukan akun resmi
+//                         // 👇 PERBAIKAN: Gunakan first_name dan last_name sesuai struktur DB 👇
+//                         'first_name' => $guest['first_name'],
+//                         'last_name' => $guest['last_name'] ?? '',
+//                         'phone' => $guest['phone'],
+//                         'password' => bcrypt(Str::random(16)),
+//                         'usertype' => 'guest',
+//                     ]
+//                 );
+
+//                 // 2. Simpan Alamat Pengiriman ke Database
+//                 $address = \App\Models\Address::create([
+//                     'user_id' => $user->id,
+//                     'first_name_address' => $guest['first_name'],
+//                     'last_name_address' => $guest['last_name'] ?? '',
+//                     'phone' => $guest['phone'],
+//                     'address_location' => $guest['address_location'],
+//                     'city' => $guest['city'],
+//                     'province' => $guest['province'],
+//                     'postal_code' => $guest['postal_code'],
+//                     'region' => $guest['region'] ?? 'Indonesia',
+//                     'is_default' => true,
+//                 ]);
+
+//                 // 3. Masukkan item dari LocalStorage ke tabel Carts
+//                 $cartIds = [];
+//                 foreach ($request->cart_items as $cItem) {
+//                     $product = Product::find($cItem['product_id']);
+//                     if ($product) {
+//                         $cart = Cart::create([
+//                             'user_id' => $user->id,
+//                             'product_id' => $product->id,
+//                             'quantity' => $cItem['quantity'],
+//                             'color' => $cItem['color'] ?? null,
+//                             'gross_amount' => $product->price * $cItem['quantity'],
+//                         ]);
+//                         $cartIds[] = $cart->id;
+//                     }
+//                 }
+
+//                 // 4. Inject Data Shadow ke dalam Request (Trik Tingkat Lanjut)
+//                 $request->merge([
+//                     'address_id' => $address->id,
+//                     'cart_ids' => $cartIds
+//                 ]);
+//                 $request->setUserResolver(function () use ($user) {
+//                     return $user;  // Mulai dari baris ini, Laravel mengira pengguna sudah login!
+//                 });
+//             } else {
+//                 // $user = $request->user();
+//                 $user = $request->user('sanctum');
+
+//                 // 👇 TAMBAHKAN KODE INI 👇
+//                 // Agar PaymentController yang menggunakan $request->user() tidak bernilai null
+//                 $request->setUserResolver(function () use ($user) {
+//                     return $user;
+//                 });
+//             }
+//             // 👆 ========================================= 👆
+
+//             $cartItems = Cart::with('product.category')
+//                 ->where('user_id', $user->id)
+//                 ->whereIn('id', $request->cart_ids)
+//                 ->get();
+
+//             if ($cartItems->isEmpty()) {
+//                 return response()->json(['message' => 'No items selected for checkout'], 400);
+//             }
+
+//             // =========================================================================
+//             // [FITUR SENIOR] REDIS REDLOCK (ATOMIC LOCK) - PENCEGAH OVERSELLING
+//             // =========================================================================
+//             $locks = [];
+
+//             // Urutkan ID produk untuk mencegah Deadlock pada sistem Redis
+//             $productIds = $cartItems->pluck('product_id')->sort()->unique();
+
+//             foreach ($productIds as $pId) {
+//                 // Kunci produk di RAM (Redis) selama 15 detik khusus untuk transaksi ini.
+//                 $lock = Cache::lock('checkout_product_' . $pId, 15);
+
+//                 if (!$lock->block(5)) {
+//                     foreach ($locks as $acquiredLock) {
+//                         $acquiredLock->release();
+//                     }
+//                     return response()->json([
+//                         'message' => 'Lalu lintas antrean sangat padat untuk barang ini. Sistem sedang mengamankan stok Anda, silakan klik tombol Pay Now sekali lagi dalam beberapa detik.'
+//                     ], 429);
+//                 }
+//                 $locks[] = $lock;
+//             }
+
+//             // Jika semua kunci produk di keranjang berhasil didapat, eksekusi pemotongan stok DB!
+//             try {
+//                 $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
+//                     $lockedUser = User::lockForUpdate()->find($user->id);
+
+//                     $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
+//                     $transaction = $createTransaction->execute($lockedUser, $request, $totals);
+
+//                     // Disini MySQL mengeksekusi pemotongan stok dengan rasa aman 100% tanpa Race Condition
+//                     $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
+
+//                     return [
+//                         'transaction' => $transaction,
+//                         'currency' => $request->currency,
+//                     ];
+//                 });
+
+//                 event(new \App\Events\DashboardUpdated());
+
+//                 $paymentController = app(PaymentController::class);
+//                 $request->merge([
+//                     'transaction_id' => $transactionData['transaction']->id,
+//                     'currency' => $transactionData['currency'],
+//                     'user_id' => $user->id
+//                 ]);
+
+//                 return $paymentController->createInvoice($request);
+//             } finally {
+//                 foreach ($locks as $lock) {
+//                     $lock->release();
+//                 }
+//             }
+//         } catch (\Throwable $e) {
+//             report($e);
+//             Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+//             return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
+//         }
+//     }
+
+//     // public function index(Request $request)
+//     // {
+//     //     $transactions = Transaction::with(['details.product', 'payment', 'address'])
+//     //         ->where('user_id', $request->user()->id)
+//     //         ->latest()
+//     //         ->paginate(20);
+
+//     //     return response()->json($transactions);
+//     // }
+
+//     public function index(Request $request)
+//     {
+//         $query = Transaction::with(['details.product', 'payment', 'address'])
+//             ->where('user_id', $request->user()->id);
+
+//         // 1. Abaikan Ghost Order
+//         $query->where('status', '!=', 'awaiting_payment');
+
+//         // 2. Filter Pencarian (Search)
+//         if ($request->has('search') && $request->search != '') {
+//             $search = $request->search;
+//             $query->where(function ($q) use ($search) {
+//                 $q
+//                     ->where('order_id', 'like', "%{$search}%")
+//                     ->orWhere('payment_method', 'like', "%{$search}%")
+//                     ->orWhere('courier_company', 'like', "%{$search}%")
+//                     ->orWhere('tracking_number', 'like', "%{$search}%");
+//             });
+//         }
+
+//         // 3. Filter Kategori Tab
+//         if ($request->has('tab') && $request->tab != 'all') {
+//             $tab = $request->tab;
+//             if ($tab === 'unpaid') {
+//                 $query->where('status', 'pending');
+//             } elseif ($tab === 'to_ship') {
+//                 $query
+//                     ->where('status', 'processing')
+//                     ->whereIn('shipping_status', ['pending', 'placed', 'confirmed', 'allocated', 'picking_up', 'picked']);
+//             } elseif ($tab === 'shipping') {
+//                 $query->where('shipping_status', 'dropping_off');
+//             } elseif ($tab === 'completed') {
+//                 $query->where(function ($q) {
+//                     $q
+//                         ->where('status', 'completed')
+//                         ->orWhere('shipping_status', 'delivered');
+//                 });
+//             } elseif ($tab === 'cancelled') {
+//                 $query->where('status', 'cancelled');
+//             } elseif ($tab === 'issues') {
+//                 $query->where(function ($q) {
+//                     $q
+//                         ->whereIn('status', ['refund_requested', 'refund_approved', 'refund_rejected', 'refund_manual_required', 'refunded', 'returned', 'shipping_failed'])
+//                         ->orWhereIn('shipping_status', ['on_hold', 'return_in_transit', 'rejected', 'disposed', 'courier_not_found']);
+//                 });
+//             }
+//         }
+
+//         // 4. Paginasi Otomatis
+//         $transactions = $query->latest()->paginate(20);
+
+//         return response()->json($transactions);
+//     }
+
+//     // public function allTransactions()
+//     // {
+//     //     $transactions = Transaction::with(['user', 'details.product', 'address'])
+//     //         ->latest()
+//     //         ->get();
+
+//     //     return response()->json($transactions);
+//     // }
+
+//     public function allTransactions()
+//     {
+//         $transactions = Transaction::with(['user', 'details.product', 'address'])
+//             ->latest()
+//             ->paginate(20);
+
+//         return response()->json($transactions);
+//     }
+
+//     public function cancelOrder(Request $request, $id, CancelTransactionAction $cancelTransaction, BiteshipService $biteship)
+//     {
+//         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+//         if (!in_array($transaction->status, ['awaiting_payment', 'pending', 'processing'])) {
+//             return response()->json(['message' => 'Cannot cancel this order.'], 400);
+//         }
+
+//         try {
+//             $result = $cancelTransaction->execute($transaction, $biteship);
+
+//             $this->clearTransactionProductCache($transaction);
+//             $this->revokeMembershipIfBelowThreshold($transaction->user);
+
+//             event(new \App\Events\DashboardUpdated());
+
+//             return response()->json(['message' => $result['message']]);
+//         } catch (\Exception $e) {
+//             return response()->json(['message' => $e->getMessage()], 400);
+//         }
+//     }
+
+//     // public function confirmComplete(Request $request, $id, FcmService $fcmService)
+//     // {
+//     //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+//     //     if ($transaction->status !== 'processing') {
+//     //         return response()->json(['message' => 'Order cannot be completed yet.'], 400);
+//     //     }
+
+//     //     $transaction->update(['status' => 'completed']);
+
+//     //     if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
+//     //         $transaction->update(['commission_status' => 'settled']);
+
+//     //         $affiliate = User::find($transaction->affiliate_id);
+//     //         if ($affiliate) {
+//     //             $affiliate->increment('commission_balance', $transaction->commission_earned);
+//     //         }
+//     //     }
+
+//     //     $this->checkAndAssignMembership($transaction->user);
+
+//     //     $transaction->user->refresh();
+//     //     if ($transaction->point > 0 && $transaction->user->is_membership) {
+//     //         $transaction->user->increment('point', $transaction->point);
+//     //     }
+
+//     //     if ($transaction->user && $transaction->user->fcm_token) {
+//     //         $fcmService->sendPushNotification(
+//     //             $transaction->user->fcm_token,
+//     //             "Pesanan Selesai 🎉",
+//     //             "Terima kasih telah berbelanja! Anda mendapatkan +{$transaction->point} Poin Loyalitas."
+//     //         );
+//     //     }
+
+//     //     event(new \App\Events\DashboardUpdated());
+
+//     //     return response()->json(['message' => 'Order completed!']);
+//     // }
+
+//     // public function confirmComplete(Request $request, $id)
+//     // {
+//     //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+//     //     if ($transaction->status !== 'processing') {
+//     //         return response()->json(['message' => 'Order cannot be completed yet.'], 400);
+//     //     }
+
+//     //     // 👇 Saat baris update ini tereksekusi, Model Event di atas
+//     //     // akan otomatis terpanggil dan membereskan urusan Poin, Afiliasi, & FCM! 👇
+//     //     // $transaction->update(['status' => 'completed']);
+
+//     //     // 👇 PANGGIL FUNGSI EKSPLISIT 👇
+//     //     $transaction->markAsCompleted();
+
+//     //     event(new \App\Events\DashboardUpdated());
+
+//     //     return response()->json(['message' => 'Order completed!']);
+//     // }
+
+//     public function confirmComplete(Request $request, $id)
+//     {
+//         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+//         if ($transaction->status !== 'processing') {
+//             return response()->json(['message' => 'Order cannot be completed yet.'], 400);
+//         }
+
+//         $transaction->markAsCompleted();
+//         event(new \App\Events\DashboardUpdated());
+
+//         // Tarik data user terbaru untuk pembuktian
+//         $freshUser = $request->user()->fresh();
+
+//         return response()->json([
+//             'message' => 'Order completed!',
+//             'new_point_balance' => $freshUser->point,
+//             'is_member' => $freshUser->is_membership
+//         ]);
+//     }
+
+//     public function requestRefund(Request $request, $id, FileUploadService $fileUpload)
+//     {
+//         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
+
+//         if (!in_array($transaction->status, ['completed', 'shipping_failed'])) {
+//             return response()->json(['message' => 'Cannot request refund for this order state.'], 400);
+//         }
+
+//         $request->validate([
+//             'reason' => 'required|string|max:1000',
+//             'proof_file' => 'required|file|mimes:jpeg,png,jpg,mp4,mov|max:10240',
+//         ]);
+
+//         try {
+//             $proofUrl = $fileUpload->uploadToS3($request->file('proof_file'), 'refund_proofs');
+
+//             $transaction->update([
+//                 'status' => 'refund_requested',
+//                 'refund_reason' => $request->reason,
+//                 'refund_proof_url' => $proofUrl,
+//             ]);
+
+//             event(new \App\Events\DashboardUpdated());
+//             return response()->json(['message' => 'Refund requested successfully. Waiting for admin approval.']);
+//         } catch (\Exception $e) {
+//             Log::error('Upload refund proof gagal: ' . $e->getMessage());
+//             return response()->json(['message' => 'Failed to process refund request. Please try again.'], 500);
+//         }
+//     }
+
+//     public function processRefundUser(Request $request, $id, ProcessRefundAction $processRefund, BiteshipService $biteship)
+//     {
+//         try {
+//             $result = $processRefund->execute($id, $biteship);
+
+//             $transaction = Transaction::with(['details', 'user'])->find($id);
+//             $this->clearTransactionProductCache($transaction);
+//             $this->revokeMembershipIfBelowThreshold($transaction->user);
+
+//             event(new \App\Events\DashboardUpdated());
+
+//             return response()->json($result);
+//         } catch (\Exception $e) {
+//             return response()->json(['message' => $e->getMessage()], 400);
+//         }
+//     }
+
+//     public function approveRefund($id)
+//     {
+//         $transaction = Transaction::with('user')->findOrFail($id);
+
+//         if ($transaction->status !== 'refund_requested') {
+//             return response()->json(['message' => 'Invalid status'], 400);
+//         }
+
+//         $transaction->update(['status' => 'refund_approved']);
+
+//         try {
+//             Mail::to($transaction->user->email)->send(new RefundResultMail($transaction, 'approve'));
+//         } catch (\Exception $e) {
+//             report($e);
+//             Log::error("Gagal kirim email Approve Refund ke {$transaction->user->email}: " . $e->getMessage());
+//         }
+
+//         event(new \App\Events\DashboardUpdated());
+
+//         return response()->json(['message' => 'Refund request approved. Email sent to customer.']);
+//     }
+
+//     public function rejectRefund($id)
+//     {
+//         $transaction = Transaction::with('user')->findOrFail($id);
+
+//         if ($transaction->status !== 'refund_requested') {
+//             return response()->json(['message' => 'Invalid status'], 400);
+//         }
+
+//         $transaction->update(['status' => 'refund_rejected']);
+
+//         try {
+//             Mail::to($transaction->user->email)->send(new RefundResultMail($transaction, 'reject'));
+//         } catch (\Exception $e) {
+//             report($e);
+//             Log::error("Gagal kirim email Reject Refund ke {$transaction->user->email}: " . $e->getMessage());
+//         }
+
+//         event(new \App\Events\DashboardUpdated());
+
+//         return response()->json(['message' => 'Refund request rejected. Email sent to customer.']);
+//     }
+
+//     public function show($id)
+//     {
+//         return response()->json(Transaction::with(['user', 'details.product', 'payment', 'address'])->findOrFail($id));
+//     }
+
+//     public function adminShow($id)
+//     {
+//         $transaction = Transaction::with(['user', 'details.product', 'address', 'payment'])
+//             ->findOrFail($id);
+
+//         return response()->json($transaction);
+//     }
+
+//     public function salesReport(Request $request)
+//     {
+//         $month = $request->query('month');
+//         $year = $request->query('year');
+//         $search = $request->query('search');
+
+//         $query = \App\Models\MonthlySalesAggregate::query()
+//             ->select(
+//                 'product_id as id',
+//                 'product_code as code',
+//                 'product_name as name',
+//                 'product_image as image',
+//                 'category_name',
+//                 DB::raw('SUM(total_sold) as total_sold'),
+//                 DB::raw('SUM(total_revenue) as total_revenue')
+//             );
+
+//         if ($month && $year) {
+//             $query->where('month', $month)->where('year', $year);
+//         } elseif ($year) {
+//             $query->where('year', $year);
+//         }
+
+//         if ($search) {
+//             $query->where(function ($q) use ($search) {
+//                 $q
+//                     ->where('product_name', 'like', "%{$search}%")
+//                     ->orWhere('product_code', 'like', "%{$search}%");
+//             });
+//         }
+
+//         $report = $query
+//             ->groupBy('product_id', 'product_code', 'product_name', 'product_image', 'category_name')
+//             ->orderByDesc('total_revenue')
+//             ->get();
+
+//         return response()->json([
+//             'data' => $report,
+//         ]);
+//     }
+
+//     public function trackOrder($id, BiteshipService $biteship)
+//     {
+//         $transaction = Transaction::where('user_id', request()->user()->id)->findOrFail($id);
+
+//         // 👇 [PERBAIKAN TYPO] Menggunakan ||
+//         if ($transaction->shipping_method !== 'biteship' || !$transaction->biteship_order_id)
+//             return response()->json(['message' => 'Tracking unavailable.'], 400);
+
+//         try {
+//             $data = $biteship->getOrderTracking($transaction->biteship_order_id);
+//             if (isset($data['success']) && $data['success'] === false)
+//                 return response()->json(['message' => $data['error'] ?? 'Order not found'], 400);
+//             return response()->json($data);
+//         } catch (\Exception $e) {
+//             return response()->json(['message' => 'Failed to track: ' . $e->getMessage()], 500);
+//         }
+//     }
+
+//     public function bulkTrackOrders(Request $request)
+//     {
+//         $request->validate([
+//             'transaction_ids' => 'required|array',
+//             'transaction_ids.*' => 'integer|exists:transactions,id',
+//         ]);
+
+//         $transactions = Transaction::where('user_id', $request->user()->id)
+//             ->whereIn('id', $request->transaction_ids)
+//             ->whereNotNull('biteship_order_id')
+//             ->where('shipping_method', 'biteship')
+//             ->get();
+
+//         $trackingData = [];
+
+//         foreach ($transactions as $transaction) {
+//             try {
+//                 $response = Http::withHeaders([
+//                     'Authorization' => config('services.biteship.api_key'),
+//                 ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
+
+//                 if (isset($response['success']) && $response['success'] === true) {
+//                     $trackingData[$transaction->id] = $response->json();
+//                 } else {
+//                     $trackingData[$transaction->id] = ['status' => 'pending'];
+//                 }
+//             } catch (\Exception $e) {
+//                 report($e);
+//                 $trackingData[$transaction->id] = ['status' => 'error fetching data'];
+//             }
+//         }
+
+//         return response()->json($trackingData);
+//     }
+
+//     public function adminBulkTrackOrders(Request $request, BiteshipService $biteship)
+//     {
+//         $request->validate(['transaction_ids' => 'required|array', 'transaction_ids.*' => 'integer|exists:transactions,id']);
+//         if (count($request->transaction_ids) > 20)
+//             return response()->json(['message' => 'Max 20 tracking at once.'], 422);
+
+//         $transactions = Transaction::whereIn('id', $request->transaction_ids)->whereNotNull('biteship_order_id')->where('shipping_method', 'biteship')->get();
+//         if ($transactions->isEmpty())
+//             return response()->json([]);
+
+//         $biteshipIds = $transactions->pluck('biteship_order_id', 'id')->toArray();
+//         $trackingData = $biteship->getBulkTrackingParallel(array_values($biteshipIds));
+
+//         $finalData = [];
+//         foreach ($biteshipIds as $transactionId => $bId) {
+//             $finalData[$transactionId] = $trackingData[$bId] ?? ['status' => 'pending/error'];
+//         }
+//         return response()->json($finalData);
+//     }
+
+//     public function adminTrackOrder($id)
+//     {
+//         $transaction = Transaction::findOrFail($id);
+
+//         // 👇 [PERBAIKAN TYPO] Menggunakan ||
+//         if ($transaction->shipping_method !== 'biteship' || !$transaction->biteship_order_id) {
+//             return response()->json(['message' => 'Tracking information is not available yet.'], 400);
+//         }
+
+//         try {
+//             $response = Http::withHeaders([
+//                 'Authorization' => config('services.biteship.api_key'),
+//             ])->get('https://api.biteship.com/v1/orders/' . $transaction->biteship_order_id);
+
+//             $data = $response->json();
+
+//             if (isset($data['success']) && $data['success'] === false) {
+//                 return response()->json(['message' => $data['error'] ?? 'Order not found in Logistics'], 400);
+//             }
+
+//             return response()->json($data);
+//         } catch (\Exception $e) {
+//             report($e);
+//             return response()->json(['message' => 'Failed to retrieve tracking data: ' . $e->getMessage()], 500);
+//         }
+//     }
+
+//     public function printLabel(Request $request, $id, BiteshipService $biteship)
+//     {
+//         $transaction = Transaction::findOrFail($id);
+//         if (!$transaction->biteship_order_id)
+//             return response()->json(['message' => 'No Biteship ID'], 404);
+
+//         try {
+//             $response = $biteship->getLabelPdfResponse($transaction->biteship_order_id, http_build_query($request->all()));
+//             if ($response->successful()) {
+//                 return response($response->body(), 200)
+//                     ->header('Content-Type', 'application/pdf')
+//                     ->header('Content-Disposition', 'inline; filename="Resi-' . $transaction->order_id . '.pdf"');
+//             }
+//             return response()->json(['message' => 'Gagal mengambil resi'], 400);
+//         } catch (\Exception $e) {
+//             return response()->json(['message' => 'System error: ' . $e->getMessage()], 500);
+//         }
+//     }
+
+//     public function biteshipCallback(Request $request)
+//     {
+//         $payload = $request->all();
+//         Log::info('Biteship Webhook Received (Queued): ', ['order_id' => $payload['order_id'] ?? null]);
+
+//         \App\Jobs\ProcessBiteshipWebhookJob::dispatch($payload);
+
+//         return response()->json(['message' => 'Webhook received and queued'], 200);
+//     }
+
+//     // public function forceDeleteTransaction(Request $request, $id, BiteshipService $biteship, RestoreInventoryAction $restoreInventory)
+//     // {
+//     //     $transaction = Transaction::with(['details', 'payment', 'user'])->find($id);
+
+//     //     if (!$transaction) {
+//     //         return response()->json(['message' => 'Transaksi tidak ditemukan.'], 404);
+//     //     }
+
+//     //     if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+//     //         try { $biteship->cancelOrder($transaction->biteship_order_id); } catch (\Exception $e) {}
+//     //     }
+
+//     //     DB::transaction(function () use ($transaction, $restoreInventory) {
+//     //         $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
+
+//     //         if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+//     //             foreach ($transaction->details as $detail) {
+//     //                 $restoreInventory->execute($detail->product_id, $detail->quantity);
+//     //             }
+//     //         }
+
+//     //         if ($transaction->points_used > 0 && !in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+//     //             $transaction->user->increment('point', $transaction->points_used);
+//     //         }
+
+//     //         if ($transaction->payment) {
+//     //             $transaction->payment->delete();
+//     //         }
+
+//     //         $this->clearTransactionProductCache($transaction);
+
+//     //         foreach ($transaction->details as $detail) {
+//     //             $detail->delete();
+//     //         }
+
+//     //         $transaction->delete();
+//     //     });
+
+//     //     $this->revokeMembershipIfBelowThreshold($transaction->user);
+
+//     //     event(new \App\Events\DashboardUpdated());
+//     //     return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
+//     // }
+
+//     public function forceDeleteTransaction(Request $request, $id, BiteshipService $biteship, RestoreInventoryAction $restoreInventory)
+//     {
+//         $transaction = Transaction::with(['details', 'payment', 'user'])->find($id);
+
+//         if (!$transaction) {
+//             return response()->json(['message' => 'Transaksi tidak ditemukan.'], 404);
+//         }
+
+//         if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
+//             try {
+//                 $biteship->cancelOrder($transaction->biteship_order_id);
+//             } catch (\Exception $e) {
+//             }
+//         }
+
+//         DB::transaction(function () use ($transaction, $restoreInventory) {
+//             $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
+
+//             // 👇 PERBAIKAN: Sortir ID Produk sebelum di Restore 👇
+//             $sortedDetails = $transaction->details->sortBy('product_id');
+
+//             if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+//                 foreach ($sortedDetails as $detail) {
+//                     $restoreInventory->execute($detail->product_id, $detail->quantity);
+//                 }
+//             }
+
+//             if ($transaction->points_used > 0 && !in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
+//                 $transaction->user->increment('point', $transaction->points_used);
+//             }
+
+//             if ($transaction->payment) {
+//                 $transaction->payment->delete();
+//             }
+
+//             $this->clearTransactionProductCache($transaction);
+
+//             // Karena data mau dihapus permanen, urutan delete child record tidak memicu deadlock stok
+//             foreach ($transaction->details as $detail) {
+//                 $detail->delete();
+//             }
+
+//             $transaction->delete();
+//         });
+
+//         $this->revokeMembershipIfBelowThreshold($transaction->user);
+
+//         event(new \App\Events\DashboardUpdated());
+//         return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
+//     }
+// }
+
 namespace App\Http\Controllers;
 
 use App\Models\Cart;
@@ -1054,6 +2062,7 @@ use App\Mail\RefundResultMail;
 use App\Services\BiteshipService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\FileUploadService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use App\Services\PromoMerdekaService;
@@ -1064,14 +2073,9 @@ use App\Actions\Order\CancelTransactionAction;
 use App\Actions\Checkout\DeductInventoryAction;
 use App\Actions\Checkout\CreateTransactionAction;
 use App\Actions\Checkout\CalculateCartTotalsAction;
-use App\Services\FileUploadService;  // Pastikan Anda sudah membuat file ini di App\Services
 
 class TransactionController extends Controller
 {
-    // =========================================================================
-    // HELPER FUNCTIONS (Prinsip DRY - Don't Repeat Yourself)
-    // =========================================================================
-
     private function clearTransactionProductCache(Transaction $transaction)
     {
         foreach ($transaction->details as $detail) {
@@ -1081,8 +2085,7 @@ class TransactionController extends Controller
 
     private function checkAndAssignMembership(User $user)
     {
-        if ($user->is_membership)
-            return;
+        if ($user->is_membership) return;
         $totalSpent = Transaction::where('user_id', $user->id)->where('status', 'completed')->sum('total_amount');
         if ($totalSpent >= 100000) {
             $user->update(['is_membership' => true]);
@@ -1091,8 +2094,7 @@ class TransactionController extends Controller
 
     private function revokeMembershipIfBelowThreshold(User $user)
     {
-        if (!$user->is_membership)
-            return;
+        if (!$user->is_membership) return;
         $totalSpent = Transaction::where('user_id', $user->id)->where('status', 'completed')->sum('total_amount');
         if ($totalSpent < 100000) {
             $user->update(['is_membership' => false]);
@@ -1101,14 +2103,10 @@ class TransactionController extends Controller
 
     public function restoreProductStock($productId, $quantityToRestore)
     {
-        if ($quantityToRestore <= 0) {
-            return;
-        }
+        if ($quantityToRestore <= 0) return;
 
         $product = Product::lockForUpdate()->find($productId);
-        if (!$product) {
-            return;
-        }
+        if (!$product) return;
 
         $remainingToRestore = $quantityToRestore;
 
@@ -1119,9 +2117,7 @@ class TransactionController extends Controller
             ->get();
 
         foreach ($incompleteBatches as $batch) {
-            if ($remainingToRestore <= 0) {
-                break;
-            }
+            if ($remainingToRestore <= 0) break;
 
             $spaceAvailable = $batch->initial_quantity - $batch->quantity;
 
@@ -1156,171 +2152,6 @@ class TransactionController extends Controller
         $product->increment('stock', $quantityToRestore);
     }
 
-    // --- USER ACTIONS ---
-    // public function checkout(
-    //     Request $request,
-    //     PromoMerdekaService $promoService,
-    //     CalculateCartTotalsAction $calculateTotals,
-    //     CreateTransactionAction $createTransaction,
-    //     DeductInventoryAction $deductInventory
-    // ) {
-    //     try {
-    //         $request->validate([
-    //             'address_id' => 'required',
-    //             'shipping_method' => 'required|in:free,biteship',
-    //             'use_points' => 'nullable|integer|min:0',
-    //             'cart_ids' => 'required|array',
-    //             'cart_ids.*' => 'exists:carts,id',
-    //             'shipping_cost' => 'nullable|numeric',
-    //             'courier_company' => 'nullable|string',
-    //             'courier_type' => 'nullable|string',
-    //             'delivery_type' => 'nullable|string',
-    //             'currency' => 'required|string',
-    //             'referral_code' => 'nullable|string',
-    //         ]);
-
-    //         $user = $request->user();
-
-    //         $cartItems = Cart::with('product.category')
-    //             ->where('user_id', $user->id)
-    //             ->whereIn('id', $request->cart_ids)
-    //             ->get();
-
-    //         if ($cartItems->isEmpty()) {
-    //             return response()->json(['message' => 'No items selected for checkout'], 400);
-    //         }
-
-    //         $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
-    //             $lockedUser = User::lockForUpdate()->find($user->id);
-
-    //             $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
-    //             $transaction = $createTransaction->execute($lockedUser, $request, $totals);
-    //             $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
-
-    //             return [
-    //                 'transaction' => $transaction,
-    //                 'currency' => $request->currency,
-    //             ];
-    //         });
-
-    //         event(new \App\Events\DashboardUpdated());
-
-    //         $paymentController = app(PaymentController::class);
-    //         $request->merge([
-    //             'transaction_id' => $transactionData['transaction']->id,
-    //             'currency' => $transactionData['currency']
-    //         ]);
-
-    //         return $paymentController->createInvoice($request);
-    //     } catch (\Throwable $e) {
-    //         report($e);
-    //         Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-    //         return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
-    //     }
-    // }
-
-    // --- USER ACTIONS ---
-    // public function checkout(
-    //     Request $request,
-    //     PromoMerdekaService $promoService,
-    //     CalculateCartTotalsAction $calculateTotals,
-    //     CreateTransactionAction $createTransaction,
-    //     DeductInventoryAction $deductInventory
-    // ) {
-    //     try {
-    //         $request->validate([
-    //             'address_id' => 'required',
-    //             'shipping_method' => 'required|in:free,biteship',
-    //             'use_points' => 'nullable|integer|min:0',
-    //             'cart_ids' => 'required|array',
-    //             'cart_ids.*' => 'exists:carts,id',
-    //             'shipping_cost' => 'nullable|numeric',
-    //             'courier_company' => 'nullable|string',
-    //             'courier_type' => 'nullable|string',
-    //             'delivery_type' => 'nullable|string',
-    //             'currency' => 'required|string',
-    //             'referral_code' => 'nullable|string',
-    //         ]);
-
-    //         $user = $request->user();
-
-    //         $cartItems = Cart::with('product.category')
-    //             ->where('user_id', $user->id)
-    //             ->whereIn('id', $request->cart_ids)
-    //             ->get();
-
-    //         if ($cartItems->isEmpty()) {
-    //             return response()->json(['message' => 'No items selected for checkout'], 400);
-    //         }
-
-    //         // =========================================================================
-    //         // [FITUR SENIOR] REDIS REDLOCK (ATOMIC LOCK) - PENCEGAH OVERSELLING
-    //         // =========================================================================
-    //         $locks = [];
-
-    //         // Urutkan ID produk untuk mencegah Deadlock pada sistem Redis
-    //         $productIds = $cartItems->pluck('product_id')->sort()->unique();
-
-    //         foreach ($productIds as $pId) {
-    //             // Kunci produk di RAM (Redis) selama 15 detik khusus untuk transaksi ini.
-    //             // Parameter block(5) berarti jika ada pengguna lain yang checkout barang yang sama di detik yang sama,
-    //             // sistem akan menyuruh mereka "mengantre" maksimal 5 detik.
-    //             $lock = Cache::lock('checkout_product_' . $pId, 15);
-
-    //             if (!$lock->block(5)) {
-    //                 // Jika antrean > 5 detik (trafik flash sale meledak), gagalkan dengan kode 429
-    //                 foreach ($locks as $acquiredLock) {
-    //                     $acquiredLock->release();
-    //                 }
-    //                 return response()->json([
-    //                     'message' => 'Lalu lintas antrean sangat padat untuk barang ini. Sistem sedang mengamankan stok Anda, silakan klik tombol Pay Now sekali lagi dalam beberapa detik.'
-    //                 ], 429);
-    //             }
-    //             $locks[] = $lock;
-    //         }
-
-    //         // Jika semua kunci produk di keranjang berhasil didapat, eksekusi pemotongan stok DB!
-    //         try {
-    //             $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
-    //                 $lockedUser = User::lockForUpdate()->find($user->id);
-
-    //                 $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
-    //                 $transaction = $createTransaction->execute($lockedUser, $request, $totals);
-
-    //                 // Disini MySQL mengeksekusi pemotongan stok dengan rasa aman 100% tanpa Race Condition
-    //                 $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
-
-    //                 return [
-    //                     'transaction' => $transaction,
-    //                     'currency' => $request->currency,
-    //                 ];
-    //             });
-
-    //             event(new \App\Events\DashboardUpdated());
-
-    //             $paymentController = app(PaymentController::class);
-    //             $request->merge([
-    //                 'transaction_id' => $transactionData['transaction']->id,
-    //                 'currency' => $transactionData['currency']
-    //             ]);
-
-    //             return $paymentController->createInvoice($request);
-
-    //         } finally {
-    //             // WAJIB: Lepaskan kunci Redis segera setelah transaksi sukses/gagal
-    //             // agar pengunjung dalam antrean berikutnya bisa masuk
-    //             foreach ($locks as $lock) {
-    //                 $lock->release();
-    //             }
-    //         }
-    //     } catch (\Throwable $e) {
-    //         report($e);
-    //         Log::error('CHECKOUT FATAL ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-    //         return response()->json(['message' => 'Internal Server Error: ' . $e->getMessage()], 500);
-    //     }
-    // }
-
-    // --- USER ACTIONS ---
     public function checkout(
         Request $request,
         PromoMerdekaService $promoService,
@@ -1329,7 +2160,6 @@ class TransactionController extends Controller
         DeductInventoryAction $deductInventory
     ) {
         try {
-            // 👇 [GUEST CHECKOUT 1] Validasi Fleksibel 👇
             $rules = [
                 'shipping_method' => 'required|in:free,biteship',
                 'use_points' => 'nullable|integer|min:0',
@@ -1353,19 +2183,12 @@ class TransactionController extends Controller
 
             $request->validate($rules);
 
-            // 👇 [GUEST CHECKOUT 2] Pembuatan Shadow User 👇
             if ($request->is_guest) {
                 $guest = $request->guest_data;
 
-                // 1. Cari user berdasarkan email, jika tidak ada, buat Shadow User
                 $user = User::firstOrCreate(
                     ['email' => $guest['email']],
                     [
-                        // 'name' => trim($guest['first_name'] . ' ' . ($guest['last_name'] ?? '')),
-                        // 'phone' => $guest['phone'],
-                        // 'password' => bcrypt(Str::random(16)), // Password acak agar aman
-                        // 'usertype' => 'guest', // Menandai ini bukan akun resmi
-                        // 👇 PERBAIKAN: Gunakan first_name dan last_name sesuai struktur DB 👇
                         'first_name' => $guest['first_name'],
                         'last_name' => $guest['last_name'] ?? '',
                         'phone' => $guest['phone'],
@@ -1374,7 +2197,6 @@ class TransactionController extends Controller
                     ]
                 );
 
-                // 2. Simpan Alamat Pengiriman ke Database
                 $address = \App\Models\Address::create([
                     'user_id' => $user->id,
                     'first_name_address' => $guest['first_name'],
@@ -1388,7 +2210,6 @@ class TransactionController extends Controller
                     'is_default' => true,
                 ]);
 
-                // 3. Masukkan item dari LocalStorage ke tabel Carts
                 $cartIds = [];
                 foreach ($request->cart_items as $cItem) {
                     $product = Product::find($cItem['product_id']);
@@ -1404,25 +2225,19 @@ class TransactionController extends Controller
                     }
                 }
 
-                // 4. Inject Data Shadow ke dalam Request (Trik Tingkat Lanjut)
                 $request->merge([
                     'address_id' => $address->id,
                     'cart_ids' => $cartIds
                 ]);
                 $request->setUserResolver(function () use ($user) {
-                    return $user;  // Mulai dari baris ini, Laravel mengira pengguna sudah login!
+                    return $user;
                 });
             } else {
-                // $user = $request->user();
                 $user = $request->user('sanctum');
-
-                // 👇 TAMBAHKAN KODE INI 👇
-                // Agar PaymentController yang menggunakan $request->user() tidak bernilai null
                 $request->setUserResolver(function () use ($user) {
                     return $user;
                 });
             }
-            // 👆 ========================================= 👆
 
             $cartItems = Cart::with('product.category')
                 ->where('user_id', $user->id)
@@ -1433,16 +2248,10 @@ class TransactionController extends Controller
                 return response()->json(['message' => 'No items selected for checkout'], 400);
             }
 
-            // =========================================================================
-            // [FITUR SENIOR] REDIS REDLOCK (ATOMIC LOCK) - PENCEGAH OVERSELLING
-            // =========================================================================
             $locks = [];
-
-            // Urutkan ID produk untuk mencegah Deadlock pada sistem Redis
             $productIds = $cartItems->pluck('product_id')->sort()->unique();
 
             foreach ($productIds as $pId) {
-                // Kunci produk di RAM (Redis) selama 15 detik khusus untuk transaksi ini.
                 $lock = Cache::lock('checkout_product_' . $pId, 15);
 
                 if (!$lock->block(5)) {
@@ -1456,7 +2265,6 @@ class TransactionController extends Controller
                 $locks[] = $lock;
             }
 
-            // Jika semua kunci produk di keranjang berhasil didapat, eksekusi pemotongan stok DB!
             try {
                 $transactionData = DB::transaction(function () use ($user, $cartItems, $request, $promoService, $calculateTotals, $createTransaction, $deductInventory) {
                     $lockedUser = User::lockForUpdate()->find($user->id);
@@ -1464,7 +2272,6 @@ class TransactionController extends Controller
                     $totals = $calculateTotals->execute($lockedUser, $cartItems, $request, $promoService);
                     $transaction = $createTransaction->execute($lockedUser, $request, $totals);
 
-                    // Disini MySQL mengeksekusi pemotongan stok dengan rasa aman 100% tanpa Race Condition
                     $deductInventory->execute($transaction, $cartItems, $totals['finalItemPrices']);
 
                     return [
@@ -1495,25 +2302,13 @@ class TransactionController extends Controller
         }
     }
 
-    // public function index(Request $request)
-    // {
-    //     $transactions = Transaction::with(['details.product', 'payment', 'address'])
-    //         ->where('user_id', $request->user()->id)
-    //         ->latest()
-    //         ->paginate(20);
-
-    //     return response()->json($transactions);
-    // }
-
     public function index(Request $request)
     {
         $query = Transaction::with(['details.product', 'payment', 'address'])
             ->where('user_id', $request->user()->id);
 
-        // 1. Abaikan Ghost Order
         $query->where('status', '!=', 'awaiting_payment');
 
-        // 2. Filter Pencarian (Search)
         if ($request->has('search') && $request->search != '') {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -1525,7 +2320,6 @@ class TransactionController extends Controller
             });
         }
 
-        // 3. Filter Kategori Tab
         if ($request->has('tab') && $request->tab != 'all') {
             $tab = $request->tab;
             if ($tab === 'unpaid') {
@@ -1553,20 +2347,10 @@ class TransactionController extends Controller
             }
         }
 
-        // 4. Paginasi Otomatis
         $transactions = $query->latest()->paginate(20);
 
         return response()->json($transactions);
     }
-
-    // public function allTransactions()
-    // {
-    //     $transactions = Transaction::with(['user', 'details.product', 'address'])
-    //         ->latest()
-    //         ->get();
-
-    //     return response()->json($transactions);
-    // }
 
     public function allTransactions()
     {
@@ -1599,65 +2383,6 @@ class TransactionController extends Controller
         }
     }
 
-    // public function confirmComplete(Request $request, $id, FcmService $fcmService)
-    // {
-    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
-
-    //     if ($transaction->status !== 'processing') {
-    //         return response()->json(['message' => 'Order cannot be completed yet.'], 400);
-    //     }
-
-    //     $transaction->update(['status' => 'completed']);
-
-    //     if ($transaction->affiliate_id && $transaction->commission_status === 'pending') {
-    //         $transaction->update(['commission_status' => 'settled']);
-
-    //         $affiliate = User::find($transaction->affiliate_id);
-    //         if ($affiliate) {
-    //             $affiliate->increment('commission_balance', $transaction->commission_earned);
-    //         }
-    //     }
-
-    //     $this->checkAndAssignMembership($transaction->user);
-
-    //     $transaction->user->refresh();
-    //     if ($transaction->point > 0 && $transaction->user->is_membership) {
-    //         $transaction->user->increment('point', $transaction->point);
-    //     }
-
-    //     if ($transaction->user && $transaction->user->fcm_token) {
-    //         $fcmService->sendPushNotification(
-    //             $transaction->user->fcm_token,
-    //             "Pesanan Selesai 🎉",
-    //             "Terima kasih telah berbelanja! Anda mendapatkan +{$transaction->point} Poin Loyalitas."
-    //         );
-    //     }
-
-    //     event(new \App\Events\DashboardUpdated());
-
-    //     return response()->json(['message' => 'Order completed!']);
-    // }
-
-    // public function confirmComplete(Request $request, $id)
-    // {
-    //     $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
-
-    //     if ($transaction->status !== 'processing') {
-    //         return response()->json(['message' => 'Order cannot be completed yet.'], 400);
-    //     }
-
-    //     // 👇 Saat baris update ini tereksekusi, Model Event di atas
-    //     // akan otomatis terpanggil dan membereskan urusan Poin, Afiliasi, & FCM! 👇
-    //     // $transaction->update(['status' => 'completed']);
-
-    //     // 👇 PANGGIL FUNGSI EKSPLISIT 👇
-    //     $transaction->markAsCompleted();
-
-    //     event(new \App\Events\DashboardUpdated());
-
-    //     return response()->json(['message' => 'Order completed!']);
-    // }
-
     public function confirmComplete(Request $request, $id)
     {
         $transaction = Transaction::where('user_id', $request->user()->id)->findOrFail($id);
@@ -1669,7 +2394,6 @@ class TransactionController extends Controller
         $transaction->markAsCompleted();
         event(new \App\Events\DashboardUpdated());
 
-        // Tarik data user terbaru untuk pembuktian
         $freshUser = $request->user()->fresh();
 
         return response()->json([
@@ -1828,7 +2552,6 @@ class TransactionController extends Controller
     {
         $transaction = Transaction::where('user_id', request()->user()->id)->findOrFail($id);
 
-        // 👇 [PERBAIKAN TYPO] Menggunakan ||
         if ($transaction->shipping_method !== 'biteship' || !$transaction->biteship_order_id)
             return response()->json(['message' => 'Tracking unavailable.'], 400);
 
@@ -1901,7 +2624,6 @@ class TransactionController extends Controller
     {
         $transaction = Transaction::findOrFail($id);
 
-        // 👇 [PERBAIKAN TYPO] Menggunakan ||
         if ($transaction->shipping_method !== 'biteship' || !$transaction->biteship_order_id) {
             return response()->json(['message' => 'Tracking information is not available yet.'], 400);
         }
@@ -1953,50 +2675,6 @@ class TransactionController extends Controller
         return response()->json(['message' => 'Webhook received and queued'], 200);
     }
 
-    // public function forceDeleteTransaction(Request $request, $id, BiteshipService $biteship, RestoreInventoryAction $restoreInventory)
-    // {
-    //     $transaction = Transaction::with(['details', 'payment', 'user'])->find($id);
-
-    //     if (!$transaction) {
-    //         return response()->json(['message' => 'Transaksi tidak ditemukan.'], 404);
-    //     }
-
-    //     if ($transaction->shipping_method === 'biteship' && !empty($transaction->biteship_order_id)) {
-    //         try { $biteship->cancelOrder($transaction->biteship_order_id); } catch (\Exception $e) {}
-    //     }
-
-    //     DB::transaction(function () use ($transaction, $restoreInventory) {
-    //         $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
-
-    //         if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
-    //             foreach ($transaction->details as $detail) {
-    //                 $restoreInventory->execute($detail->product_id, $detail->quantity);
-    //             }
-    //         }
-
-    //         if ($transaction->points_used > 0 && !in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
-    //             $transaction->user->increment('point', $transaction->points_used);
-    //         }
-
-    //         if ($transaction->payment) {
-    //             $transaction->payment->delete();
-    //         }
-
-    //         $this->clearTransactionProductCache($transaction);
-
-    //         foreach ($transaction->details as $detail) {
-    //             $detail->delete();
-    //         }
-
-    //         $transaction->delete();
-    //     });
-
-    //     $this->revokeMembershipIfBelowThreshold($transaction->user);
-
-    //     event(new \App\Events\DashboardUpdated());
-    //     return response()->json(['message' => 'Transaksi berhasil dihapus secara permanen beserta stok yang dikembalikan.']);
-    // }
-
     public function forceDeleteTransaction(Request $request, $id, BiteshipService $biteship, RestoreInventoryAction $restoreInventory)
     {
         $transaction = Transaction::with(['details', 'payment', 'user'])->find($id);
@@ -2015,7 +2693,6 @@ class TransactionController extends Controller
         DB::transaction(function () use ($transaction, $restoreInventory) {
             $statusesThatAlreadyRestoredStock = ['refund_manual_required', 'cancelled', 'shipping_failed', 'returned', 'refunded'];
 
-            // 👇 PERBAIKAN: Sortir ID Produk sebelum di Restore 👇
             $sortedDetails = $transaction->details->sortBy('product_id');
 
             if (!in_array($transaction->status, $statusesThatAlreadyRestoredStock)) {
@@ -2034,7 +2711,6 @@ class TransactionController extends Controller
 
             $this->clearTransactionProductCache($transaction);
 
-            // Karena data mau dihapus permanen, urutan delete child record tidak memicu deadlock stok
             foreach ($transaction->details as $detail) {
                 $detail->delete();
             }

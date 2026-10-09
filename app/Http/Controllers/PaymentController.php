@@ -771,7 +771,6 @@ class PaymentController extends Controller
             ->where('user_id', $request->user()->id)
             ->findOrFail($request->transaction_id);
 
-        // Jika invoice sudah dibuat dan masih pending, jangan buat lagi (Mencegah Duplicate Job/Invoice)
         if ($transaction->payment && $transaction->payment->status === 'pending' && !empty($transaction->payment->checkout_url)) {
             return response()->json([
                 'checkout_url' => $transaction->payment->checkout_url,
@@ -807,9 +806,6 @@ class PaymentController extends Controller
             ]);
         }
 
-        // =====================================================================
-        // LOGIKA MATA UANG, DESIMAL & PRIVILEGE TIER
-        // =====================================================================
         $currency = $transaction->currency_code ?? 'IDR';
         $exchangeRate = 1;
 
@@ -818,34 +814,27 @@ class PaymentController extends Controller
             $exchangeRate = $rates[$currency] ?? 1;
         }
 
-        // Poin selalu berbasis IDR (1 Poin = 1000 IDR), lalu dikonversi ke mata uang tujuan.
         $pointsUsed = $transaction->points_used ?? 0;
         $basePointDiscountIDR = $pointsUsed * 1000;
         $pointDiscountAmount = round($basePointDiscountIDR * $exchangeRate, 2);
 
         $promoDiscount = round($transaction->promo_discount ?? 0, 2);
 
-        // --- LOGIKA HITUNG TIER PRIVILEGE BERDASARKAN STATUS FINAL SALE ---
         $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
         $tierDiscountAmount = 0;
 
         if ($tierDiscountPercentage > 0) {
             $discountableAmountIDR = 0;
-            $selectedItemIds = $request->tier_discount_item_ids ?? []; // Array Cart ID
+            $selectedItemIds = $request->tier_discount_item_ids ?? [];
 
             foreach ($transaction->details as $detail) {
-                // Lewati produk Clearance
                 if ($detail->product->is_final_sale) continue;
-
-                // Kasus Mixed Cart:
                 if (!empty($selectedItemIds) && !in_array($detail->cart_id, $selectedItemIds) && !in_array($detail->product_id, $selectedItemIds)) {
                     continue;
                 }
-
                 $discountableAmountIDR += ($detail->price * $detail->quantity);
             }
 
-            // Kurangi dengan diskon bundle agar tidak didiskon dobel (Opsional)
             $tierDiscountAmountIDR = $discountableAmountIDR * $tierDiscountPercentage;
             $tierDiscountAmount = round($tierDiscountAmountIDR * $exchangeRate, 2);
         }
@@ -855,15 +844,6 @@ class PaymentController extends Controller
 
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
 
-        // Kalkulasi Final Amount (Pastikan dalam mata uang asing jika dipilih)
-        // $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
-        // $basePriceShipping = 0;
-
-        // if ($transaction->shipping_cost > 0) {
-        //     $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
-        // }
-
-        // Kalkulasi Final Amount (Pastikan dalam mata uang asing jika dipilih)
         $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
         $basePriceShipping = 0;
 
@@ -871,24 +851,10 @@ class PaymentController extends Controller
             $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
         }
 
-        // 👇 PERBAIKAN SINTAKS MATH ROUND 👇
+        // PERBAIKAN SINTAKS MATH ROUND - HARAP JANGAN UBAH BAGIAN INI
         $mathTotal = $transactionTotalActiveCurrency + ($basePriceShipping * $totalQuantity) - $pointDiscountAmount - $promoDiscount - $tierDiscountAmount;
         $finalAmount = round($mathTotal, 2);
 
-        // Jika total akhir jadi 0 atau negatif, paksa jadi 0
-        if ($finalAmount < 0) {
-            $finalAmount = 0;
-        }
-
-        $finalAmount = round(
-            $transactionTotalActiveCurrency
-            + ($basePriceShipping * $totalQuantity)
-            - $pointDiscountAmount
-            - $promoDiscount
-            - $tierDiscountAmount,
-        2);
-
-        // Jika total akhir jadi 0 atau negatif, paksa jadi 0
         if ($finalAmount < 0) {
             $finalAmount = 0;
         }
@@ -922,7 +888,6 @@ class PaymentController extends Controller
             ]
         );
 
-        // Job pembatalan (TTL 24 Jam)
         \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addHours(24));
 
         return response()->json([
