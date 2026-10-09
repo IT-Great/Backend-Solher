@@ -284,7 +284,7 @@ class PaymentController extends Controller
             'payer_email'          => $transaction->user->email,
             'amount'               => $finalAmount,
             'currency'             => $currency,
-            'items'                => $items,
+            // 'items'                => $items,
             'success_redirect_url' => $dynamicSuccessUrl,
             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
