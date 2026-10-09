@@ -1493,9 +1493,9 @@ class CalculateCartTotalsAction
             } elseif ($promoCode === 'SOLHOST35') {
                 // 👇 [LOGIKA BARU] KODE PROMO SOLHOST35 👇
 
-                // Pengecekan Waktu (1 Okt 00:00 - 3 Okt 23:59)
+                // Pengecekan Waktu (1 Okt 00:00 - 9 Okt 23:59)
                 $promoStart = \Carbon\Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
-                $promoEnd = \Carbon\Carbon::create(now()->year, 10, 3, 23, 59, 59, 'Asia/Jakarta');
+                $promoEnd = \Carbon\Carbon::create(now()->year, 10, 9, 23, 59, 59, 'Asia/Jakarta');
 
                 if (now()->lessThan($promoStart)) {
                     throw new \Exception('Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!');
