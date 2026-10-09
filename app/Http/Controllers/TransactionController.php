@@ -2348,7 +2348,7 @@ class TransactionController extends Controller
         }
 
         // $transactions = $query->latest()->paginate(20);
-        $transactions = $query->latest();
+        $transactions = $query->latest()->get();
 
         return response()->json($transactions);
     }
@@ -2356,7 +2356,7 @@ class TransactionController extends Controller
     public function allTransactions()
     {
         $transactions = Transaction::with(['user', 'details.product', 'address'])
-            ->latest();
+            ->latest()->get();
             // ->paginate(20);
 
         return response()->json($transactions);
