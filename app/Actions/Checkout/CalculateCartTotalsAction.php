@@ -1299,6 +1299,410 @@
 //     }
 // }
 
+// namespace App\Actions\Checkout;
+
+// use App\Models\User;
+// use App\Models\PromoClaim;
+// use Illuminate\Http\Request;
+// use App\Services\PromoMerdekaService;
+
+// class CalculateCartTotalsAction
+// {
+//     public function execute(User $lockedUser, $cartItems, Request $request, PromoMerdekaService $promoService): array
+//     {
+//         $currency = $request->currency;
+//         $now = now();
+//         $totalAmount = 0;
+//         $finalItemPrices = [];
+
+//         // 1. KELOMPOKKAN ITEM BERDASARKAN KATEGORI & MIX GROUP
+//         $groupedItems = [];
+
+//         foreach ($cartItems as $item) {
+//             $cat = $item->product->category;
+//             if (!$cat)
+//                 continue;
+
+//             // BACA DARI PROMO CONFIG BARU
+//             $promoConf = $cat->promo_config ?? [];
+
+//             $now = now();
+//             $startDate = !empty($promoConf['start_date']) ? \Carbon\Carbon::parse($promoConf['start_date']) : null;
+//             $endDate = !empty($promoConf['end_date']) ? \Carbon\Carbon::parse($promoConf['end_date']) : null;
+
+//             $isActive = !empty($promoConf) &&
+//                 (!$startDate || $now >= $startDate) &&
+//                 (!$endDate || $now <= $endDate);
+
+//             if ($isActive) {
+//                 $mixGroup = !empty($promoConf['mix_group']) ? $promoConf['mix_group'] : 'CAT_' . $cat->id;
+//                 if (!isset($groupedItems[$mixGroup])) {
+//                     $groupedItems[$mixGroup] = [
+//                         'config' => $promoConf,
+//                         // Bundle Qty aman jika promo type-nya bukan bundle
+//                         'bundle_qty' => $promoConf['qty'] ?? 1,
+//                         'items' => collect()
+//                     ];
+//                 }
+//                 $groupedItems[$mixGroup]['items']->push($item);
+//             } else {
+//                 if (!isset($groupedItems['NO_PROMO'])) {
+//                     $groupedItems['NO_PROMO'] = ['config' => null, 'items' => collect()];
+//                 }
+//                 $groupedItems['NO_PROMO']['items']->push($item);
+//             }
+//         }
+
+//         // 2. EKSEKUSI KALKULASI BERDASARKAN TIPE PROMO BUNDLE
+//         foreach ($groupedItems as $groupKey => $group) {
+//             if ($groupKey === 'NO_PROMO') {
+//                 foreach ($group['items'] as $item) {
+//                     $price = $this->resolveProductPrice($item->product, $currency, $now);
+//                     $totalAmount += ($item->quantity * $price);
+//                     $finalItemPrices[$item->id] = $price;
+//                 }
+//                 continue;
+//             }
+
+//             $conf = $group['config'];
+//             $type = $conf['promo_type'] ?? 'bundle';
+//             $items = $group['items'];
+
+//             if ($type === 'bundle') {
+//                 $bundlePrice = $conf['price'][$currency] ?? ($conf['price']['IDR'] ?? 0);
+//                 $bundleQty = max(1, $group['bundle_qty']);
+//                 $totalQty = $items->sum('quantity');
+
+//                 // [ANTI-BUG] Fallback ke harga normal jika admin salah set harga bundle jadi 0
+//                 if (empty($bundlePrice) || $bundlePrice <= 0) {
+//                     foreach ($items as $item) {
+//                         $normalPrice = $this->resolveProductPrice($item->product, $currency, $now);
+//                         $totalAmount += ($item->quantity * $normalPrice);
+//                         $finalItemPrices[$item->id] = $normalPrice;
+//                     }
+//                     continue;
+//                 }
+
+//                 $bundleCount = floor($totalQty / $bundleQty);
+//                 $remainderQty = $totalQty % $bundleQty;
+
+//                 $totalAmount += ($bundleCount * $bundlePrice);
+
+//                 $sortedItems = $items->sortByDesc(function ($item) use ($currency, $now) {
+//                     return $this->resolveProductPrice($item->product, $currency, $now);
+//                 });
+
+//                 $assignedRemainder = 0;
+//                 foreach ($sortedItems as $item) {
+//                     $normalPrice = $this->resolveProductPrice($item->product, $currency, $now);
+//                     if ($assignedRemainder < $remainderQty) {
+//                         $take = min($item->quantity, $remainderQty - $assignedRemainder);
+//                         $totalAmount += ($take * $normalPrice);
+//                         $assignedRemainder += $take;
+//                         $finalItemPrices[$item->id] = $normalPrice;
+//                     } else {
+//                         $finalItemPrices[$item->id] = $bundlePrice / $bundleQty;
+//                     }
+//                 }
+//             } elseif ($type === 'percent') {
+//                 $groupSubtotal = 0;
+//                 foreach ($items as $item) {
+//                     $price = $this->resolveProductPrice($item->product, $currency, $now);
+//                     $groupSubtotal += ($price * $item->quantity);
+//                 }
+
+//                 $minPurchase = $conf['min_purchase'] ?? 0;
+//                 if ($groupSubtotal >= $minPurchase) {
+//                     $percent = $conf['percent'] ?? 0;
+//                     $maxDiscount = $conf['max_discount'] ?? 0;
+
+//                     $discount = $groupSubtotal * ($percent / 100);
+//                     if ($maxDiscount > 0 && $discount > $maxDiscount) {
+//                         $discount = $maxDiscount;
+//                     }
+//                     // Cegah diskon bocor melebihi total barang
+//                     if ($discount > $groupSubtotal) {
+//                         $discount = $groupSubtotal;
+//                     }
+
+//                     $totalAmount += ($groupSubtotal - $discount);
+//                     $ratio = $groupSubtotal > 0 ? ($groupSubtotal - $discount) / $groupSubtotal : 1;
+
+//                     foreach ($items as $item) {
+//                         $price = $this->resolveProductPrice($item->product, $currency, $now);
+//                         $finalItemPrices[$item->id] = $price * $ratio;
+//                     }
+//                 } else {
+//                     $totalAmount += $groupSubtotal;
+//                     foreach ($items as $item) {
+//                         $finalItemPrices[$item->id] = $this->resolveProductPrice($item->product, $currency, $now);
+//                     }
+//                 }
+//             }
+//         }
+
+//         // 3. Kalkulasi Promo/Voucher Manual
+//         $promoDiscountAmount = 0;
+//         $appliedPromoCode = null;
+
+//         if (!empty($request->promo_code)) {
+//             $promoCode = strtoupper(trim($request->promo_code));
+
+//             if ($promoCode === 'SOLHER17') {
+//                 $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'SOLHER17')->lockForUpdate()->first();
+//                 if (!$claimCheck)
+//                     throw new \Exception('Akses ditolak: Anda belum mengklaim promo ini.');
+//                 if ($claimCheck->is_used)
+//                     throw new \Exception('Voucher SOLHER17 Anda sudah hangus/terpakai.');
+
+//                 $promoResult = $promoService->calculatePromo($cartItems, []);
+//                 if (!$promoResult['is_valid'])
+//                     throw new \Exception($promoResult['message']);
+
+//                 $promoDiscountAmount = $promoResult['discount_amount'];
+//                 $appliedPromoCode = $promoResult['code'];
+//                 $claimCheck->update(['is_used' => true, 'used_at' => now()]);
+//             } elseif ($promoCode === 'SOLHOST34') {
+//                 $totalQuantityInCart = $cartItems->sum('quantity');
+//                 if ($totalQuantityInCart > 1)
+//                     throw new \Exception('Voucher Subsidi Tas hanya berlaku untuk 1 barang.');
+//                 if ($request->use_points > 0)
+//                     throw new \Exception('Voucher tidak dapat digabung dengan Poin.');
+
+//                 $item = $cartItems->first();
+//                 $catCode = strtoupper(trim($item->product->category->code ?? ''));
+//                 if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004']))
+//                     throw new \Exception('Voucher ini khusus untuk produk Tas.');
+
+//                 $product = $item->product;
+//                 if (!empty($product->discount_price) && (!$product->discount_start_date || $now >= $product->discount_start_date) && (!$product->discount_end_date || $now <= $product->discount_end_date)) {
+//                     throw new \Exception('Tidak berlaku pada barang yang sedang diskon.');
+//                 }
+
+//                 $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
+//                 if ($claimCheck)
+//                     throw new \Exception('Voucher sudah pernah digunakan.');
+
+//                 $promoDiscountAmount = 3400000;
+//                 $appliedPromoCode = 'SOLHOST34';
+
+//                 PromoClaim::updateOrCreate(
+//                     ['email' => $lockedUser->email, 'promo_code' => 'SOLHOST34'],
+//                     ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
+//                 );
+//             } elseif ($promoCode === 'SOLHOST35') {
+//                 // 👇 [LOGIKA BARU] KODE PROMO SOLHOST35 👇
+
+//                 // Pengecekan Waktu (1 Okt 00:00 - 9 Okt 23:59)
+//                 $promoStart = \Carbon\Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
+//                 $promoEnd = \Carbon\Carbon::create(now()->year, 10, 9, 23, 59, 59, 'Asia/Jakarta');
+
+//                 if (now()->lessThan($promoStart)) {
+//                     throw new \Exception('Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!');
+//                 }
+//                 if (now()->greaterThan($promoEnd)) {
+//                     throw new \Exception('Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.');
+//                 }
+
+//                 // Logika Pembatasan Sama Persis dengan SOLHOST34
+//                 $totalQuantityInCart = $cartItems->sum('quantity');
+//                 if ($totalQuantityInCart > 1)
+//                     throw new \Exception('Voucher Subsidi Tas hanya berlaku untuk 1 barang.');
+//                 if ($request->use_points > 0)
+//                     throw new \Exception('Voucher tidak dapat digabung dengan Poin.');
+
+//                 $item = $cartItems->first();
+//                 $catCode = strtoupper(trim($item->product->category->code ?? ''));
+//                 if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004']))
+//                     throw new \Exception('Voucher ini khusus untuk produk Tas.');
+
+//                 $product = $item->product;
+//                 if (!empty($product->discount_price) && (!$product->discount_start_date || $now >= $product->discount_start_date) && (!$product->discount_end_date || $now <= $product->discount_end_date)) {
+//                     throw new \Exception('Tidak berlaku pada barang yang sedang diskon.');
+//                 }
+
+//                 $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'SOLHOST35')->where('is_used', true)->first();
+//                 if ($claimCheck)
+//                     throw new \Exception('Voucher sudah pernah digunakan.');
+
+//                 // Diskon Mutlak (Sama seperti SOLHOST34)
+//                 $promoDiscountAmount = 3400000;
+//                 $appliedPromoCode = 'SOLHOST35';
+
+//                 PromoClaim::updateOrCreate(
+//                     ['email' => $lockedUser->email, 'promo_code' => 'SOLHOST35'],
+//                     ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
+//                 );
+//             } elseif ($promoCode === 'SOLHERMEMBER') {
+//                 if (!$lockedUser->is_membership)
+//                     throw new \Exception('Hanya untuk VIP Member.');
+//                 if ($lockedUser->has_used_member_voucher)
+//                     throw new \Exception('Voucher sudah pernah digunakan.');
+
+//                 $promoDiscountAmount = ($currency === 'IDR') ? 500000 : 35;
+//                 $appliedPromoCode = 'SOLHERMEMBER';
+//                 $lockedUser->update(['has_used_member_voucher' => true]);
+//             // } else {
+//             //     $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
+//             //     if (!$promoClaim)
+//             //         throw new \Exception('Kode Promo tidak valid.');
+//             //     if ($promoClaim->is_used)
+//             //         throw new \Exception('Kode Promo sudah digunakan.');
+
+//             //     $minPurchase = ($currency === 'IDR') ? 499000 : 35;
+//             //     if ($totalAmount < $minPurchase)
+//             //         throw new \Exception("Minimum purchase is {$minPurchase}");
+
+//             //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+//             //     $appliedPromoCode = $promoClaim->promo_code;
+//             //     $promoClaim->update(['is_used' => true, 'used_at' => now()]);
+//             // }
+
+//             } else {
+//                 $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
+//                 if (!$promoClaim)
+//                     throw new \Exception('Kode Promo tidak valid.');
+//                 if ($promoClaim->is_used)
+//                     throw new \Exception('Kode Promo sudah digunakan.');
+
+//                 // 1. Ambil Base Value IDR dari Database (Contoh: 250000)
+//                 $baseDiscountIDR = $promoClaim->discount_value;
+//                 $activeDiscountValue = $baseDiscountIDR;
+
+//                 // 2. Jika mata uang bukan IDR, kita HARUS mengonversi diskon tersebut
+//                 if ($currency !== 'IDR') {
+//                     $rates = \Illuminate\Support\Facades\Cache::get('exchange_rates', []);
+//                     $exchangeRate = $rates[$currency] ?? 1;
+//                     $activeDiscountValue = $baseDiscountIDR * $exchangeRate;
+//                 }
+
+//                 // 3. Batas minimum pembelian
+//                 // Gunakan base IDR (misal minimum 499.000) yang dikonversi ke currency aktif
+//                 $minPurchaseBase = 499000;
+//                 $activeMinPurchase = ($currency !== 'IDR') ? ($minPurchaseBase * ($rates[$currency] ?? 1)) : $minPurchaseBase;
+
+//                 if ($totalAmount < $activeMinPurchase) {
+//                     // Bulatkan untuk tampilan error
+//                     $displayMin = ($currency === 'IDR') ? number_format($activeMinPurchase, 0, ',', '.') : number_format($activeMinPurchase, 2, '.', ',');
+//                     $sym = match($currency) { 'USD'=>'$','SGD'=>'S$','EUR'=>'€','AUD'=>'A$','MYR'=>'RM', default=>'' };
+//                     throw new \Exception("Minimum purchase is {$sym} {$displayMin}");
+//                 }
+
+//                 // 4. Potong menggunakan nilai yang sudah dikonversi
+//                 $promoDiscountAmount = min($activeDiscountValue, $totalAmount);
+//                 $appliedPromoCode = $promoClaim->promo_code;
+
+//                 $promoClaim->update(['is_used' => true, 'used_at' => now()]);
+//             }
+//         }
+
+//         // =========================================================================
+//         // 👇 [PERBAIKAN BARU] KALKULASI DISKON TIER PRIVILEGE MIXED CART 👇
+//         // =========================================================================
+//         $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
+//         $tierDiscountAmount = 0;
+
+//         if ($lockedUser->is_membership && $tierDiscountPercentage > 0 && $tierDiscountPercentage <= 0.1) {
+//             $discountableAmountForTier = 0;
+//             $selectedItemIds = $request->tier_discount_item_ids ?? []; // Array ID untuk keranjang mixed
+
+//             foreach ($cartItems as $item) {
+//                 // Lewati produk Clearance
+//                 if ($item->product->is_final_sale) continue;
+
+//                 // Ceklis selektif (Mixed Cart)
+//                 if (!empty($selectedItemIds) && !in_array($item->id, $selectedItemIds) && !in_array($item->product_id, $selectedItemIds)) {
+//                     continue;
+//                 }
+
+//                 // Ambil harga yang telah difinalisasi (setelah dipotong diskon Bundle)
+//                 $itemFinalPrice = $finalItemPrices[$item->id] ?? $this->resolveProductPrice($item->product, $currency, $now);
+//                 $discountableAmountForTier += ($itemFinalPrice * $item->quantity);
+//             }
+
+//             $tierDiscountAmount = $discountableAmountForTier * $tierDiscountPercentage;
+//         }
+//         // -------------------------------------------------------------------------
+
+//         // Subtotal setelah diskon Bundle, Diskon Tier, dan Kode Promo
+//         $totalAfterPromo = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount);
+
+//         // Hitung estimasi poin: Rp 1.000 = 1 Poin
+//         $earnedPoints = floor($totalAfterPromo / 1000);
+//         $pointsUsed = 0;
+
+//         if ($request->use_points > 0 && $lockedUser->is_membership) {
+//             // Batasi maksimal poin yang bisa dipakai = 5000
+//             $requestedPoints = min($request->use_points, 5000);
+//             $pointsUsed = min($requestedPoints, $lockedUser->point);
+
+//             // Konversi ke IDR: 1 Poin memotong Rp 1.000
+//             $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
+//             $pointsUsed = floor($maxUsableDiscount / 1000);
+
+//             if ($pointsUsed > 0) {
+//                 // Potong saldo poin user saat ini
+//                 $lockedUser->decrement('point', $pointsUsed);
+//             }
+//         }
+
+//         // // Total pembayaran final produk = Subtotal - Tier Discount - Promo - Poin
+//         // $finalProductTotal = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount - ($pointsUsed * 1000));
+
+//         // // 5. Kalkulasi Ongkos Kirim
+//         // $totalQuantity = $cartItems->sum('quantity') ?: 1;
+//         // $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+
+//         // return [
+//         //     // Gunakan finalProductTotal untuk merefleksikan harga sesungguhnya sebelum ongkir
+//         //     'totalAmount' => $finalProductTotal,
+//         //     'finalItemPrices' => $finalItemPrices,
+//         //     'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,  // Gabung agar mudah dibaca di Invoice (DB)
+//         //     'appliedPromoCode' => $appliedPromoCode,
+//         //     'earnedPoints' => $earnedPoints,
+//         //     'pointsUsed' => $pointsUsed,
+//         //     'totalShippingCost' => $totalShippingCost,
+//         //     'totalQuantity' => $totalQuantity
+//         // ];
+
+//         // Total pembayaran final produk = Subtotal - Tier Discount - Promo - Poin
+//         $finalProductTotal = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount - ($pointsUsed * 1000));
+
+//         // 5. Kalkulasi Ongkos Kirim
+//         $totalQuantity = $cartItems->sum('quantity') ?: 1;
+//         $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
+
+//         return [
+//             // 👇 PERBAIKAN 1: Kembalikan ke $totalAmount agar DB tidak minus 3 juta 👇
+//             'totalAmount' => $totalAmount,
+//             'finalItemPrices' => $finalItemPrices,
+//             'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,  // Gabung agar mudah dibaca di Invoice (DB)
+//             'appliedPromoCode' => $appliedPromoCode,
+//             'earnedPoints' => $earnedPoints,
+//             'pointsUsed' => $pointsUsed,
+//             'totalShippingCost' => $totalShippingCost,
+//             'totalQuantity' => $totalQuantity
+//         ];
+//     }
+
+//     private function resolveProductPrice($product, $currency, $now)
+//     {
+//         $prices = is_string($product->prices) ? json_decode($product->prices, true) : ($product->prices ?? []);
+//         $discountPrices = is_string($product->discount_prices) ? json_decode($product->discount_prices, true) : ($product->discount_prices ?? []);
+
+//         $basePrice = $prices[$currency] ?? $product->price;
+//         $discountPrice = $discountPrices[$currency] ?? $product->discount_price;
+
+//         if (!empty($discountPrice) &&
+//                 (!$product->discount_start_date || $now >= $product->discount_start_date) &&
+//                 (!$product->discount_end_date || $now <= $product->discount_end_date)) {
+//             return $discountPrice;
+//         }
+
+//         return $basePrice;
+//     }
+// }
+
 namespace App\Actions\Checkout;
 
 use App\Models\User;
@@ -1312,7 +1716,7 @@ class CalculateCartTotalsAction
     {
         $currency = $request->currency;
         $now = now();
-        $totalAmount = 0;
+        $totalAmountKotor = 0; // 👈 PERUBAHAN UTAMA: Ini adalah harga kotor produk
         $finalItemPrices = [];
 
         // 1. KELOMPOKKAN ITEM BERDASARKAN KATEGORI & MIX GROUP
@@ -1320,26 +1724,19 @@ class CalculateCartTotalsAction
 
         foreach ($cartItems as $item) {
             $cat = $item->product->category;
-            if (!$cat)
-                continue;
+            if (!$cat) continue;
 
-            // BACA DARI PROMO CONFIG BARU
             $promoConf = $cat->promo_config ?? [];
-
-            $now = now();
             $startDate = !empty($promoConf['start_date']) ? \Carbon\Carbon::parse($promoConf['start_date']) : null;
             $endDate = !empty($promoConf['end_date']) ? \Carbon\Carbon::parse($promoConf['end_date']) : null;
 
-            $isActive = !empty($promoConf) &&
-                (!$startDate || $now >= $startDate) &&
-                (!$endDate || $now <= $endDate);
+            $isActive = !empty($promoConf) && (!$startDate || $now >= $startDate) && (!$endDate || $now <= $endDate);
 
             if ($isActive) {
                 $mixGroup = !empty($promoConf['mix_group']) ? $promoConf['mix_group'] : 'CAT_' . $cat->id;
                 if (!isset($groupedItems[$mixGroup])) {
                     $groupedItems[$mixGroup] = [
                         'config' => $promoConf,
-                        // Bundle Qty aman jika promo type-nya bukan bundle
                         'bundle_qty' => $promoConf['qty'] ?? 1,
                         'items' => collect()
                     ];
@@ -1353,12 +1750,12 @@ class CalculateCartTotalsAction
             }
         }
 
-        // 2. EKSEKUSI KALKULASI BERDASARKAN TIPE PROMO BUNDLE
+        // 2. EKSEKUSI KALKULASI HARGA PRODUK KOTOR
         foreach ($groupedItems as $groupKey => $group) {
             if ($groupKey === 'NO_PROMO') {
                 foreach ($group['items'] as $item) {
                     $price = $this->resolveProductPrice($item->product, $currency, $now);
-                    $totalAmount += ($item->quantity * $price);
+                    $totalAmountKotor += ($item->quantity * $price);
                     $finalItemPrices[$item->id] = $price;
                 }
                 continue;
@@ -1373,11 +1770,10 @@ class CalculateCartTotalsAction
                 $bundleQty = max(1, $group['bundle_qty']);
                 $totalQty = $items->sum('quantity');
 
-                // [ANTI-BUG] Fallback ke harga normal jika admin salah set harga bundle jadi 0
                 if (empty($bundlePrice) || $bundlePrice <= 0) {
                     foreach ($items as $item) {
                         $normalPrice = $this->resolveProductPrice($item->product, $currency, $now);
-                        $totalAmount += ($item->quantity * $normalPrice);
+                        $totalAmountKotor += ($item->quantity * $normalPrice);
                         $finalItemPrices[$item->id] = $normalPrice;
                     }
                     continue;
@@ -1386,7 +1782,7 @@ class CalculateCartTotalsAction
                 $bundleCount = floor($totalQty / $bundleQty);
                 $remainderQty = $totalQty % $bundleQty;
 
-                $totalAmount += ($bundleCount * $bundlePrice);
+                $totalAmountKotor += ($bundleCount * $bundlePrice);
 
                 $sortedItems = $items->sortByDesc(function ($item) use ($currency, $now) {
                     return $this->resolveProductPrice($item->product, $currency, $now);
@@ -1397,7 +1793,7 @@ class CalculateCartTotalsAction
                     $normalPrice = $this->resolveProductPrice($item->product, $currency, $now);
                     if ($assignedRemainder < $remainderQty) {
                         $take = min($item->quantity, $remainderQty - $assignedRemainder);
-                        $totalAmount += ($take * $normalPrice);
+                        $totalAmountKotor += ($take * $normalPrice);
                         $assignedRemainder += $take;
                         $finalItemPrices[$item->id] = $normalPrice;
                     } else {
@@ -1420,12 +1816,11 @@ class CalculateCartTotalsAction
                     if ($maxDiscount > 0 && $discount > $maxDiscount) {
                         $discount = $maxDiscount;
                     }
-                    // Cegah diskon bocor melebihi total barang
                     if ($discount > $groupSubtotal) {
                         $discount = $groupSubtotal;
                     }
 
-                    $totalAmount += ($groupSubtotal - $discount);
+                    $totalAmountKotor += ($groupSubtotal - $discount);
                     $ratio = $groupSubtotal > 0 ? ($groupSubtotal - $discount) / $groupSubtotal : 1;
 
                     foreach ($items as $item) {
@@ -1433,7 +1828,7 @@ class CalculateCartTotalsAction
                         $finalItemPrices[$item->id] = $price * $ratio;
                     }
                 } else {
-                    $totalAmount += $groupSubtotal;
+                    $totalAmountKotor += $groupSubtotal;
                     foreach ($items as $item) {
                         $finalItemPrices[$item->id] = $this->resolveProductPrice($item->product, $currency, $now);
                     }
@@ -1450,233 +1845,127 @@ class CalculateCartTotalsAction
 
             if ($promoCode === 'SOLHER17') {
                 $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'SOLHER17')->lockForUpdate()->first();
-                if (!$claimCheck)
-                    throw new \Exception('Akses ditolak: Anda belum mengklaim promo ini.');
-                if ($claimCheck->is_used)
-                    throw new \Exception('Voucher SOLHER17 Anda sudah hangus/terpakai.');
+                if (!$claimCheck) throw new \Exception('Akses ditolak: Anda belum mengklaim promo ini.');
+                if ($claimCheck->is_used) throw new \Exception('Voucher SOLHER17 Anda sudah hangus/terpakai.');
 
                 $promoResult = $promoService->calculatePromo($cartItems, []);
-                if (!$promoResult['is_valid'])
-                    throw new \Exception($promoResult['message']);
+                if (!$promoResult['is_valid']) throw new \Exception($promoResult['message']);
 
                 $promoDiscountAmount = $promoResult['discount_amount'];
                 $appliedPromoCode = $promoResult['code'];
                 $claimCheck->update(['is_used' => true, 'used_at' => now()]);
-            } elseif ($promoCode === 'SOLHOST34') {
+            } elseif ($promoCode === 'SOLHOST34' || $promoCode === 'SOLHOST35') {
+                if ($promoCode === 'SOLHOST35') {
+                    $promoStart = \Carbon\Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
+                    $promoEnd = \Carbon\Carbon::create(now()->year, 10, 9, 23, 59, 59, 'Asia/Jakarta');
+                    if (now()->lessThan($promoStart)) throw new \Exception('Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!');
+                    if (now()->greaterThan($promoEnd)) throw new \Exception('Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.');
+                }
+
                 $totalQuantityInCart = $cartItems->sum('quantity');
-                if ($totalQuantityInCart > 1)
-                    throw new \Exception('Voucher Subsidi Tas hanya berlaku untuk 1 barang.');
-                if ($request->use_points > 0)
-                    throw new \Exception('Voucher tidak dapat digabung dengan Poin.');
+                if ($totalQuantityInCart > 1) throw new \Exception('Voucher Subsidi Tas hanya berlaku untuk 1 barang.');
+                if ($request->use_points > 0) throw new \Exception('Voucher tidak dapat digabung dengan Poin.');
 
                 $item = $cartItems->first();
                 $catCode = strtoupper(trim($item->product->category->code ?? ''));
-                if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004']))
-                    throw new \Exception('Voucher ini khusus untuk produk Tas.');
+                if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004'])) throw new \Exception('Voucher ini khusus untuk produk Tas.');
 
                 $product = $item->product;
                 if (!empty($product->discount_price) && (!$product->discount_start_date || $now >= $product->discount_start_date) && (!$product->discount_end_date || $now <= $product->discount_end_date)) {
                     throw new \Exception('Tidak berlaku pada barang yang sedang diskon.');
                 }
 
-                $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'SOLHOST34')->where('is_used', true)->first();
-                if ($claimCheck)
-                    throw new \Exception('Voucher sudah pernah digunakan.');
+                $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->where('is_used', true)->first();
+                if ($claimCheck) throw new \Exception('Voucher sudah pernah digunakan.');
 
                 $promoDiscountAmount = 3400000;
-                $appliedPromoCode = 'SOLHOST34';
+                $appliedPromoCode = $promoCode;
 
                 PromoClaim::updateOrCreate(
-                    ['email' => $lockedUser->email, 'promo_code' => 'SOLHOST34'],
-                    ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
-                );
-            } elseif ($promoCode === 'SOLHOST35') {
-                // 👇 [LOGIKA BARU] KODE PROMO SOLHOST35 👇
-
-                // Pengecekan Waktu (1 Okt 00:00 - 9 Okt 23:59)
-                $promoStart = \Carbon\Carbon::create(now()->year, 10, 1, 0, 0, 0, 'Asia/Jakarta');
-                $promoEnd = \Carbon\Carbon::create(now()->year, 10, 9, 23, 59, 59, 'Asia/Jakarta');
-
-                if (now()->lessThan($promoStart)) {
-                    throw new \Exception('Sabar ya, voucher SOLHOST35 baru bisa digunakan mulai 1 Oktober!');
-                }
-                if (now()->greaterThan($promoEnd)) {
-                    throw new \Exception('Mohon maaf, masa berlaku voucher SOLHOST35 telah berakhir.');
-                }
-
-                // Logika Pembatasan Sama Persis dengan SOLHOST34
-                $totalQuantityInCart = $cartItems->sum('quantity');
-                if ($totalQuantityInCart > 1)
-                    throw new \Exception('Voucher Subsidi Tas hanya berlaku untuk 1 barang.');
-                if ($request->use_points > 0)
-                    throw new \Exception('Voucher tidak dapat digabung dengan Poin.');
-
-                $item = $cartItems->first();
-                $catCode = strtoupper(trim($item->product->category->code ?? ''));
-                if (!in_array($catCode, ['C001', 'C002', 'C003', 'C004']))
-                    throw new \Exception('Voucher ini khusus untuk produk Tas.');
-
-                $product = $item->product;
-                if (!empty($product->discount_price) && (!$product->discount_start_date || $now >= $product->discount_start_date) && (!$product->discount_end_date || $now <= $product->discount_end_date)) {
-                    throw new \Exception('Tidak berlaku pada barang yang sedang diskon.');
-                }
-
-                $claimCheck = PromoClaim::where('email', $lockedUser->email)->where('promo_code', 'SOLHOST35')->where('is_used', true)->first();
-                if ($claimCheck)
-                    throw new \Exception('Voucher sudah pernah digunakan.');
-
-                // Diskon Mutlak (Sama seperti SOLHOST34)
-                $promoDiscountAmount = 3400000;
-                $appliedPromoCode = 'SOLHOST35';
-
-                PromoClaim::updateOrCreate(
-                    ['email' => $lockedUser->email, 'promo_code' => 'SOLHOST35'],
+                    ['email' => $lockedUser->email, 'promo_code' => $promoCode],
                     ['is_used' => true, 'used_at' => now(), 'discount_value' => 3400000, 'expires_at' => now()->addDays(365)]
                 );
             } elseif ($promoCode === 'SOLHERMEMBER') {
-                if (!$lockedUser->is_membership)
-                    throw new \Exception('Hanya untuk VIP Member.');
-                if ($lockedUser->has_used_member_voucher)
-                    throw new \Exception('Voucher sudah pernah digunakan.');
+                if (!$lockedUser->is_membership) throw new \Exception('Hanya untuk VIP Member.');
+                if ($lockedUser->has_used_member_voucher) throw new \Exception('Voucher sudah pernah digunakan.');
 
                 $promoDiscountAmount = ($currency === 'IDR') ? 500000 : 35;
                 $appliedPromoCode = 'SOLHERMEMBER';
                 $lockedUser->update(['has_used_member_voucher' => true]);
-            // } else {
-            //     $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
-            //     if (!$promoClaim)
-            //         throw new \Exception('Kode Promo tidak valid.');
-            //     if ($promoClaim->is_used)
-            //         throw new \Exception('Kode Promo sudah digunakan.');
-
-            //     $minPurchase = ($currency === 'IDR') ? 499000 : 35;
-            //     if ($totalAmount < $minPurchase)
-            //         throw new \Exception("Minimum purchase is {$minPurchase}");
-
-            //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
-            //     $appliedPromoCode = $promoClaim->promo_code;
-            //     $promoClaim->update(['is_used' => true, 'used_at' => now()]);
-            // }
-
             } else {
                 $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
-                if (!$promoClaim)
-                    throw new \Exception('Kode Promo tidak valid.');
-                if ($promoClaim->is_used)
-                    throw new \Exception('Kode Promo sudah digunakan.');
+                if (!$promoClaim) throw new \Exception('Kode Promo tidak valid.');
+                if ($promoClaim->is_used) throw new \Exception('Kode Promo sudah digunakan.');
 
-                // 1. Ambil Base Value IDR dari Database (Contoh: 250000)
                 $baseDiscountIDR = $promoClaim->discount_value;
                 $activeDiscountValue = $baseDiscountIDR;
 
-                // 2. Jika mata uang bukan IDR, kita HARUS mengonversi diskon tersebut
                 if ($currency !== 'IDR') {
                     $rates = \Illuminate\Support\Facades\Cache::get('exchange_rates', []);
                     $exchangeRate = $rates[$currency] ?? 1;
                     $activeDiscountValue = $baseDiscountIDR * $exchangeRate;
                 }
 
-                // 3. Batas minimum pembelian
-                // Gunakan base IDR (misal minimum 499.000) yang dikonversi ke currency aktif
                 $minPurchaseBase = 499000;
                 $activeMinPurchase = ($currency !== 'IDR') ? ($minPurchaseBase * ($rates[$currency] ?? 1)) : $minPurchaseBase;
 
-                if ($totalAmount < $activeMinPurchase) {
-                    // Bulatkan untuk tampilan error
+                if ($totalAmountKotor < $activeMinPurchase) {
                     $displayMin = ($currency === 'IDR') ? number_format($activeMinPurchase, 0, ',', '.') : number_format($activeMinPurchase, 2, '.', ',');
                     $sym = match($currency) { 'USD'=>'$','SGD'=>'S$','EUR'=>'€','AUD'=>'A$','MYR'=>'RM', default=>'' };
                     throw new \Exception("Minimum purchase is {$sym} {$displayMin}");
                 }
 
-                // 4. Potong menggunakan nilai yang sudah dikonversi
-                $promoDiscountAmount = min($activeDiscountValue, $totalAmount);
+                $promoDiscountAmount = min($activeDiscountValue, $totalAmountKotor);
                 $appliedPromoCode = $promoClaim->promo_code;
-
                 $promoClaim->update(['is_used' => true, 'used_at' => now()]);
             }
         }
 
-        // =========================================================================
-        // 👇 [PERBAIKAN BARU] KALKULASI DISKON TIER PRIVILEGE MIXED CART 👇
-        // =========================================================================
+        // 4. Kalkulasi Diskon Tier Privilege Mixed Cart
         $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
         $tierDiscountAmount = 0;
 
         if ($lockedUser->is_membership && $tierDiscountPercentage > 0 && $tierDiscountPercentage <= 0.1) {
             $discountableAmountForTier = 0;
-            $selectedItemIds = $request->tier_discount_item_ids ?? []; // Array ID untuk keranjang mixed
+            $selectedItemIds = $request->tier_discount_item_ids ?? [];
 
             foreach ($cartItems as $item) {
-                // Lewati produk Clearance
                 if ($item->product->is_final_sale) continue;
-
-                // Ceklis selektif (Mixed Cart)
                 if (!empty($selectedItemIds) && !in_array($item->id, $selectedItemIds) && !in_array($item->product_id, $selectedItemIds)) {
                     continue;
                 }
-
-                // Ambil harga yang telah difinalisasi (setelah dipotong diskon Bundle)
                 $itemFinalPrice = $finalItemPrices[$item->id] ?? $this->resolveProductPrice($item->product, $currency, $now);
                 $discountableAmountForTier += ($itemFinalPrice * $item->quantity);
             }
-
             $tierDiscountAmount = $discountableAmountForTier * $tierDiscountPercentage;
         }
-        // -------------------------------------------------------------------------
 
-        // Subtotal setelah diskon Bundle, Diskon Tier, dan Kode Promo
-        $totalAfterPromo = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount);
-
-        // Hitung estimasi poin: Rp 1.000 = 1 Poin
+        // 5. Kalkulasi Poin
+        // Poin hanya dihitung dari Subtotal setelah promo & tier
+        $totalAfterPromo = max(0, $totalAmountKotor - $tierDiscountAmount - $promoDiscountAmount);
         $earnedPoints = floor($totalAfterPromo / 1000);
         $pointsUsed = 0;
 
         if ($request->use_points > 0 && $lockedUser->is_membership) {
-            // Batasi maksimal poin yang bisa dipakai = 5000
             $requestedPoints = min($request->use_points, 5000);
             $pointsUsed = min($requestedPoints, $lockedUser->point);
-
-            // Konversi ke IDR: 1 Poin memotong Rp 1.000
             $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
             $pointsUsed = floor($maxUsableDiscount / 1000);
 
             if ($pointsUsed > 0) {
-                // Potong saldo poin user saat ini
                 $lockedUser->decrement('point', $pointsUsed);
             }
         }
 
-        // // Total pembayaran final produk = Subtotal - Tier Discount - Promo - Poin
-        // $finalProductTotal = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount - ($pointsUsed * 1000));
-
-        // // 5. Kalkulasi Ongkos Kirim
-        // $totalQuantity = $cartItems->sum('quantity') ?: 1;
-        // $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
-
-        // return [
-        //     // Gunakan finalProductTotal untuk merefleksikan harga sesungguhnya sebelum ongkir
-        //     'totalAmount' => $finalProductTotal,
-        //     'finalItemPrices' => $finalItemPrices,
-        //     'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,  // Gabung agar mudah dibaca di Invoice (DB)
-        //     'appliedPromoCode' => $appliedPromoCode,
-        //     'earnedPoints' => $earnedPoints,
-        //     'pointsUsed' => $pointsUsed,
-        //     'totalShippingCost' => $totalShippingCost,
-        //     'totalQuantity' => $totalQuantity
-        // ];
-
-        // Total pembayaran final produk = Subtotal - Tier Discount - Promo - Poin
-        $finalProductTotal = max(0, $totalAmount - $tierDiscountAmount - $promoDiscountAmount - ($pointsUsed * 1000));
-
-        // 5. Kalkulasi Ongkos Kirim
+        // 6. Kalkulasi Ongkos Kirim
         $totalQuantity = $cartItems->sum('quantity') ?: 1;
         $totalShippingCost = $request->shipping_method === 'free' ? 0 : ($request->shipping_cost ?? 0);
 
+        // 👇 PERUBAHAN MUTLAK: KITA KEMBALIKAN HARGA KOTOR (SEBELUM DISKON) KE DATABASE 👇
         return [
-            // 👇 PERBAIKAN 1: Kembalikan ke $totalAmount agar DB tidak minus 3 juta 👇
-            'totalAmount' => $totalAmount,
+            'totalAmount' => $totalAmountKotor, // 👈 INI HARGA KOTOR PRODUK SAJA.
             'finalItemPrices' => $finalItemPrices,
-            'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,  // Gabung agar mudah dibaca di Invoice (DB)
+            'promoDiscountAmount' => $promoDiscountAmount + $tierDiscountAmount,
             'appliedPromoCode' => $appliedPromoCode,
             'earnedPoints' => $earnedPoints,
             'pointsUsed' => $pointsUsed,
