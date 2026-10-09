@@ -779,13 +779,14 @@ class PaymentController extends Controller
             ]);
         }
 
-        $totalQuantity =$transaction->details->sum('quantity') ?: 1;
+        $totalQuantity = $transaction->details->sum('quantity') ?: 1;
 
-        if (!$transaction->shipping_cost || $transaction->shipping_cost == 0) {$baseShippingRate = $request->shipping_method === 'free' ? 0 :$request->shipping_cost;
+        if (!$transaction->shipping_cost || $transaction->shipping_cost == 0) {
+            $baseShippingRate = $request->shipping_method === 'free' ? 0 : $request->shipping_cost;
             $totalShippingCost = $baseShippingRate * $totalQuantity;
 
-            $courierCompany = $request->shipping_method === 'free' ? 'Internal' :$request->courier_company;
-            $courierType = $request->shipping_method === 'free' ? 'Next Day' :$request->courier_type;
+            $courierCompany = $request->shipping_method === 'free' ? 'Internal' : $request->courier_company;
+            $courierType = $request->shipping_method === 'free' ? 'Next Day' : $request->courier_type;
 
             $transaction->update([
                 'address_id'      => $request->address_id,
@@ -807,36 +808,37 @@ class PaymentController extends Controller
         }
 
         // =====================================================================
-        // 👇 [PERBAIKAN FATAL TIER 1] LOGIKA MATA UANG, DESIMAL & PRIVILEGE TIER 👇
+        // LOGIKA MATA UANG, DESIMAL & PRIVILEGE TIER
         // =====================================================================
-        $currency =$transaction->currency_code ?? 'IDR';
+        $currency = $transaction->currency_code ?? 'IDR';
         $exchangeRate = 1;
 
         if ($currency !== 'IDR') {
-            $rates = Cache::get('exchange_rates', []);$exchangeRate = $rates[$currency] ?? 1;
+            $rates = Cache::get('exchange_rates', []);
+            $exchangeRate = $rates[$currency] ?? 1;
         }
 
         // Poin selalu berbasis IDR (1 Poin = 1000 IDR), lalu dikonversi ke mata uang tujuan.
-        $pointsUsed =$transaction->points_used ?? 0;
-        $basePointDiscountIDR =$pointsUsed * 1000;
+        $pointsUsed = $transaction->points_used ?? 0;
+        $basePointDiscountIDR = $pointsUsed * 1000;
         $pointDiscountAmount = round($basePointDiscountIDR * $exchangeRate, 2);
 
         $promoDiscount = round($transaction->promo_discount ?? 0, 2);
 
         // --- LOGIKA HITUNG TIER PRIVILEGE BERDASARKAN STATUS FINAL SALE ---
-        $tierDiscountPercentage =$request->tier_discount_percentage ?? 0;
+        $tierDiscountPercentage = $request->tier_discount_percentage ?? 0;
         $tierDiscountAmount = 0;
 
-        if ($tierDiscountPercentage > 0) {$discountableAmountIDR = 0;
-            $selectedItemIds =$request->tier_discount_item_ids ?? []; // Array Cart ID
+        if ($tierDiscountPercentage > 0) {
+            $discountableAmountIDR = 0;
+            $selectedItemIds = $request->tier_discount_item_ids ?? []; // Array Cart ID
 
-            foreach ($transaction->details as$detail) {
+            foreach ($transaction->details as $detail) {
                 // Lewati produk Clearance
                 if ($detail->product->is_final_sale) continue;
 
-                // Jika ada spesifik ID (Kasus Mixed Cart), pastikan item ini ada di array yang dikirim
-                // Disini kita asumsi diskon dihitung berdasarkan item yg diceklis.
-                if (!empty($selectedItemIds) && !in_array($detail->cart_id,$selectedItemIds) && !in_array($detail->product_id,$selectedItemIds)) {
+                // Kasus Mixed Cart:
+                if (!empty($selectedItemIds) && !in_array($detail->cart_id, $selectedItemIds) && !in_array($detail->product_id, $selectedItemIds)) {
                     continue;
                 }
 
@@ -847,33 +849,31 @@ class PaymentController extends Controller
             $tierDiscountAmountIDR = $discountableAmountIDR * $tierDiscountPercentage;
             $tierDiscountAmount = round($tierDiscountAmountIDR * $exchangeRate, 2);
         }
-        // ------------------------------------------------------------------
 
-        $subtotalAfterPromoAndTier = max(0, $transaction->total_amount -$promoDiscount - $tierDiscountAmount);$pointDiscountAmount = min($pointDiscountAmount,$subtotalAfterPromoAndTier);
+        $subtotalAfterPromoAndTier = max(0, $transaction->total_amount - $promoDiscount - $tierDiscountAmount);
+        $pointDiscountAmount = min($pointDiscountAmount, $subtotalAfterPromoAndTier);
 
         $externalId = 'PAY-'.$transaction->order_id.($transaction->payment ? '-'.time() : '');
 
-        // 🚨 XENDIT DAN STRIPE ERROR JIKA ITEM BERISI HARGA NEGATIF 🚨
-        // Solusinya: Jangan kirim $items array sama sekali jika kita memiliki diskon gabungan.
-        // Cukup kirim total `amount` finalnya saja ke Xendit/Stripe. Ini legal dan valid.
-
         // Kalkulasi Final Amount (Pastikan dalam mata uang asing jika dipilih)
-        $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);$basePriceShipping = 0;
+        $transactionTotalActiveCurrency = round($transaction->total_amount * $exchangeRate, 2);
+        $basePriceShipping = 0;
 
         if ($transaction->shipping_cost > 0) {
-            $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) /$totalQuantity, 2);
+            $basePriceShipping = round(($transaction->shipping_cost * $exchangeRate) / $totalQuantity, 2);
         }
 
-        $finalAmount = round($transactionTotalActiveCurrency
+        $finalAmount = round(
+            $transactionTotalActiveCurrency
             + ($basePriceShipping * $totalQuantity)
             - $pointDiscountAmount
             - $promoDiscount
-            - $tierDiscountAmount, // 👈 Kurangi Diskon Tier
+            - $tierDiscountAmount,
         2);
-        // 👆 ===================================================================== 👆
 
-        // Jika total akhir jadi 0 atau negatif, paksa jadi 0 (Xendit mungkin menolak invoice 0, pastikan minimal 1 perak / 1 sen jika Stripe)
-        if ($finalAmount < 0) {$finalAmount = 0;
+        // Jika total akhir jadi 0 atau negatif, paksa jadi 0
+        if ($finalAmount < 0) {
+            $finalAmount = 0;
         }
 
         $paymentGateway = PaymentFactory::make($currency);
@@ -882,16 +882,15 @@ class PaymentController extends Controller
             . '/payment-success?external_id=' . $externalId
             . '&order_id=' . $transaction->order_id;
 
-        $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' .$transaction->order_id);
-        $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl :$paypalCaptureUrl;
+        $paypalCaptureUrl = url('/api/payments/paypal-capture?external_id=' . $externalId . '&order_id=' . $transaction->order_id);
+        $dynamicSuccessUrl = ($currency === 'IDR') ? $frontendSuccessUrl : $paypalCaptureUrl;
 
-        $checkoutUrl =$paymentGateway->createInvoice([
+        $checkoutUrl = $paymentGateway->createInvoice([
             'order_id'             => $transaction->order_id,
             'external_id'          => $externalId,
             'payer_email'          => $transaction->user->email,
             'amount'               => $finalAmount,
             'currency'             => $currency,
-            // 'items'             => $items,  // 👈 HAPUS KIRIM ITEMS AGAR XENDIT TIDAK ERROR KARENA MINUS
             'success_redirect_url' => $dynamicSuccessUrl,
             'failure_redirect_url' => config('app.frontend_url').'/payment-failed',
         ]);
@@ -901,12 +900,12 @@ class PaymentController extends Controller
             [
                 'external_id'  => $externalId,
                 'checkout_url' => $checkoutUrl,
-                'amount'       => $finalAmount, // 👈 Simpan jumlah final di database agar rapi
+                'amount'       => $finalAmount,
                 'status'       => 'pending',
             ]
         );
 
-        // Job pembatalan (TTL 15 Menit).
+        // Job pembatalan (TTL 24 Jam)
         \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addHours(24));
 
         return response()->json([
@@ -917,18 +916,22 @@ class PaymentController extends Controller
 
     public function xenditCallback(Request $request)
     {
-        $payload = $request->all();$eventId = (string) ($request->input('id') ?? $request->input('external_id'));
+        $payload = $request->all();
+        $eventId = (string) ($request->input('id') ?? $request->input('external_id'));
 
-        \App\Jobs\ProcessPaymentWebhookJob::dispatch('xendit', $eventId,$payload);
+        \App\Jobs\ProcessPaymentWebhookJob::dispatch('xendit', $eventId, $payload);
         return response()->json(['message' => 'Xendit webhook queued'], 200);
     }
 
     public function stripeWebhook(Request $request)
     {
-        $payloadContent = $request->getContent();$sigHeader = $request->header('Stripe-Signature');$endpointSecret = config('services.stripe.webhook_secret');
+        $payloadContent = $request->getContent();
+        $sigHeader = $request->header('Stripe-Signature');
+        $endpointSecret = config('services.stripe.webhook_secret');
 
         try {
-            if ($endpointSecret) {                 \Stripe\Webhook::constructEvent($payloadContent, $sigHeader,$endpointSecret);
+            if ($endpointSecret) {
+                \Stripe\Webhook::constructEvent($payloadContent, $sigHeader, $endpointSecret);
             }
         } catch (\Exception $e) {
             return response()->json(['error' => 'Invalid signature or payload'], 400);
@@ -937,24 +940,24 @@ class PaymentController extends Controller
         $payloadArray = json_decode($payloadContent, true) ?? [];
         $eventId = (string) ($payloadArray['id'] ?? '');
 
-        \App\Jobs\ProcessPaymentWebhookJob::dispatch('stripe', $eventId,$payloadArray);
+        \App\Jobs\ProcessPaymentWebhookJob::dispatch('stripe', $eventId, $payloadArray);
         return response()->json(['message' => 'Stripe webhook queued'], 200);
     }
 
     public function paypalWebhook(Request $request)
     {
-        $payload =$request->all();
+        $payload = $request->all();
         $eventId = (string) ($payload['id'] ?? '');
 
-        \App\Jobs\ProcessPaymentWebhookJob::dispatch('paypal', $eventId,$payload);
+        \App\Jobs\ProcessPaymentWebhookJob::dispatch('paypal', $eventId, $payload);
         return response()->json(['message' => 'PayPal webhook queued'], 200);
     }
 
     public function capturePayPal(Request $request)
     {
-        $paypalToken =$request->query('token');
-        $externalId =$request->query('external_id');
-        $orderId =$request->query('order_id');
+        $paypalToken = $request->query('token');
+        $externalId = $request->query('external_id');
+        $orderId = $request->query('order_id');
 
         $paypalService = app(\App\Services\PayPalService::class);
         $paypalService->capturePayment($paypalToken);
@@ -979,38 +982,38 @@ class PaymentController extends Controller
                 'longitude'   => 112.74877,
             ];
 
-            // 👇 [GUEST CHECKOUT: BACA DATA DARI FORM LOKAL] 👇
-            if ($request->is_guest) {$request->validate([
+            if ($request->is_guest) {
+                $request->validate([
                     'guest_address' => 'required|array',
                     'cart_items' => 'required|array'
                 ]);
 
-                $gAddress =$request->guest_address;
-                $destinationCountry =$gAddress['region'] ?? 'Indonesia';
+                $gAddress = $request->guest_address;
+                $destinationCountry = $gAddress['region'] ?? 'Indonesia';
 
                 $destination = [
                     'name'         => trim($gAddress['first_name'] . ' ' . ($gAddress['last_name'] ?? '')),
-                    'phone'        => $gAddress['phone'] ?? '08123456789',                     'address'      =>$gAddress['address_location'],
+                    'phone'        => $gAddress['phone'] ?? '08123456789',
+                    'address'      => $gAddress['address_location'],
                     'postal_code'  => $gAddress['postal_code'],
-                    'latitude'     => null, // Diabaikan oleh kurir jika kodepos akurat
+                    'latitude'     => null,
                     'longitude'    => null,
                     'city'         => $gAddress['city'],
                     'province'     => $gAddress['province'],
                 ];
 
-                // Rakit Virtual Cart dari LocalStorage
                 $cartItems = collect();
-                foreach($request->cart_items as$ci) {
+                foreach($request->cart_items as $ci) {
                     $prod = \App\Models\Product::find($ci['product_id']);
-                    if($prod) {$cart = new \App\Models\Cart();
-                        $cart->product =$prod;
-                        $cart->quantity =$ci['quantity'];
+                    if($prod) {
+                        $cart = new \App\Models\Cart();
+                        $cart->product = $prod;
+                        $cart->quantity = $ci['quantity'];
                         $cartItems->push($cart);
                     }
                 }
             } else {
-                // 👇 [MEMBER CHECKOUT SEPERTI BIASA] 👇
-                $user =$request->user('sanctum');
+                $user = $request->user('sanctum');
                 if (!$user) {
                     return response()->json(['message' => 'Unauthorized. Please login again.'], 401);
                 }
@@ -1027,18 +1030,18 @@ class PaymentController extends Controller
                     $address = \App\Models\Address::find($request->address_id);
                 }
 
-                if (!$address \vert{}\vert{} !$address->postal_code) {
+                if (!$address || !$address->postal_code) {
                     return response()->json(['message' => 'Alamat tidak valid atau bukan milik Anda.'], 400);
                 }
 
-                $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id',$user->id)->get();
+                $cartItems = \App\Models\Cart::with('product')->whereIn('id', $request->cart_ids)->where('user_id', $user->id)->get();
 
                 $destinationCountry = !empty($address->region)
                     ? $address->region
-                    : (!empty($address->details['region']) ?$address->details['region'] : 'Indonesia');
+                    : (!empty($address->details['region']) ? $address->details['region'] : 'Indonesia');
 
                 $destination = [
-                    'name'         => trim($address->first_name_address . ' ' .$address->last_name_address),
+                    'name'         => trim($address->first_name_address . ' ' . $address->last_name_address),
                     'phone'        => $user->phone ?? '08123456789',
                     'address'      => $address->address_location,
                     'postal_code'  => $address->postal_code,
@@ -1049,9 +1052,6 @@ class PaymentController extends Controller
                 ];
             }
 
-            // ===========================================================
-            // LOGIKA KALKULASI BERAT & ONGKIR BERLAKU SAMA UNTUK GUEST & MEMBER
-            // ===========================================================
             $countryCode = match (strtolower(trim($destinationCountry))) {
                 'indonesia' => 'ID',
                 'singapore', 'singapura' => 'SG',
@@ -1075,28 +1075,29 @@ class PaymentController extends Controller
                 }
             }
 
-            $destination['country_code'] =$countryCode;
+            $destination['country_code'] = $countryCode;
 
-            $items = [];$totalFinalWeightGrams = 0;
+            $items = [];
+            $totalFinalWeightGrams = 0;
 
-            foreach ($cartItems as$item) {
-                $prod =$item->product;
+            foreach ($cartItems as $item) {
+                $prod = $item->product;
 
-                $dbWeight = $prod->weight > 0 ?$prod->weight : 1000;
-                $actualWeightGrams =$dbWeight < 100 ? ($dbWeight * 1000) :$dbWeight;
+                $dbWeight = $prod->weight > 0 ? $prod->weight : 1000;
+                $actualWeightGrams = $dbWeight < 100 ? ($dbWeight * 1000) : $dbWeight;
 
-                $length = $prod->length > 0 ?$prod->length : 20;
-                $width  = $prod->width > 0  ?$prod->width  : 20;
-                $height = $prod->height > 0 ?$prod->height : 10;
+                $length = $prod->length > 0 ? $prod->length : 20;
+                $width  = $prod->width > 0  ? $prod->width  : 20;
+                $height = $prod->height > 0 ? $prod->height : 10;
 
                 $volumetricWeightGrams = ($length * $width * $height) / 6;
-                $billableWeightPerItem = max($actualWeightGrams,$volumetricWeightGrams);
+                $billableWeightPerItem = max($actualWeightGrams, $volumetricWeightGrams);
 
                 $totalFinalWeightGrams += ($billableWeightPerItem * $item->quantity);
 
-                $validPrice =$prod->price;
-                if (!empty($prod->discount_price) && $prod->discount_start_date <= now() &&$prod->discount_end_date >= now()) {
-                    $validPrice =$prod->discount_price;
+                $validPrice = $prod->price;
+                if (!empty($prod->discount_price) && $prod->discount_start_date <= now() && $prod->discount_end_date >= now()) {
+                    $validPrice = $prod->discount_price;
                 }
 
                 $items[] = [
@@ -1115,7 +1116,8 @@ class PaymentController extends Controller
                 'weight' => (int) round($totalFinalWeightGrams),
             ];
 
-            $shippingGateway = ShippingFactory::make($destinationCountry);$rates = $shippingGateway->calculateRates($origin, $destination,$parcelData);
+            $shippingGateway = ShippingFactory::make($destinationCountry);
+            $rates = $shippingGateway->calculateRates($origin, $destination, $parcelData);
 
             return response()->json($rates);
 
@@ -1133,11 +1135,12 @@ class PaymentController extends Controller
             return;
         }
 
-        $totalSpent = Transaction::where('user_id',$user->id)
+        $totalSpent = Transaction::where('user_id', $user->id)
             ->where('status', 'completed')
             ->sum('total_amount');
 
-        if ($totalSpent >= 100000) {$user->update(['is_membership' => true]);
+        if ($totalSpent >= 100000) {
+            $user->update(['is_membership' => true]);
         }
     }
 }
