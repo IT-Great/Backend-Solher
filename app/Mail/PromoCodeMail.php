@@ -40,11 +40,14 @@ class PromoCodeMail extends Mailable
     public $discountValue;
     public $expiresAt; // [BARU]
 
-    public function __construct($promoCode, $discountValue, $expiresAt) // [BARU]
+    public $currencySymbol;
+
+    public function __construct($promoCode, $discountValue, $expiresAt, $currencySymbol) // [BARU]
     {
         $this->promoCode = $promoCode;
         $this->discountValue = $discountValue;
         $this->expiresAt = $expiresAt; // [BARU]
+        $this->currencySymbol = $currencySymbol; // [BARU]
     }
 
     public function build()

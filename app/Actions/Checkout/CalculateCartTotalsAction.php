@@ -1542,6 +1542,22 @@ class CalculateCartTotalsAction
                 $promoDiscountAmount = ($currency === 'IDR') ? 500000 : 35;
                 $appliedPromoCode = 'SOLHERMEMBER';
                 $lockedUser->update(['has_used_member_voucher' => true]);
+            // } else {
+            //     $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
+            //     if (!$promoClaim)
+            //         throw new \Exception('Kode Promo tidak valid.');
+            //     if ($promoClaim->is_used)
+            //         throw new \Exception('Kode Promo sudah digunakan.');
+
+            //     $minPurchase = ($currency === 'IDR') ? 499000 : 35;
+            //     if ($totalAmount < $minPurchase)
+            //         throw new \Exception("Minimum purchase is {$minPurchase}");
+
+            //     $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+            //     $appliedPromoCode = $promoClaim->promo_code;
+            //     $promoClaim->update(['is_used' => true, 'used_at' => now()]);
+            // }
+
             } else {
                 $promoClaim = PromoClaim::where('email', $lockedUser->email)->where('promo_code', $promoCode)->lockForUpdate()->first();
                 if (!$promoClaim)
@@ -1549,12 +1565,33 @@ class CalculateCartTotalsAction
                 if ($promoClaim->is_used)
                     throw new \Exception('Kode Promo sudah digunakan.');
 
-                $minPurchase = ($currency === 'IDR') ? 499000 : 35;
-                if ($totalAmount < $minPurchase)
-                    throw new \Exception("Minimum purchase is {$minPurchase}");
+                // 1. Ambil Base Value IDR dari Database (Contoh: 250000)
+                $baseDiscountIDR = $promoClaim->discount_value;
+                $activeDiscountValue = $baseDiscountIDR;
 
-                $promoDiscountAmount = min($promoClaim->discount_value, $totalAmount);
+                // 2. Jika mata uang bukan IDR, kita HARUS mengonversi diskon tersebut
+                if ($currency !== 'IDR') {
+                    $rates = \Illuminate\Support\Facades\Cache::get('exchange_rates', []);
+                    $exchangeRate = $rates[$currency] ?? 1;
+                    $activeDiscountValue = $baseDiscountIDR * $exchangeRate;
+                }
+
+                // 3. Batas minimum pembelian
+                // Gunakan base IDR (misal minimum 499.000) yang dikonversi ke currency aktif
+                $minPurchaseBase = 499000;
+                $activeMinPurchase = ($currency !== 'IDR') ? ($minPurchaseBase * ($rates[$currency] ?? 1)) : $minPurchaseBase;
+
+                if ($totalAmount < $activeMinPurchase) {
+                    // Bulatkan untuk tampilan error
+                    $displayMin = ($currency === 'IDR') ? number_format($activeMinPurchase, 0, ',', '.') : number_format($activeMinPurchase, 2, '.', ',');
+                    $sym = match($currency) { 'USD'=>'$','SGD'=>'S$','EUR'=>'€','AUD'=>'A$','MYR'=>'RM', default=>'' };
+                    throw new \Exception("Minimum purchase is {$sym} {$displayMin}");
+                }
+
+                // 4. Potong menggunakan nilai yang sudah dikonversi
+                $promoDiscountAmount = min($activeDiscountValue, $totalAmount);
                 $appliedPromoCode = $promoClaim->promo_code;
+
                 $promoClaim->update(['is_used' => true, 'used_at' => now()]);
             }
         }

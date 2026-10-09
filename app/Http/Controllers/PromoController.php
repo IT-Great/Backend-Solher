@@ -1081,15 +1081,103 @@ class PromoController extends Controller
 
     // ====================================================================
 
+    // public function claim(Request $request)
+    // {
+    //     $request->validate([
+    //         'email' => 'required|email',
+    //         'campaign' => 'nullable|string'
+    //     ]);
+
+    //     $campaign = $request->campaign;
+    //     $clientIp = $request->ip();  // Tangkap IP pengguna
+
+    //     // =======================================================
+    //     // LOGIKA POPUP 17 AGUSTUS
+    //     // =======================================================
+    //     if ($campaign === 'SOLHER17') {
+    //         $promoEnd = Carbon::create(date('Y'), 8, 17, 23, 59, 59, 'Asia/Jakarta');
+    //         if (now()->greaterThan($promoEnd)) {
+    //             return response()->json(['message' => 'Mohon maaf, periode promo Kemerdekaan telah berakhir.'], 400);
+    //         }
+
+    //         // 👇 [SECURITY] Cek Velocity IP 👇
+    //         if (!$this->checkIpVelocity($clientIp, 'SOLHER17')) {
+    //             return response()->json(['message' => 'Sistem mendeteksi aktivitas mencurigakan dari perangkat Anda.'], 403);
+    //         }
+
+    //         $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'SOLHER17')->first();
+    //         if ($exists) {
+    //             return response()->json(['message' => 'Email ini sudah mengklaim promo kemerdekaan sebelumnya.'], 400);
+    //         }
+
+    //         $code = 'SOLHER17';
+    //         $discountValue = 500000;
+    //         $expiresAt = $promoEnd;
+    //     }
+    //     // =======================================================
+    //     // LOGIKA POPUP WELCOME DEFAULT
+    //     // =======================================================
+    //     else {
+    //         $exists = PromoClaim::where('email', $request->email)->where('promo_code', 'LIKE', 'SOLHER-%')->first();
+    //         if ($exists) {
+    //             return response()->json(['message' => 'Email ini sudah mengklaim promo sebelumnya.'], 400);
+    //         }
+
+    //         $code = 'SOLHER-' . strtoupper(Str::random(6));
+    //         $discountValue = 250000;
+    //         $expiresAt = now()->addHours(24);
+    //     }
+
+    //     try {
+    //         PromoClaim::create([
+    //             'email' => $request->email,
+    //             'promo_code' => $code,
+    //             'discount_value' => $discountValue,
+    //             'expires_at' => $expiresAt,
+    //         ]);
+
+    //         // 👇 [SECURITY] Catat IP setelah sukses klaim promo spesial 👇
+    //         if ($campaign === 'SOLHER17') {
+    //             $this->recordIpVelocity($clientIp, 'SOLHER17');
+    //         }
+    //     } catch (\Illuminate\Database\QueryException $e) {
+    //         if ($e->errorInfo[1] == 1062) {
+    //             return response()->json(['message' => 'Email ini sudah mengklaim promo tersebut.'], 400);
+    //         }
+    //         throw $e;
+    //     }
+
+    //     try {
+    //         Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
+    //     } catch (\Exception $e) {
+    //         report($e);
+    //         Log::error('Failed to send promo email to ' . $request->email . ': ' . $e->getMessage());
+
+    //         PromoClaim::where('email', $request->email)->where('promo_code', $code)->delete();
+    //         return response()->json(['message' => 'Gagal mengirim email. Pastikan alamat email valid atau coba lagi nanti.'], 500);
+    //     }
+
+    //     if ($campaign !== 'SOLHER17') {
+    //         SendPromoReminderJob::dispatch($request->email, $code, $discountValue)->delay(now()->addHours(23));
+    //     }
+
+    //     return response()->json([
+    //         'message' => 'Promo berhasil diklaim!',
+    //         'promo_code' => $code,
+    //     ]);
+    // }
+
     public function claim(Request $request)
     {
         $request->validate([
             'email' => 'required|email',
-            'campaign' => 'nullable|string'
+            'campaign' => 'nullable|string',
+            'currency' => 'nullable|string' // Terima parameter currency
         ]);
 
         $campaign = $request->campaign;
         $clientIp = $request->ip();  // Tangkap IP pengguna
+        $userCurrency = $request->currency ?? 'IDR'; // Default IDR
 
         // =======================================================
         // LOGIKA POPUP 17 AGUSTUS
@@ -1147,8 +1235,31 @@ class PromoController extends Controller
             throw $e;
         }
 
+        // 👇 [PERBAIKAN] Hitung Nilai Tampil untuk Email berdasarkan Currency 👇
+        $displayValue = $discountValue;
+        $currencySymbol = 'Rp';
+
+        if ($userCurrency !== 'IDR') {
+            $rates = Cache::get('exchange_rates', []);
+            $rate = $rates[$userCurrency] ?? 1;
+
+            // Konversi dari IDR ke mata uang asing
+            $displayValue = $discountValue * $rate;
+
+            // Tentukan Simbol
+            $currencySymbol = match ($userCurrency) {
+                'USD' => '$',
+                'SGD' => 'S$',
+                'EUR' => '€',
+                'AUD' => 'A$',
+                'MYR' => 'RM',
+                default => $userCurrency
+            };
+        }
+
         try {
-            Mail::to($request->email)->send(new PromoCodeMail($code, $discountValue, $expiresAt));
+            // Ubah pengiriman parameter Mailable
+            Mail::to($request->email)->send(new PromoCodeMail($code, $displayValue, $expiresAt, $currencySymbol));
         } catch (\Exception $e) {
             report($e);
             Log::error('Failed to send promo email to ' . $request->email . ': ' . $e->getMessage());
