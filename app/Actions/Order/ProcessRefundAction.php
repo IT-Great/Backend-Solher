@@ -73,10 +73,17 @@ class ProcessRefundAction
             }
 
             $refundApi = new RefundApi;
+            // $refundApi->createRefund(null, null, new CreateRefund([
+            //     'invoice_id' => $invoices[0]['id'],
+            //     'reason' => 'REQUESTED_BY_CUSTOMER',
+            //     'amount' => (int) $transaction->total_amount,
+            //     'metadata' => ['order_id' => $transaction->order_id],
+            // ]));
+
             $refundApi->createRefund(null, null, new CreateRefund([
                 'invoice_id' => $invoices[0]['id'],
                 'reason' => 'REQUESTED_BY_CUSTOMER',
-                'amount' => (int) $transaction->total_amount,
+                'amount' => (int) $transaction->payment->amount, // ✅ AMAN: Refund uang Grand Total
                 'metadata' => ['order_id' => $transaction->order_id],
             ]));
 
@@ -127,3 +134,4 @@ class ProcessRefundAction
         }
     }
 }
+
