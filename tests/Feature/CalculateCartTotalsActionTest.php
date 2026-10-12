@@ -100,26 +100,57 @@ it('deducts loyalty points correctly for VIP members', function () {
         ->and($this->user->fresh()->point)->toBe(0); // Sisa poin di DB harus 0
 });
 
+// it('rejects point redemption if cart total is below 1.500.000', function () {
+//     // Buat produk dengan harga di bawah 1.5 Juta
+//     $product = Product::factory()->create([
+//         'price' => 500000,
+//     ]);
+
+//     $cart = Cart::factory()->create([
+//         'user_id' => $this->user->id,
+//         'product_id' => $product->id,
+//         'quantity' => 1,
+//     ]);
+
+//     $request = new \Illuminate\Http\Request();
+//     $request->merge([
+//         'currency' => 'IDR',
+//         'use_points' => 5000, // Coba pakai poin
+//     ]);
+
+//     // Berharap sistem menolak dan melempar Exception
+//     expect(fn() => $this->action->execute($this->user, [$cart], $request, $this->promoService))
+//         ->toThrow(\Exception::class, 'Minimum purchase of Rp 1.500.000 is required to redeem points/welcome gift.');
+// });
+
 it('rejects point redemption if cart total is below 1.500.000', function () {
-    // Buat produk dengan harga di bawah 1.5 Juta
-    $product = Product::factory()->create([
+    // 1. Buat produk dengan harga di bawah 1.5 Juta menggunakan forceCreate
+    $product = Product::forceCreate([
+        'name' => 'Tas Murah',
+        'code' => 'BAG-TEST-MIN',
         'price' => 500000,
+        'stock' => 10,
+        'weight' => 500,
+        'category_id' => $this->bagCategory->id
     ]);
 
-    $cart = Cart::factory()->create([
+    // 2. Masukkan ke keranjang
+    Cart::forceCreate([
         'user_id' => $this->user->id,
         'product_id' => $product->id,
         'quantity' => 1,
     ]);
 
-    $request = new \Illuminate\Http\Request();
-    $request->merge([
+    $cartItems = Cart::with('product.category')->where('user_id', $this->user->id)->get();
+
+    $request = new \Illuminate\Http\Request([
         'currency' => 'IDR',
         'use_points' => 5000, // Coba pakai poin
+        'shipping_method' => 'free',
     ]);
 
-    // Berharap sistem menolak dan melempar Exception
-    expect(fn() => $this->action->execute($this->user, [$cart], $request, $this->promoService))
+    // 3. Berharap sistem menolak dan melempar Exception
+    expect(fn() => $this->action->execute($this->user, $cartItems, $request, $this->promoService))
         ->toThrow(\Exception::class, 'Minimum purchase of Rp 1.500.000 is required to redeem points/welcome gift.');
 });
 
