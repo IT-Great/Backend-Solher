@@ -2505,7 +2505,32 @@ class CalculateCartTotalsAction
         $earnedPoints = floor($totalAfterPromo / 1000);
         $pointsUsed = 0;
 
-        if ($request->use_points > 0 && $lockedUser->is_membership) {
+        // if ($request->use_points > 0 && $lockedUser->is_membership) {
+        //     $requestedPoints = min($request->use_points, 5000);
+        //     $pointsUsed = min($requestedPoints, $lockedUser->point);
+        //     $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);
+        //     $pointsUsed = floor($maxUsableDiscount / 1000);
+
+        //     if ($pointsUsed > 0) {
+        //         $lockedUser->decrement('point', $pointsUsed);
+        //     }
+        // }
+
+        // 👇 PERBAIKAN: Syarat is_membership dihapus agar pengguna baru bisa pakai
+        if ($request->use_points > 0) {
+
+            // 👇 Aturan Minimal Belanja Rp 1.500.000 untuk buka Kunci Poin
+            $minSpendForPointsIDR = 1500000;
+            $activeMinSpendPoints = $minSpendForPointsIDR;
+            if ($currency !== 'IDR') {
+                $rates = \Illuminate\Support\Facades\Cache::get('exchange_rates', []);
+                $activeMinSpendPoints = $minSpendForPointsIDR * ($rates[$currency] ?? 1);
+            }
+
+            if ($totalAmountKotor < $activeMinSpendPoints) {
+                throw new \Exception('Minimum purchase of Rp 1.500.000 is required to redeem points/welcome gift.');
+            }
+
             $requestedPoints = min($request->use_points, 5000);
             $pointsUsed = min($requestedPoints, $lockedUser->point);
             $maxUsableDiscount = min($pointsUsed * 1000, $totalAfterPromo);

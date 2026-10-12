@@ -20,6 +20,43 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
 {
+    // public function register(Request $request)
+    // {
+    //     $validator = Validator::make($request->all(), [
+    //         'first_name' => 'required|string|max:255',
+    //         'last_name' => 'required|string|max:255',
+    //         'email' => 'required|string|email|max:255|unique:users',
+    //         'password' => 'required|string|min:8',
+    //         'birthday_date' => 'required|date|before:today', // 👈 WAJIB DIISI SAAT DAFTAR
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json($validator->errors(), 422);
+    //     }
+
+    //     // Cek apakah email ini sudah pernah subscribe saat menjadi Guest
+    //     $subscriber = Subscriber::where('email', $request->email)->first();
+    //     $isSubscribed = $subscriber ? true : false;
+
+    //     $user = User::create([
+    //         'first_name' => $request->first_name,
+    //         'last_name' => $request->last_name,
+    //         'email' => $request->email,
+    //         'password' => Hash::make($request->password),
+    //         'birthday_date' => $request->birthday_date, // 👈 SIMPAN DATA
+    //         'is_subscribed' => $isSubscribed,
+    //     ]);
+
+    //     if ($subscriber) {
+    //         $subscriber->update(['is_registered' => true]);
+    //     }
+
+    //     return response()->json([
+    //         'message' => 'User berhasil didaftarkan',
+    //         'user' => $user,
+    //     ], 201);
+    // }
+
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -27,14 +64,13 @@ class AuthController extends Controller
             'last_name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'birthday_date' => 'required|date|before:today', // 👈 WAJIB DIISI SAAT DAFTAR
+            'birthday_date' => 'required|date|before:today',
         ]);
 
         if ($validator->fails()) {
             return response()->json($validator->errors(), 422);
         }
 
-        // Cek apakah email ini sudah pernah subscribe saat menjadi Guest
         $subscriber = Subscriber::where('email', $request->email)->first();
         $isSubscribed = $subscriber ? true : false;
 
@@ -43,17 +79,22 @@ class AuthController extends Controller
             'last_name' => $request->last_name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'birthday_date' => $request->birthday_date, // 👈 SIMPAN DATA
+            'birthday_date' => $request->birthday_date,
             'is_subscribed' => $isSubscribed,
+            'point' => 250, // 👈 Otomatis berikan 250 Poin (Setara Rp 250.000)
         ]);
 
         if ($subscriber) {
             $subscriber->update(['is_registered' => true]);
         }
 
+        // 👈 Langsung berikan Token agar pengguna auto-login dari pop-up
+        $token = $user->createToken('auth_token')->plainTextToken;
+
         return response()->json([
             'message' => 'User berhasil didaftarkan',
             'user' => $user,
+            'access_token' => $token,
         ], 201);
     }
 
