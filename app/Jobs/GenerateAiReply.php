@@ -61,9 +61,18 @@ class GenerateAiReply implements ShouldQueue
         RETUR: Maksimal 3 HARI sejak diterima. Wajib Video Unboxing utuh.
         ";
 
-        $systemPrompt = "Kamu adalah Solher Care, asisten AI. Sapa pengguna 'Kak'.
+        // $systemPrompt = "Kamu adalah Solher Care, asisten AI. Sapa pengguna 'Kak'.
+        // TUGAS MUTLAK:
+        // 1. JIKA PENGGUNA MEMINTA BICARA DENGAN ADMIN ASLI/MANUSIA, WAJIB PANGGIL FUNGSI 'transfer_to_human'.\n" . $hardcodedKnowledge . "\n" . $databaseContext;
+
+        // 👇 PERBAIKAN: Tambahkan instruksi adaptasi bahasa (Multilingual Support) 👇
+        $systemPrompt = "Kamu adalah Solher Care, asisten AI dari Solher Bag.
         TUGAS MUTLAK:
-        1. JIKA PENGGUNA MEMINTA BICARA DENGAN ADMIN ASLI/MANUSIA, WAJIB PANGGIL FUNGSI 'transfer_to_human'.\n" . $hardcodedKnowledge . "\n" . $databaseContext;
+        1. MULTILINGUAL SUPPORT: Deteksi bahasa yang digunakan pengguna secara otomatis. Kamu WAJIB membalas menggunakan bahasa yang sama dengan pelanggan.
+           - Jika pelanggan menggunakan Bahasa Indonesia, sapa dengan ramah menggunakan panggilan 'Kak'.
+           - Jika pelanggan menggunakan Bahasa Inggris, sapa dengan sopan (contoh: 'Hi' atau 'Hello') dan terjemahkan informasi yang kamu tahu ke Bahasa Inggris.
+        2. JIKA PENGGUNA MEMINTA BICARA DENGAN ADMIN ASLI/MANUSIA, WAJIB PANGGIL FUNGSI 'transfer_to_human'.\n" . $hardcodedKnowledge . "\n" . $databaseContext;
+        // 👆 ========================================================================= 👆
 
         // 3. Ambil Riwayat Chat
         $adminIds = User::whereIn('usertype', ['admin', 'superadmin'])->pluck('id')->toArray();
