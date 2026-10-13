@@ -693,6 +693,59 @@ class CartController extends Controller
         ]);
     }
 
+    // public function store(Request $request)
+    // {
+    //     $request->validate([
+    //         'product_id' => 'required|exists:products,id',
+    //         'quantity'   => 'required|integer|min:1',
+    //         'color'      => 'nullable|string|max:50'
+    //     ]);
+
+    //     $user = $request->user();
+
+    //     $product = Product::findOrFail($request->product_id);
+
+    //     $cartItem = Cart::where('user_id', $user->id)
+    //         ->where('product_id', $product->id)
+    //         ->where(function($query) use ($request) {
+    //             if ($request->color) {
+    //                 $query->where('color', $request->color);
+    //             } else {
+    //                 $query->whereNull('color');
+    //             }
+    //         })
+    //         ->first();
+
+    //     $newQuantity = $cartItem ? $cartItem->quantity + $request->quantity : $request->quantity;
+
+    //     if ($newQuantity > $product->stock) {
+    //         return response()->json(['message' => 'Kuantitas melebihi stok yang tersedia!'], 422);
+    //     }
+
+    //     // Simpan database raw/gross amount dalam IDR
+    //     $price = $this->resolveProductPrice($product, 'IDR', now(), 1);
+
+    //     if ($cartItem) {
+    //         $cartItem->update([
+    //             'quantity' => $newQuantity,
+    //             'gross_amount' => $newQuantity * $price
+    //         ]);
+    //     } else {
+    //         $cartItem = Cart::create([
+    //             'user_id' => $user->id,
+    //             'product_id' => $product->id,
+    //             'quantity' => $request->quantity,
+    //             'gross_amount' => $request->quantity * $price,
+    //             'color' => $request->color
+    //         ]);
+    //     }
+
+    //     return response()->json([
+    //         'message' => 'Ditambahkan ke keranjang',
+    //         'cart_id' => $cartItem->id
+    //     ]);
+    // }
+
     public function store(Request $request)
     {
         $request->validate([
@@ -704,6 +757,37 @@ class CartController extends Controller
         $user = $request->user();
 
         $product = Product::findOrFail($request->product_id);
+
+        // =====================================================================
+        // 👇 KEAMANAN GATED EARLY ACCESS 👇
+        // =====================================================================
+        if ($product->early_access_expires_at && now()->lessThan($product->early_access_expires_at) && $product->early_access_tier !== 'none') {
+
+            $tierLevel = 0; // Guest / Reguler
+
+            if ($user) {
+                $pts = $user->point ?? 0;
+                if ($pts >= 10000) {
+                    $tierLevel = 3; // Héritage
+                } elseif ($pts >= 2500) {
+                    $tierLevel = 2; // Élan
+                } else {
+                    $tierLevel = 1; // Muse
+                }
+            }
+
+            $reqTier = 0;
+            if ($product->early_access_tier === 'heritage') $reqTier = 3;
+            elseif ($product->early_access_tier === 'elan') $reqTier = 2;
+            elseif ($product->early_access_tier === 'muse') $reqTier = 1;
+
+            if ($tierLevel < $reqTier) {
+                return response()->json([
+                    'message' => 'Akses ditolak: Produk ini masih dalam masa rilis eksklusif Early Access.'
+                ], 403);
+            }
+        }
+        // 👆 ================================================================== 👆
 
         $cartItem = Cart::where('user_id', $user->id)
             ->where('product_id', $product->id)
@@ -728,6 +812,7 @@ class CartController extends Controller
         if ($cartItem) {
             $cartItem->update([
                 'quantity' => $newQuantity,
+                // 👇 [PERBAIKAN SINTAKS] Menambahkan operator * 👇
                 'gross_amount' => $newQuantity * $price
             ]);
         } else {
@@ -735,6 +820,7 @@ class CartController extends Controller
                 'user_id' => $user->id,
                 'product_id' => $product->id,
                 'quantity' => $request->quantity,
+                // 👇 [PERBAIKAN SINTAKS] Menambahkan operator * 👇
                 'gross_amount' => $request->quantity * $price,
                 'color' => $request->color
             ]);
@@ -782,3 +868,4 @@ class CartController extends Controller
         return response()->json(['message' => 'Item berhasil dihapus']);
     }
 }
+

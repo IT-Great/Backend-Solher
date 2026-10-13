@@ -42,6 +42,8 @@ class Product extends Model
         'status',
         'publish_at',
         'is_final_sale',
+        'early_access_tier',
+        'early_access_expires_at',
     ];
 
     protected $casts = [
@@ -56,6 +58,7 @@ class Product extends Model
         'discount_end_date' => 'datetime',   // <--- BARU
         'is_final_sale' => 'boolean',
         'publish_at' => 'datetime',
+        'early_access_expires_at' => 'datetime',
     ];
 
     public function category()
