@@ -65,6 +65,14 @@ class RestoreInventoryAction
             }
         }
 
+        // $product->increment('stock', $quantityToRestore);
+
+        $wasOutOfStock = ($product->stock <= 0);
         $product->increment('stock', $quantityToRestore);
+
+        // 👇 TRIGGER RESTOCK ENGINE: Jika sebelumnya stok 0 dan kini bertambah, kabari antrean tunggu! 👇
+        if ($wasOutOfStock && $quantityToRestore > 0) {
+            \App\Jobs\NotifyStockWaitlistJob::dispatch($product->id)->afterCommit();
+        }
     }
 }

@@ -173,16 +173,14 @@ class ProductStockController extends Controller
         // 👇 PERBAIKAN: Dikembalikan menggunakan get() agar Front-End Vue
         // dapat melakukan Client-Side Pagination, Search global, dan
         // Export ke Excel/PDF secara utuh.
-        $products = Product::with(['category', 'stocks' => function($q) {
+        $products = Product::with(['category', 'stocks' => function ($q) {
             $q->where('quantity', '>', 0);
         }])->latest()->get();
 
         return response()->json($products);
     }
 
-    /**
-     * Menambah stok baru (Batch baru) secara aman dengan Pessimistic Locking.
-     */
+    /** Menambah stok baru (Batch baru) secara aman dengan Pessimistic Locking. */
     // public function store(Request $request, $productId)
     // {
     //     $request->validate([
@@ -228,12 +226,8 @@ class ProductStockController extends Controller
     //     }
     // }
 
-    /**
-     * Menambah atau Mengurangi stok baru secara aman dengan Pessimistic Locking.
-     */
-/**
-     * Menambah (In) atau Mengurangi (Out) stok baru secara aman dengan Pessimistic Locking.
-     */
+    /** Menambah atau Mengurangi stok baru secara aman dengan Pessimistic Locking. */
+    /** Menambah (In) atau Mengurangi (Out) stok baru secara aman dengan Pessimistic Locking. */
     // public function store(Request $request, $productId)
     // {
     //     // 👇 PERBAIKAN 1: Izinkan angka negatif (Stok Keluar), tapi larang angka 0
@@ -307,10 +301,9 @@ class ProductStockController extends Controller
         ]);
 
         try {
-            $oldStock = 0; // 👈 Deklarasikan penampung status stok SEBELUM ditambah
+            $oldStock = 0;  // 👈 Deklarasikan penampung status stok SEBELUM ditambah
 
             DB::transaction(function () use ($request, $productId, &$oldStock) {
-
                 // 1. AMBIL & KUNCI BARIS (Pessimistic Locking)
                 $product = Product::lockForUpdate()->findOrFail($productId);
 
@@ -335,7 +328,15 @@ class ProductStockController extends Controller
                 ]);
 
                 // 5. Perbarui Total Stok Master
+                // $product->increment('stock', $request->quantity);
+
+                $wasOutOfStock = ($product->stock <= 0);
                 $product->increment('stock', $request->quantity);
+
+                // 👇 TRIGGER RESTOCK ENGINE: Jika sebelumnya stok 0 dan kini bertambah, kabari antrean tunggu! 👇
+                if ($wasOutOfStock && $request->quantity > 0) {
+                    \App\Jobs\NotifyStockWaitlistJob::dispatch($product->id)->afterCommit();
+                }
             });
 
             // 6. Hapus cache katalog
@@ -357,7 +358,6 @@ class ProductStockController extends Controller
 
             $msg = $request->quantity > 0 ? 'Stock batch added successfully.' : 'Stock deducted successfully.';
             return response()->json(['message' => $msg]);
-
         } catch (\Exception $e) {
             // Tangkap exception khusus jika stok tidak cukup
             if ($e->getMessage() === 'INSUFFICIENT_STOCK') {

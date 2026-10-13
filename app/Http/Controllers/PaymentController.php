@@ -2158,7 +2158,13 @@ class PaymentController extends Controller
             ]
         );
 
+        // 👇 1. Kirim pengingat penyelamatan omzet jika dalam 2 jam belum dibayar 👇
+        \App\Jobs\SendAbandonedCheckoutReminderJob::dispatch($transaction->id)->delay(now()->addHours(2));
+
+        // 2. Hanguskan transaksi & rilis stok jika dalam 24 jam tetap tidak dibayar
         \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addHours(24));
+
+        // \App\Jobs\CancelUnpaidTransactionJob::dispatch($transaction->id)->delay(now()->addHours(24));
 
         return response()->json([
             'checkout_url' => $checkoutUrl,

@@ -1476,3 +1476,6 @@ Route::middleware(['auth:sanctum', 'role:system_policy'])->get('/test-fcm/{userI
 
     return $success ? 'Berhasil terkirim!' : 'Gagal. Silakan cek storage/logs/laravel.log';
 });
+
+Route::post('/products/waitlist', [\App\Http\Controllers\StockWaitlistController::class, 'subscribe'])
+    ->middleware('throttle:10,1');
