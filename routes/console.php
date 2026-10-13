@@ -35,5 +35,12 @@ Schedule::command('ml:train-bestseller')->dailyAt('00:00');
 
 // 👇 Daftarkan Command Ulang Tahun Di Sini 👇
 Schedule::command('promo:send-birthday')
-        ->dailyAt('08:00') // Akan dijalankan setiap jam 8 pagi
-        ->timezone('Asia/Jakarta');
+    ->dailyAt('08:00')  // Akan dijalankan setiap jam 8 pagi
+    ->timezone('Asia/Jakarta');
+
+// 👇 Robot Penyelamat Transaksi yang berjalan setiap 30 Menit 👇
+Schedule::command('solher:reconcile-orders')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()  // Mencegah tumpang tindih jika server lambat
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/reconcile.log'));
