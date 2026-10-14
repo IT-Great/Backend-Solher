@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use Tests\TestCase;
 use App\Models\User;
 use App\Models\Product;
+use App\Models\Category;
 use App\Models\StockWaitlist;
 use App\Jobs\NotifyStockWaitlistJob;
 use App\Mail\ProductBackInStockMail;
@@ -17,6 +18,7 @@ class NotifyStockWaitlistJobTest extends TestCase
     // Menggunakan DatabaseTransactions agar tidak mengotori MySQL
     use DatabaseTransactions;
 
+    protected $category;
     protected $productLimited;
     protected $productPlentiful;
     protected $heritageUser;
@@ -27,20 +29,28 @@ class NotifyStockWaitlistJobTest extends TestCase
     {
         parent::setUp();
 
-        // 1. Persiapan Data Produk
+        // 👇 1. Buat Kategori Dummy Terlebih Dahulu (Solusi Error 1452) 👇
+        $this->category = Category::forceCreate([
+            'name' => 'Test Category',
+            'code' => 'CAT-' . \Str::random(5),
+        ]);
+
+        // 2. Persiapan Data Produk (Sekarang menggunakan category_id)
         $this->productLimited = Product::forceCreate([
             'name' => 'Limited Edition Bag',
             'price' => 5000000,
             'stock' => 3, // <= 5 (Akan memicu algoritma Priority VIP)
+            'category_id' => $this->category->id, // 👈 Disisipkan di sini
         ]);
 
         $this->productPlentiful = Product::forceCreate([
             'name' => 'Standard Bag',
             'price' => 1000000,
             'stock' => 50, // > 5 (Akan dirilis ke semua orang)
+            'category_id' => $this->category->id, // 👈 Disisipkan di sini
         ]);
 
-        // 2. Persiapan Data User (VIP, Reguler, dan Guest)
+        // 3. Persiapan Data User (VIP, Reguler, dan Guest)
         $this->heritageUser = User::forceCreate([
             'first_name' => 'VIP',
             'last_name' => 'Client',
