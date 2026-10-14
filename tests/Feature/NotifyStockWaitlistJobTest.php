@@ -25,29 +25,80 @@ class NotifyStockWaitlistJobTest extends TestCase
     protected $regularUser;
     protected $guestEmail;
 
+    // protected function setUp(): void
+    // {
+    //     parent::setUp();
+
+    //     // 👇 1. Buat Kategori Dummy Terlebih Dahulu (Solusi Error 1452) 👇
+    //     $this->category = Category::forceCreate([
+    //         'name' => 'Test Category',
+    //         'code' => 'CAT-' . \Str::random(5),
+    //     ]);
+
+    //     // 2. Persiapan Data Produk (Sekarang menggunakan category_id)
+    //     $this->productLimited = Product::forceCreate([
+    //         'name' => 'Limited Edition Bag',
+    //         'price' => 5000000,
+    //         'stock' => 3, // <= 5 (Akan memicu algoritma Priority VIP)
+    //         'category_id' => $this->category->id, // 👈 Disisipkan di sini
+    //     ]);
+
+    //     $this->productPlentiful = Product::forceCreate([
+    //         'name' => 'Standard Bag',
+    //         'price' => 1000000,
+    //         'stock' => 50, // > 5 (Akan dirilis ke semua orang)
+    //         'category_id' => $this->category->id, // 👈 Disisipkan di sini
+    //     ]);
+
+    //     // 3. Persiapan Data User (VIP, Reguler, dan Guest)
+    //     $this->heritageUser = User::forceCreate([
+    //         'first_name' => 'VIP',
+    //         'last_name' => 'Client',
+    //         'email' => 'vip_' . \Str::random(5) . '@test.com',
+    //         'password' => bcrypt('password123'),
+    //         'usertype' => 'user',
+    //         'is_membership' => true,
+    //         'point' => 12000, // VIP Héritage
+    //     ]);
+
+    //     $this->regularUser = User::forceCreate([
+    //         'first_name' => 'Regular',
+    //         'last_name' => 'Client',
+    //         'email' => 'regular_' . \Str::random(5) . '@test.com',
+    //         'password' => bcrypt('password123'),
+    //         'usertype' => 'user',
+    //         'is_membership' => true,
+    //         'point' => 500, // Hanya Muse biasa
+    //     ]);
+
+    //     $this->guestEmail = 'guest_' . \Str::random(5) . '@test.com';
+    // }
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        // 👇 1. Buat Kategori Dummy Terlebih Dahulu (Solusi Error 1452) 👇
+        // 1. Buat Kategori Dummy Terlebih Dahulu (Solusi Error 1452)
         $this->category = Category::forceCreate([
             'name' => 'Test Category',
             'code' => 'CAT-' . \Str::random(5),
         ]);
 
-        // 2. Persiapan Data Produk (Sekarang menggunakan category_id)
+        // 2. Persiapan Data Produk (Menambahkan 'code' untuk menghindari Error 1062 Duplicate Entry)
         $this->productLimited = Product::forceCreate([
+            'code' => 'BAG-LTD-' . \Str::random(5), // 👈 Tambahkan ini
             'name' => 'Limited Edition Bag',
             'price' => 5000000,
             'stock' => 3, // <= 5 (Akan memicu algoritma Priority VIP)
-            'category_id' => $this->category->id, // 👈 Disisipkan di sini
+            'category_id' => $this->category->id,
         ]);
 
         $this->productPlentiful = Product::forceCreate([
+            'code' => 'BAG-STD-' . \Str::random(5), // 👈 Tambahkan ini
             'name' => 'Standard Bag',
             'price' => 1000000,
             'stock' => 50, // > 5 (Akan dirilis ke semua orang)
-            'category_id' => $this->category->id, // 👈 Disisipkan di sini
+            'category_id' => $this->category->id,
         ]);
 
         // 3. Persiapan Data User (VIP, Reguler, dan Guest)
