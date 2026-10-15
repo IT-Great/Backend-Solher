@@ -2609,6 +2609,60 @@ class TransactionController extends Controller
         return response()->json($trackingData);
     }
 
+    /**
+     * Mendapatkan daftar riwayat pengembalian dana (refund) khusus untuk pelanggan yang sedang login.
+     */
+    // public function myRefunds(Request $request)
+    // {
+    //     $user = $request->user();
+
+    //     // Asumsi nama model Anda adalah RefundRequest. Sesuaikan jika namanya berbeda (misal: ReturnRequest atau TransactionRefund).
+    //     $refunds = \App\Models\RequestRefund::whereHas('transaction', function ($query) use ($user) {
+    //             $query->where('user_id', $user->id);
+    //         })
+    //         ->orderBy('created_at', 'desc')
+    //         ->get();
+
+    //     return response()->json($refunds, 200);
+    // }
+
+    /**
+     * Mendapatkan daftar riwayat pengembalian dana (refund) khusus untuk pelanggan yang sedang login.
+     * Dicari berdasarkan kolom 'status' pada tabel transactions.
+     */
+    public function myRefunds(Request $request)
+    {
+        $user = $request->user();
+
+        // Cari transaksi milik user ini yang statusnya berkaitan dengan proses Refund
+        $refunds = \App\Models\Transaction::with('details.product') // Load relasi produk agar bisa ditampilkan di UI
+            ->where('user_id', $user->id)
+            ->whereIn('status', [
+                'refund_requested', 
+                'refund_approved', 
+                'refunded', 
+                'refund_rejected', 
+                'refund_manual_required'
+            ])
+            ->orderBy('updated_at', 'desc')
+            ->get();
+
+        // Format data agar sesuai dengan yang diharapkan Frontend (ProfilePage.vue)
+        $formattedRefunds = $refunds->map(function ($transaction) {
+            return [
+                'id' => $transaction->id,
+                'transaction_id' => $transaction->order_id, // Gunakan order_id untuk ditampilkan ke user
+                'status' => $transaction->status,
+                'reason' => $transaction->refund_reason,
+                'proof_image' => $transaction->refund_proof_url,
+                'admin_notes' => null, // Tambahkan kolom ini di DB jika Admin butuh memberi pesan penolakan
+                'created_at' => $transaction->updated_at, // Kapan status refund terakhir diubah
+            ];
+        });
+
+        return response()->json($formattedRefunds, 200);
+    }
+
     public function adminBulkTrackOrders(Request $request, BiteshipService $biteship)
     {
         $request->validate(['transaction_ids' => 'required|array', 'transaction_ids.*' => 'integer|exists:transactions,id']);

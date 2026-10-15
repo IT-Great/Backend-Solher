@@ -1136,6 +1136,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/transactions/{id}/tracking', [TransactionController::class, 'trackOrder']);
     Route::post('/transactions/tracking/bulk', [TransactionController::class, 'bulkTrackOrders']);
 
+    Route::get('/user/refunds', [TransactionController::class, 'myRefunds']);
+
     // 👇 IMPLEMENTASI RATE LIMITING CHECKOUT & PEMBAYARAN 👇
     // Batasi 5 request per 1 menit per User ID.
     Route::middleware('throttle:5,1')->group(function () {
