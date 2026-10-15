@@ -60,4 +60,15 @@ class ShippoService implements ShippingGatewayInterface
             ]
         ];
     }
+
+    public function getOrderTracking(string $biteshipOrderId)
+    {
+        return [
+            'success' => true,
+            'status' => 'In Transit',
+            'history' => [
+                ['note' => 'Departed from facility', 'time' => now()->toDateTimeString()]
+            ]
+        ];
+    }
 }

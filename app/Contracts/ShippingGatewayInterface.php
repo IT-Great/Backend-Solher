@@ -6,26 +6,28 @@ interface ShippingGatewayInterface
 {
     /**
      * Dapatkan daftar tarif pengiriman (Shipping Rates).
-     * 
-     * @param array $payload
-     * @return mixed
+     *
+     * @param array $origin
+     * @param array $destination
+     * @param array $parcel
+     * @return array
      */
-    public function getRates(array $payload);
+    public function calculateRates(array $origin, array $destination, array $parcel): array;
 
     /**
      * Buat pesanan pengiriman ke kurir (Create Order/Waybill).
-     * 
-     * @param array $payload
-     * @return mixed
+     *
+     * @param array $transactionData
+     * @return array
      */
-    public function createOrder(array $payload);
+    public function createOrder(array $transactionData): array;
 
     /**
-     * Lacak resi pengiriman (Track Order).
-     * 
-     * @param string $trackingNumber
-     * @param string $courier
+     * Dapatkan status lacak resi dari kurir.
+     * (Ditambahkan sesuai struktur BiteshipService yang Anda miliki)
+     *
+     * @param string $orderId
      * @return mixed
      */
-    public function trackOrder(string $trackingNumber, string $courier);
+    public function getOrderTracking(string $orderId);
 }
