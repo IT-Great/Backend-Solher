@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Xendit\Configuration;
 use Xendit\Invoice\CreateInvoiceRequest;
 use Xendit\Invoice\InvoiceApi;
+use Illuminate\Support\Facades\Http;
 
 class XenditService implements PaymentGatewayInterface
 {
@@ -66,5 +67,54 @@ class XenditService implements PaymentGatewayInterface
         // }
 
         return true;
+    }
+
+/**
+     * Mendapatkan status pembayaran terbaru dari Xendit.
+     */
+    public function getPaymentStatus(string $invoiceId)
+    {
+        // Sesuaikan dengan letak Secret Key Anda (biasanya di config/services.php)
+        $secretKey = config('services.xendit.secret_key');
+
+        $response = Http::withBasicAuth($secretKey, '')
+            ->get("https://api.xendit.co/v2/invoices/{$invoiceId}");
+
+        if ($response->successful()) {
+            return $response->json();
+        }
+
+        throw new \Exception('Gagal mengambil status Invoice Xendit: ' . $response->body());
+    }
+
+    /**
+     * Memproses pengembalian dana (Refund) via Xendit.
+     */
+    public function processRefund(string $invoiceId, $amount, string $reason)
+    {
+        $secretKey = config('services.xendit.secret_key');
+
+        // Xendit mewajibkan header 'Idempotency-key' untuk mencegah double-refund
+        // jika terjadi masalah jaringan (retry request).
+        $idempotencyKey = 'refund_' . $invoiceId . '_' . time();
+
+        $response = Http::withHeaders(['Idempotency-key' => $idempotencyKey])
+            ->withBasicAuth($secretKey, '')
+            ->post('https://api.xendit.co/refunds', [
+                'invoice_id' => $invoiceId,
+                'amount' => (int) $amount,
+                // Xendit hanya menerima enum tertentu untuk 'reason',
+                // jadi kita kunci ke 'REQUESTED_BY_CUSTOMER', lalu simpan alasan asli Admin di 'metadata'.
+                'reason' => 'REQUESTED_BY_CUSTOMER',
+                'metadata' => [
+                    'admin_reason' => $reason
+                ]
+            ]);
+
+        if ($response->successful()) {
+            return $response->json();
+        }
+
+        throw new \Exception('Gagal memproses refund Xendit: ' . $response->body());
     }
 }
